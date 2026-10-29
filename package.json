@@ -1,0 +1,18 @@
+{
+  "name": "farihub",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.22.1"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.ts",
+    "bench": "node scripts/benchmark.ts",
+    "probe:ironcalc": "node scripts/probe-ironcalc.ts",
+    "bench:ironcalc": "node scripts/benchmark-ironcalc.ts"
+  },
+  "devDependencies": {
+    "@ironcalc/nodejs": "0.9.1"
+  }
+}

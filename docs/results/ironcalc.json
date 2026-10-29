@@ -1,0 +1,82 @@
+{
+  "candidate": "@ironcalc/nodejs@0.9.1",
+  "elapsedMs": 3.2967040000000054,
+  "results": [
+    {
+      "name": "SUM",
+      "formula": "=SUM(A1:A3)",
+      "expected": "600",
+      "actual": "600",
+      "passed": true
+    },
+    {
+      "name": "AVERAGE",
+      "formula": "=AVERAGE(A1:A3)",
+      "expected": "200",
+      "actual": "200",
+      "passed": true
+    },
+    {
+      "name": "IF",
+      "formula": "=IF(A1>50,1,0)",
+      "expected": "1",
+      "actual": "1",
+      "passed": true
+    },
+    {
+      "name": "SUMIF",
+      "formula": "=SUMIF(A1:A3,\">150\")",
+      "expected": "500",
+      "actual": "500",
+      "passed": true
+    },
+    {
+      "name": "COUNTIF",
+      "formula": "=COUNTIF(A1:A3,\">150\")",
+      "expected": "2",
+      "actual": "2",
+      "passed": true
+    },
+    {
+      "name": "absolute reference",
+      "formula": "=$A$1+A2",
+      "expected": "300",
+      "actual": "300",
+      "passed": true
+    },
+    {
+      "name": "division by zero",
+      "formula": "=1/0",
+      "expected": "#DIV/0!",
+      "actual": "#DIV/0!",
+      "passed": true
+    }
+  ],
+  "portugueseDirectInEnglishMode": "#NAME?",
+  "portugueseConfigurations": [
+    {
+      "language": "pt",
+      "error": "Error: Invalid language: pt"
+    },
+    {
+      "language": "pt-BR",
+      "error": "Error: Invalid language: pt-BR"
+    },
+    {
+      "language": "pt-PT",
+      "error": "Error: Invalid language: pt-PT"
+    }
+  ],
+  "sparseMillionthRow": "42",
+  "xlsxRoundTrip": {
+    "value": "246",
+    "formula": "=A1*2"
+  },
+  "limitations": [
+    "Small English formula fixture; no comparison against Excel executed",
+    "Sparse last-row address is not a million populated rows",
+    "Complete Portuguese formula syntax and Excel semantics remain unvalidated",
+    "Two-cell XLSX round-trip within the same engine, not Microsoft Office fidelity",
+    "No WASM browser integration or pivot support tested"
+  ]
+}
