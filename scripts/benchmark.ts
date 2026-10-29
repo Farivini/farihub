@@ -19,7 +19,7 @@ const ticker = setInterval(() => {
 const result = await new Promise<{ groups: Group[]; aggregationMs: number }>((resolve, reject) => {
   const worker = new Worker(new URL('./aggregation-worker.ts', import.meta.url), {
     workerData: { table, spec: {} },
-    transferList: [table.region.buffer, table.revenueCents.buffer, table.costCents.buffer],
+    transferList: [table.region.buffer, table.revenueCents.buffer, table.costCents.buffer] as ArrayBuffer[],
   });
   const timeout = setTimeout(() => {
     void worker.terminate();

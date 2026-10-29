@@ -1,0 +1,19 @@
+{
+  "createdAt": "2026-10-29T21:40:33.681Z",
+  "scope": "IronCalc 0.9.1 WASM (same wasm_bg.wasm as the browser) under Node; single run; not a browser or Windows measurement",
+  "environment": {
+    "node": "v22.22.0",
+    "platform": "linux x64",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "logicalCpus": 4
+  },
+  "rows": 1000000,
+  "columns": 3,
+  "formulas": 1000000,
+  "formula": "=A{n}*B{n}",
+  "fillMs": 21493.928886,
+  "historyResetMs": 5010.632506000002,
+  "firstEvaluateMs": 1508.3055270000004,
+  "editWithAutomaticRecalculationMs": 1590.0825939999995,
+  "wasmLinearMemoryBytes": 422379520
+}

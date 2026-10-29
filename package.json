@@ -10,9 +10,27 @@
     "test": "node --test tests/*.test.ts",
     "bench": "node scripts/benchmark.ts",
     "probe:ironcalc": "node scripts/probe-ironcalc.ts",
-    "bench:ironcalc": "node scripts/benchmark-ironcalc.ts"
+    "bench:ironcalc": "node scripts/benchmark-ironcalc.ts",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p .",
+    "test:e2e": "node --test --test-concurrency=1 tests/e2e/*.e2e.ts",
+    "bench:browser": "node scripts/bench-browser.ts"
   },
   "devDependencies": {
-    "@ironcalc/nodejs": "0.9.1"
+    "@ironcalc/nodejs": "0.9.1",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "playwright": "1.63.0",
+    "typescript": "6.0.3",
+    "vite": "8.3.4"
+  },
+  "dependencies": {
+    "@ironcalc/wasm": "0.9.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   }
 }
