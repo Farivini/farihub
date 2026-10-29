@@ -1,4 +1,4 @@
-name: Farcel technical proof
+name: Farcel
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
@@ -22,3 +22,19 @@ jobs:
         with:
           name: technical-proof-${{ matrix.os }}
           path: reports/*.json
+  app:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

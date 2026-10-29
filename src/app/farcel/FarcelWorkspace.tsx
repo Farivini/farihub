@@ -20,8 +20,10 @@ export interface WorkspaceStatus { title: string; dirty: boolean; engine: string
 type Tab = { kind: 'sheet'; index: number } | { kind: 'pivot'; id: string };
 
 const number = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
-const seconds = (ms: number) => `${(ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} s`;
-const mib = (bytes: number | null) => bytes === null ? 'não medida' : `${(bytes / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} MiB`;
+const seconds = (ms: number) => ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} s`;
+const mib = (bytes: number | null) => bytes === null ? 'não medida'
+  : bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KiB`
+  : `${(bytes / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MiB`;
 
 interface SaveFilePicker {
   showSaveFilePicker?(options: unknown): Promise<{ name: string; createWritable(): Promise<{ write(data: Uint8Array): Promise<void>; close(): Promise<void> }> }>;
@@ -221,8 +223,13 @@ export function FarcelWorkspace({ client, onStatus, onContext }: {
         const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/x-farcel' }));
         const link = document.createElement('a');
         link.href = url;
-        link.download = name;
+        // Chromium drops non-ASCII names given through the download attribute; the native
+        // save dialog above keeps the original name.
+        link.download = name.normalize('NFD').replace(/\p{M}/gu, '').replace(/[^\x20-\x7e]/g, '_');
+        savedName = link.download;
+        document.body.appendChild(link);
         link.click();
+        link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 10_000);
       }
       setFileName(savedName);
@@ -332,7 +339,7 @@ export function FarcelWorkspace({ client, onStatus, onContext }: {
           onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void openFile(file); }} />
       </div>
 
-      <div className="formula-bar">
+      <div className="formula-bar" hidden={tab.kind !== 'sheet'}>
         <input
           className="name-box"
           aria-label="Caixa de nome"
