@@ -1,0 +1,24 @@
+name: Farcel technical proof
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  aggregation:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test
+      - run: npm run bench
+      - run: npm run probe:ironcalc
+      - run: npm run bench:ironcalc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: technical-proof-${{ matrix.os }}
+          path: reports/*.json

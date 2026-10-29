@@ -1,0 +1,24 @@
+{
+  "createdAt": "2026-10-29T20:02:47.756Z",
+  "candidate": "@ironcalc/nodejs@0.9.1",
+  "environment": {
+    "node": "v24.22.1",
+    "platform": "linux",
+    "cpu": "AMD EPYC 9V74 80-Core Processor"
+  },
+  "rows": 1000000,
+  "populatedColumns": 3,
+  "populatedCells": 3000001,
+  "populationMs": 769.010365,
+  "recalcMs": 218.12591399999997,
+  "editAndRecalcMs": 224.09518000000003,
+  "sum": "30000000000",
+  "editedSum": "30000000001",
+  "processRssAtEndBytes": 188653568,
+  "workerStartupAndTotalMs": 1281.870016,
+  "limitations": [
+    "Single run in Node native binding; not WASM/browser/Windows app",
+    "Three numeric columns, five distinct groups, only one aggregate formula",
+    "No grid, pivot UI, XLSX round-trip, complex dependency chains or Excel comparison"
+  ]
+}

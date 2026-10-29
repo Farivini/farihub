@@ -1,0 +1,62 @@
+{
+  "scope": "Synthetic columnar snapshot: fixed aggregation, not full spreadsheet or XLSX",
+  "createdAt": "2026-10-29T20:01:37.891Z",
+  "environment": {
+    "node": "v24.22.1",
+    "platform": "linux",
+    "arch": "x64",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "logicalCpus": 9,
+    "totalMemoryBytes": 10451439616
+  },
+  "rows": 1000000,
+  "inputColumns": 3,
+  "groups": [
+    {
+      "region": 0,
+      "count": 200000,
+      "revenueCents": 2000000000,
+      "costCents": 1200000000,
+      "margin": 0.4
+    },
+    {
+      "region": 1,
+      "count": 200000,
+      "revenueCents": 4000000000,
+      "costCents": 2400000000,
+      "margin": 0.4
+    },
+    {
+      "region": 2,
+      "count": 200000,
+      "revenueCents": 6000000000,
+      "costCents": 3600000000,
+      "margin": 0.4
+    },
+    {
+      "region": 3,
+      "count": 200000,
+      "revenueCents": 8000000000,
+      "costCents": 4800000000,
+      "margin": 0.4
+    },
+    {
+      "region": 4,
+      "count": 200000,
+      "revenueCents": 10000000000,
+      "costCents": 6000000000,
+      "margin": 0.4
+    }
+  ],
+  "generationMs": 47.68125699999999,
+  "aggregationMs": 17.051330000000007,
+  "workerStartupAndAggregationMs": 192.36977800000003,
+  "mainThreadHeartbeatTicks": 36,
+  "snapshotBytes": 17000000,
+  "processRssMaxSampledBytes": 111804416,
+  "limitations": [
+    "One run only; no performance threshold approved",
+    "Node worker, not a browser responsiveness test",
+    "No formula engine, pivot UI, sorting, XLSX, document renderer or Windows installer tested"
+  ]
+}
