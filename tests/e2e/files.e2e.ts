@@ -23,6 +23,12 @@ async function waitStatus(page: Page, prefix: string) {
   await page.waitForFunction(p => document.querySelector('.doc-pane:not([hidden]) [data-testid=status-message]')?.textContent?.startsWith(p), prefix);
 }
 
+/** The formula bar follows the active cell through an engine request, so wait for the text. */
+async function formulaShows(page: Page, expected: string) {
+  await page.waitForFunction(([sel, v]) => (document.querySelector(sel) as HTMLInputElement | null)?.value === v, [inPane('[data-testid=formula-bar]'), expected] as const, { timeout: 5000 })
+    .catch(async () => assert.equal(await formulaBar(page), expected));
+}
+
 /** Switches sheet tab and waits until the grid shows that sheet, so the next selection lands on it. */
 async function showSheet(page: Page, name: string) {
   await page.locator(inPane('.sheet-tab'), { hasText: name }).click();
@@ -56,7 +62,7 @@ test('XLSX: open, edit, export and reopen; formulas stay formulas in pt-BR', asy
   assert.equal(await copyText(page, 'A1:C2'), 'Região\tCódigo\tData\nSudeste\t00123\t15/03/2024');
   assert.equal(await copyText(page, 'F6'), 'R$ 1.319,26');
   await select(page, 'F9');
-  assert.equal(await formulaBar(page), '=PROCV("Nordeste";A2:F4;6;FALSO)');
+  await formulaShows(page, '=PROCV("Nordeste";A2:F4;6;FALSO)');
   await showSheet(page, 'Resumo Geral');
   assert.equal(await copyText(page, 'B2:B3'), '4,5%\n3');
   await showSheet(page, 'Vendas');
@@ -84,7 +90,7 @@ test('XLSX: open, edit, export and reopen; formulas stay formulas in pt-BR', asy
   await waitStatus(page, 'Importado devolvido.xlsx');
   assert.equal(await page.locator('[data-testid=doc-tab]').count(), 2);
   await select(page, 'A12');
-  assert.equal(await formulaBar(page), '=SOMASE(A2:A4;"Sudeste";F2:F4)');
+  await formulaShows(page, '=SOMASE(A2:A4;"Sudeste";F2:F4)');
   assert.deepEqual(errors, []);
 });
 
