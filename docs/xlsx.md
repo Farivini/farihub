@@ -6,7 +6,7 @@
 - O crate Rust `ironcalc` 0.9.1 (MIT OU Apache-2.0, mesmo repositório e mesma versão do motor) tem importador e exportador XLSX completos: `load_from_xlsx_bytes` e `save_xlsx_to_writer`. Eles leem e escrevem a mesma estrutura `Workbook` que o motor serializa.
 - O crate compila para `wasm32-unknown-unknown` sem mudanças.
 
-**Decisão:** um conversor separado (`native/xlsx-bridge`, ~150 linhas de Rust) compilado para WASM, que só troca **XLSX ↔ bytes do `Model.toBytes()`**. O motor não muda e continua sendo a fonte única da verdade: abrir um XLSX é converter para bytes do motor e carregar com `Model.fromBytes()`, o mesmo caminho do `.farcel`; exportar é pedir `Model.toBytes()` ao motor e converter.
+**Decisão:** um conversor separado (`native/xlsx-bridge`, cerca de 280 linhas de Rust) compilado para WASM, que só troca **XLSX ↔ bytes do `Model.toBytes()`**. O motor não muda e continua sendo a fonte única da verdade: abrir um XLSX é converter para bytes do motor e carregar com `Model.fromBytes()`, o mesmo caminho do `.farcel`; exportar é pedir `Model.toBytes()` ao motor e converter.
 
 Alternativas consideradas:
 
@@ -59,16 +59,25 @@ Ambos merecem ser reportados ao IronCalc.
 | Comentários, tabelas formatadas (estrutura) | sim | não | **não** |
 | Gráficos, imagens, desenhos, tabelas dinâmicas do Excel, macros, validação de dados, filtros, proteção, minigráficos, segmentações, conexões, configuração de impressão, formatação parcial de texto | **não** | — | — |
 
-Ao abrir, o app mostra um **relatório** com os itens das duas últimas categorias que o arquivo tem (“Não importados” e “Mantidos, ainda não exibidos”), com base na inspeção do pacote e da estrutura importada. Ao exportar, lista de novo o que não volta e **pede confirmação**. As dinâmicas e gráficos do Planilhas não existem no XLSX e também entram na lista; só o `.farcel` as guarda.
+Ao abrir, o app mostra um **relatório** com os itens das duas últimas categorias que o arquivo tem (“Não importados” e “Mantidos, ainda não exibidos”), com base na inspeção do pacote e da estrutura importada. Ao salvar em XLSX, lista de novo o que não volta e **deixa escolher** (salvar assim mesmo ou guardar em `.farcel`). As dinâmicas e gráficos do Planilhas não existem no XLSX e também entram na lista; só o `.farcel` as guarda.
+
+A **origem** (nome e formato do arquivo importado) e o **relatório** ficam gravados no cabeçalho do `.farcel` (`app.origin`). Ao reabrir esse `.farcel`, salvar em XLSX volta a listar o que o arquivo original tinha e não foi importado. Cabeçalhos sem origem (salvos antes desta versão) ou malformados abrem sem ela.
 
 ### Fórmulas em português
 
 O IronCalc guarda fórmulas como árvore, não como texto. A digitação passa pela camada `formula-locale.ts` (pt-BR → nomes em inglês, `;` e vírgula decimal no locale `es` do motor); a exportação escreve a forma canônica do Excel (`SUM(A1:A2,2.25)`, `VLOOKUP(…,FALSE)`, `_xlfn.XLOOKUP`), e a importação faz o caminho inverso. Os testes conferem o XML gerado e a ida e volta de cada fórmula.
 
-### Estado de salvo
+### Salvar por formato
 
-- Abrir XLSX ou CSV cria uma pasta **importada** (“Importado de XLSX”): fechar sem editar não pede confirmação; Ctrl+S grava `.farcel`.
-- Exportar XLSX marca a pasta como salva **somente** se nada mudou durante a exportação e se não há dinâmicas (que o XLSX não guarda). É a mesma regra do salvamento concorrente da PR #5, com teste próprio.
+- **Ctrl+S mantém o formato do arquivo**: aberto de `.xlsx`, grava `.xlsx`; aberto de `.farcel`, grava `.farcel`. Sem perguntar, quando nada se perde.
+- **Pasta nova ou importada de CSV/TSV/TXT**: Ctrl+S abre **Salvar como**, com XLSX como padrão e `.farcel` como alternativa.
+- **Perdas**: se o XLSX não teria algo (dinâmicas do Planilhas; o que o arquivo original tinha e não foi importado), o app lista e deixa escolher entre salvar o XLSX assim mesmo e salvar como `.farcel`. Aceito uma vez, o mesmo conjunto de perdas não é perguntado de novo nesta sessão; uma perda nova (outra dinâmica) ou a reabertura do arquivo perguntam outra vez.
+- **Salvar como…** (Ctrl+Shift+S): nome e formato; depois disso, Ctrl+S grava o arquivo escolhido.
+- **Estado de salvo**: só é marcado quando o arquivo tem a pasta inteira (um XLSX com dinâmicas não marca) e nada mudou durante a gravação; uma gravação incompleta desmarca a pasta mesmo que ela estivesse salva antes — a regra da PR #5, válida para XLSX e `.farcel`, com testes para os dois.
+- **Uma gravação de cada vez**: um Ctrl+S feito enquanto outro grava espera a vez e tira o snapshot quando começa, então o arquivo termina sempre com o estado mais novo.
+- **Gravar no lugar**: no Chromium desktop, abrir pelo diálogo nativo (Ctrl+O) guarda o arquivo aberto, e Ctrl+S grava nele de novo (File System Access API). Salvar como pede o local uma vez e passa a gravar ali.
+- **Navegador sem acesso a arquivos** (Firefox, Safari, automação): salvar **baixa uma cópia**. O diálogo diz isso antes (“Baixar cópia”), a mensagem diz “Cópia baixada … na pasta de downloads” e o estado fica “Cópia baixada”. O arquivo aberto não é alterado; cada Ctrl+S baixa uma nova cópia.
+- O executável poderá injetar `window.farivFiles` para gravar com acesso nativo (os testes usam esse ponto).
 - Abrir nunca substitui trabalho: o arquivo entra na aba atual apenas se ela está vazia e sem arquivo; senão abre aba nova. Um arquivo recusado (corrompido, não-XLSX) não altera nada.
 
 ## CSV, TSV e TXT
@@ -79,7 +88,9 @@ O IronCalc guarda fórmulas como árvore, não como texto. A digitação passa p
 - **Datas**: `dd/mm/aaaa` e `aaaa-mm-dd` viram datas; datas impossíveis (31/02) ficam texto. `mm/dd/aaaa`, data e hora e horários ficam como texto nesta versão.
 - **Segurança**: nenhum valor vira fórmula. Texto que o motor leria como outra coisa (`=…`, `+…`, `VERDADEIRO`, `12/ab`) entra com o prefixo de texto (`'`).
 - Arquivos acima de 1.048.576 linhas ou 16.384 colunas são **recusados**, não cortados.
-- **Exportação**: a planilha ativa, valores como exibidos, separador `;` (CSV, padrão do Excel em português) ou tabulação (TSV), UTF-8 com BOM, aspas quando necessário. O app avisa antes que fórmulas viram resultados, formatação não vai e as outras planilhas ficam de fora.
+- **Exportação**: a planilha ativa, valores como exibidos, separador `;` (CSV, padrão do Excel em português) ou tabulação (TSV), UTF-8 com BOM, aspas quando necessário. O app avisa antes que fórmulas viram resultados, formatação não vai e as outras planilhas ficam de fora. Duas opções:
+  - **Para abrir em planilhas** (padrão): texto que um programa de planilhas executaria como fórmula ao abrir o CSV recebe `'` na frente — começa com `=`, `+`, `@`, tabulação ou retorno de carro, ou com `-` quando não é um número simples (`-2+3`, `-A1`). Só células de texto são verificadas: **números não mudam, inclusive negativos**, e o texto `-5` também não. A mensagem final diz quantos valores receberam o `'`. No Excel e no LibreOffice o apóstrofo aparece na célula ao abrir o CSV.
+  - **Dados originais** (integração): cada valor exatamente como aparece, para sistemas que leem o arquivo como dados.
 
 ## Evidências
 
@@ -87,7 +98,8 @@ O IronCalc guarda fórmulas como árvore, não como texto. A digitação passa p
 
 - `tests/xlsx.test.ts`: arquivos de três autores diferentes (openpyxl, LibreOffice, pacote com fórmulas compartilhadas no formato do Excel), relatório de recursos, digitação pt-BR → XML do Excel → reabertura, importar → editar → exportar → reabrir, funções não calculadas, arquivo inválido.
 - `tests/delimited.test.ts`: aspas, quebras de linha, codificações, detecção, interpretação de valores, importação e exportação no motor, limite de colunas.
-- `tests/e2e/files.e2e.ts` (Chromium): abrir XLSX pelo app, editar, exportar pelo menu, reabrir; relatório e confirmação de perdas; dinâmica na exportação; CSV Windows-1252 com prévia, tipos e exportação; cancelar a prévia; arquivo inválido; edição durante a exportação.
+- `tests/save-plan.test.ts`: perdas por formato, pasta completa ou não, origem gravada e lida do `.farcel`, cabeçalhos antigos e malformados.
+- `tests/e2e/files.e2e.ts` (Chromium): abrir XLSX, editar, Ctrl+S mantém XLSX, reabrir; perdas explicadas com escolha e aceite único; origem e avisos depois de reabrir o `.farcel`; pasta nova com XLSX padrão, dinâmica e cópia baixada; gravação no próprio arquivo com acesso nativo simulado; CSV Windows-1252 com prévia e exportação nos dois modos; cancelar a prévia; arquivo inválido; edição durante a gravação.
 - Os arquivos de teste ficam em `tests/fixtures/xlsx/`, gerados por `scripts/make-xlsx-fixtures.py` (openpyxl 3.1.5) e pelo LibreOffice Calc 24.2.
 
 ### Verificação no LibreOffice Calc
@@ -125,5 +137,6 @@ Em 1 M linhas a conversão funciona e a ida e volta confere, mas é lenta, e o c
 - O relatório de recursos é baseado em inspeção do pacote; um recurso raro fora da lista pode não aparecer.
 - Funções que o IronCalc 0.9.1 não conhece não são detectadas na importação: aparecem como `#NOME?` na célula (o texto da fórmula é preservado e volta no XLSX).
 - A exportação CSV usa os valores exibidos (como o Excel faz); números com formato (R$, %) saem formatados.
-- Na exportação CSV/TSV, texto que começa com `=`, `+`, `-` ou `@` sai como está (fidelidade aos dados). Ao abrir o CSV, o Excel pode interpretá-lo como fórmula; a importação do Planilhas nunca faz isso. Decidir se a exportação deve proteger esses valores (por exemplo com `'`) fica em aberto.
+- Reimportar no Planilhas um CSV exportado “para abrir em planilhas” mantém o `'` como parte do texto; para ida e volta entre sistemas, use “Dados originais”.
+- A gravação no próprio arquivo depende da File System Access API (Chromium desktop); foi testada com o diálogo nativo simulado, não com o diálogo real.
 - Conversões grandes ainda não mostram progresso detalhado nem podem ser canceladas.

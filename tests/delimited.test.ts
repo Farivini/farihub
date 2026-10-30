@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeText, detectDecimal, detectEncoding, detectSeparator, interpret, parseDelimited, serializeDelimited, suggestColumnTypes } from '../src/core/delimited.ts';
+import { decodeText, detectDecimal, detectEncoding, detectSeparator, interpret, looksLikeFormula, parseDelimited, serializeDelimited, suggestColumnTypes } from '../src/core/delimited.ts';
 import { WorkbookEngine } from '../src/engine/workbook-engine.ts';
 import type { DelimitedOptions } from '../src/core/delimited.ts';
 import { ic } from './ironcalc-node.ts';
@@ -70,7 +70,7 @@ test('import into the engine and export back: types, codes, accents, quotes', as
   assert.equal(engine.formatted(0, 2, 5), 'diz "oi"; tchau');
   assert.equal(engine.canUndo(), false, 'the import is not an undo step');
   engine.setInput(0, 4, 3, '=SOMA(C2:C3)');
-  const out = engine.toDelimited(0, ';');
+  const out = engine.toDelimited(0, ';', 'raw');
   assert.deepEqual([out.rows, out.columns], [4, 5]);
   assert.equal(out.text, serializeDelimited([
     ['Código', 'Cliente', 'Valor', 'Data', 'Obs'],
@@ -96,4 +96,40 @@ test('a file beyond the sheet limit is refused, not cut', async () => {
     WorkbookEngine.fromDelimited(ic, 'largo.csv', new TextEncoder().encode(wide), { encoding: 'utf-8', separator: ';', decimal: ',', header: false, columns: [] }),
     /mais de 16\.384 colunas/,
   );
+});
+
+test('formula-like text: =, +, @, tab, CR and - unless a plain negative number', () => {
+  for (const text of ['=1+1', '=HYPERLINK("http://x")', '+55 11 99999-0000', '@SOMA(A1)', '\tx', '\rx', '-2+3', '-A1', '- item']) {
+    assert.equal(looksLikeFormula(text), true, text);
+  }
+  for (const text of ['-5', '-0,5', '-1.234,56', '-1,234.56', '-12,5%', 'texto', 'a=b', '5-3', '', "'=já protegido"]) {
+    assert.equal(looksLikeFormula(text), false, text);
+  }
+});
+
+test('CSV for spreadsheets protects formula-like text only; data mode writes values as they are', () => {
+  const engine = WorkbookEngine.create(ic);
+  engine.paste(0, { row: 1, column: 1 }, 'Valor\tObs');
+  engine.setInput(0, 2, 1, '-5');
+  engine.setInput(0, 3, 1, '-1234,5');
+  engine.setInput(0, 4, 1, '=A2*2');
+  // Text cells: typed with the quote prefix so they stay text in the workbook.
+  engine.setInput(0, 2, 2, "'=1+1");
+  engine.setInput(0, 3, 2, "'-5");
+  engine.setInput(0, 4, 2, "'+55 11 4000-0000");
+  engine.setInput(0, 5, 2, "'@usuario");
+  engine.setInput(0, 6, 2, "'-2+3");
+  const sheet = engine.toDelimited(0, ';', 'spreadsheet');
+  assert.equal(sheet.protectedCells, 4);
+  assert.equal(sheet.text, serializeDelimited([
+    ['Valor', 'Obs'],
+    ['-5', "'=1+1"],
+    ['-1234,5', '-5'],
+    ['-10', "'+55 11 4000-0000"],
+    ['', "'@usuario"],
+    ['', "'-2+3"],
+  ], ';'), 'negative numbers and the text "-5" are unchanged');
+  const raw = engine.toDelimited(0, ';', 'raw');
+  assert.equal(raw.protectedCells, 0);
+  assert.ok(raw.text.includes(';=1+1\r\n') && raw.text.includes(';+55 11 4000-0000\r\n'));
 });

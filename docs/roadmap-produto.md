@@ -1,6 +1,6 @@
 # Roadmap do produto
 
-Atualizado em 30/10/2026, com o estado conferido no código da `main` (inclui a correção de salvamento concorrente da PR #5) e nesta entrega (entrada e saída de arquivos).
+Atualizado em 30/10/2026, com o estado conferido no código da `main` (inclui a correção de salvamento concorrente da PR #5, a entrada e saída de arquivos da PR #6) e nesta entrega (salvar por formato, CSV protegido, ressalvas persistentes). Com isso o comportamento de arquivos fica fechado; as próximas frentes são operações de tabela (filtros, ordenação, inserir/excluir linhas e colunas) e IA contextual.
 
 ## Visão
 
@@ -18,7 +18,7 @@ Nada aqui é estimativa de prazo.
 
 ## Estado atual (resumo)
 
-- **Implementado:** planilha funcional com IronCalc 0.9.1 (WASM) em Web Worker, fonte única da verdade; fórmulas em português; formatação básica (número, moeda R$, porcentagem, data, negrito, alinhamento); várias pastas em abas, cada uma com seu motor; tabela dinâmica e gráfico ligado a ela; salvar/abrir `.farcel`; base sintética de 1.000.000 de linhas medida no navegador; **importar e exportar XLSX; importar CSV/TSV/TXT com prévia e exportar CSV/TSV** (esta entrega).
+- **Implementado:** planilha funcional com IronCalc 0.9.1 (WASM) em Web Worker, fonte única da verdade; fórmulas em português; formatação básica (número, moeda R$, porcentagem, data, negrito, alinhamento); várias pastas em abas, cada uma com seu motor; tabela dinâmica e gráfico ligado a ela; abrir e salvar `.xlsx` (padrão) e `.farcel` (nativo), com Salvar como e perdas explicadas; importar CSV/TSV/TXT com prévia e exportar CSV/TSV protegido ou original; base sintética de 1.000.000 de linhas medida no navegador.
 - **Parcial:** assistente (painel existe, **não conectado**).
 - **Placeholders:** Documentos e Apresentações aparecem como “em preparação”; não há editor.
 - **Atenção:** o painel do assistente monta um contexto limitado (até 20 linhas de amostra, 30 colunas, 50 linhas de dinâmica). Isso **não** é capacidade de analisar a base inteira; ver “Execução da IA”.
@@ -84,9 +84,10 @@ Google Sheets, Google Drive, OneDrive/SharePoint, bancos SQL, APIs e Databricks.
 
 | Formato | Estado | Observação |
 | --- | --- | --- |
-| XLSX | **Implementado** | Formato essencial de interoperabilidade. Fórmulas saem como fórmulas do Excel. Antes de exportar, o app lista o que o arquivo não terá (dinâmicas e gráficos do Planilhas; recursos do arquivo original que não foram importados) e pede confirmação. |
-| CSV (;) e TSV | **Implementado** | Uma planilha, valores como exibidos, UTF-8 com BOM; o app avisa antes que fórmulas viram resultados e a formatação não vai. |
-| `.farcel` | **Implementado** | Continua como formato nativo (guarda dinâmicas e gráficos), mas não é a única saída. |
+| XLSX | **Implementado** | Formato essencial de interoperabilidade e **padrão para pasta nova**. Fórmulas saem como fórmulas do Excel. Ctrl+S num arquivo XLSX grava XLSX; Salvar como… escolhe formato e nome. Se o XLSX não teria algo (dinâmicas do Planilhas; recursos do arquivo original que não foram importados), o app explica e deixa escolher. |
+| CSV (;) e TSV | **Implementado** | Uma planilha, valores como exibidos, UTF-8 com BOM; o app avisa antes que fórmulas viram resultados e a formatação não vai. Padrão “para abrir em planilhas” (texto que viraria fórmula recebe `'`; números, inclusive negativos, não mudam) ou “dados originais” para integração. |
+| `.farcel` | **Implementado** | Formato nativo: guarda dinâmicas, gráficos e a origem com o relatório de importação. Alternativa ao XLSX ao salvar. |
+| Gravar no próprio arquivo | **Parcial** | No Chromium desktop (File System Access API) Ctrl+S grava o arquivo aberto ou escolhido. Outros navegadores baixam uma cópia, e o app diz isso. O executável terá acesso nativo. |
 
 ## IA
 
@@ -133,9 +134,9 @@ Reaproveitar preparação e análise com dados novos: trocar a fonte, reaplicar 
 
 | Item | Estado | Observação |
 | --- | --- | --- |
-| Salvar só o que foi gravado (edição durante gravação fica pendente) | **Implementado** | PR #5; a exportação XLSX segue a mesma regra. |
+| Salvar só o que foi gravado (edição durante gravação fica pendente) | **Implementado** | PR #5; vale para XLSX e `.farcel`. Um XLSX que não guarda as dinâmicas também não marca a pasta como salva. |
 | Abrir não destrói trabalho | **Implementado** | Arquivo abre em aba nova quando a atual tem conteúdo; arquivo recusado não altera a pasta aberta. |
-| Avisos de compatibilidade | **Parcial** | Relatório na importação XLSX e confirmação na exportação. Falta aviso ao digitar uma função que o Excel não tem (ou vice-versa). |
+| Avisos de compatibilidade | **Parcial** | Relatório na importação XLSX, gravado no `.farcel` e repetido ao salvar em XLSX, inclusive depois de reabrir. Falta aviso ao digitar uma função que o Excel não tem (ou vice-versa). |
 | Salvamento automático | Planejado | |
 | Recuperação após queda | Planejado | |
 | Histórico por arquivo | Planejado | |

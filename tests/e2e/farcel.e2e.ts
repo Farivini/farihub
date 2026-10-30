@@ -16,6 +16,14 @@ async function fresh(): Promise<{ page: Page; errors: string[] }> {
   return { page, errors };
 }
 
+/** Ctrl+S on a workbook that has no file yet asks for the format; these tests keep .farcel. */
+async function saveNewAsFarcel(page: Page) {
+  await page.keyboard.press('ControlOrMeta+s');
+  await page.waitForSelector('[data-testid=save-as]');
+  await page.check('[data-testid=save-format] input[value=farcel]');
+  await page.click('[data-testid=save-as-confirm]');
+}
+
 test('typing with accents, IME composition and formula bar', async () => {
   const { page, errors } = await fresh();
   await typeAt(page, 'A1', 'Ação São João ç ü');
@@ -181,7 +189,7 @@ test('save to .farcel and reopen restores cells, formulas, accents and the pivot
   await page.click('[data-testid=field-Receita]');
   const before = await pivotShows(page, /Total geral\t43$/);
   const download = page.waitForEvent('download');
-  await page.keyboard.press('ControlOrMeta+s');
+  await saveNewAsFarcel(page);
   const file = await download;
   assert.equal(file.suggestedFilename(), 'Pasta1.farcel');
   const dir = await mkdtemp(join(tmpdir(), 'farcel-e2e-'));
@@ -189,7 +197,9 @@ test('save to .farcel and reopen restores cells, formulas, accents and the pivot
   await file.saveAs(path);
   const bytes = await readFile(path);
   assert.equal(bytes.subarray(0, 8).toString('latin1'), 'FARCEL01');
-  await page.waitForFunction(() => document.querySelector('.doc-pane:not([hidden]) [data-testid=status-message]')?.textContent?.includes('Não é XLSX'));
+  // Automation has no native file dialog: the browser downloads a copy, and says so.
+  await page.waitForFunction(() => document.querySelector('.doc-pane:not([hidden]) [data-testid=status-message]')?.textContent?.startsWith('Cópia baixada Pasta1.farcel na pasta de downloads'));
+  assert.equal(await page.textContent(inPane('[data-testid=save-state]')), 'Cópia baixada');
 
   const second = await openPage(app.browser, app.url);
   await second.page.setInputFiles('[data-testid=open-input]', path);
@@ -278,7 +288,7 @@ test('formatting: number formats, bold and alignment through the toolbar, kept o
   await pressed(page, '[aria-label=Centralizar]', 'false');
   // Save and reopen keeps the formats.
   const download = page.waitForEvent('download');
-  await page.keyboard.press('ControlOrMeta+s');
+  await saveNewAsFarcel(page);
   const dir = await mkdtemp(join(tmpdir(), 'farcel-format-'));
   const path = join(dir, 'formatos.farcel');
   await (await download).saveAs(path);
@@ -370,8 +380,10 @@ function delayedSaves() {
   };
 }
 
+/** The first save of a new workbook goes through Save as (.farcel here); later ones write directly. */
 async function startSave(page: Page, count: number) {
-  await page.keyboard.press('ControlOrMeta+s');
+  if (count === 1) await saveNewAsFarcel(page);
+  else await page.keyboard.press('ControlOrMeta+s');
   await page.waitForFunction(n => (window as unknown as { saves: unknown[] }).saves.length === n, count);
 }
 

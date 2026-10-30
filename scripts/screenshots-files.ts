@@ -1,6 +1,6 @@
 /**
- * Captures the file flows (CSV preview, XLSX import report, export confirmation, an imported
- * XLSX). Run `npm run build` first. Writes docs/screenshots/arquivos-*.png. The CSV is sample
+ * Captures the file flows (CSV preview, XLSX import report, save with losses, Save as, CSV
+ * export, an imported XLSX). Run `npm run build` first. Writes docs/screenshots/arquivos-*.png. The CSV is sample
  * data written here; the XLSX files are the test fixtures.
  */
 import { mkdtemp, writeFile } from 'node:fs/promises';
@@ -38,12 +38,24 @@ try {
   await page.screenshot({ path: `${out}arquivos-xlsx-relatorio.png` });
   await page.click('[data-testid=import-report] button.primary');
 
+  // Ctrl+S on an .xlsx that would lose something: the losses and the choice.
+  await page.keyboard.press('ControlOrMeta+s');
+  await page.waitForSelector('[data-testid=save-confirm]');
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${out}arquivos-salvar-perdas.png` });
+  // Save as: XLSX by default, .farcel as the alternative; a downloaded copy in this browser.
+  await page.click('[data-testid=save-as-farcel]');
+  await page.check('[data-testid=save-format] input[value=xlsx]');
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${out}arquivos-salvar-como.png` });
+  await page.click('[data-testid=save-as] footer button:first-child');
+  // CSV export: for spreadsheets (protected) or original data.
   await page.click('[data-testid=files-menu]');
-  await page.locator('[role=menuitem]', { hasText: 'Excel (.xlsx)' }).click();
+  await page.locator('[role=menuitem]', { hasText: 'CSV' }).click();
   await page.waitForSelector('[data-testid=export-confirm]');
   await page.waitForTimeout(300);
-  await page.screenshot({ path: `${out}arquivos-exportar-confirmacao.png` });
-  await page.click('[data-testid=export-confirm] button:not(.primary)');
+  await page.screenshot({ path: `${out}arquivos-exportar-csv.png` });
+  await page.click('[data-testid=export-confirm] footer button:first-child');
 
   await page.setInputFiles('[data-testid=open-input]', fixture('openpyxl-basico.xlsx'));
   await page.waitForFunction(() => document.querySelector('.doc-pane:not([hidden]) [data-testid=status-message]')?.textContent?.startsWith('Importado openpyxl-basico'));

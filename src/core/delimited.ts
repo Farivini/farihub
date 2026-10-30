@@ -210,6 +210,32 @@ function needsQuote(v: string): boolean {
     || /^#[A-Z/0!?.]+$/i.test(t);
 }
 
+/**
+ * How a CSV/TSV is written. 'spreadsheet' (default) is for opening in Excel, LibreOffice or
+ * Google Sheets: text those apps would run as a formula gets a leading apostrophe. 'raw' writes
+ * every value exactly as shown, for systems that read the file as data.
+ */
+export type DelimitedExportMode = 'spreadsheet' | 'raw';
+
+/** A plain number as displayed in pt-BR or en (optionally negative or a percentage). */
+const PLAIN_NUMBER = /^-?\d{1,3}(?:([.,])\d{3}(?:\1\d{3})*)?(?:[.,]\d+)?%?$|^-?\d+(?:[.,]\d+)?%?$/;
+
+/**
+ * Text that a spreadsheet would read as a formula when it opens a CSV: starting with =, +, @,
+ * a tab or a carriage return, or with - unless it is a plain negative number ("-5", "-1.234,56").
+ * Only text cells are checked; number cells are never changed.
+ */
+export function looksLikeFormula(text: string): boolean {
+  const first = text[0];
+  if (first === '=' || first === '+' || first === '@' || first === '\t' || first === '\r') return true;
+  return first === '-' && !PLAIN_NUMBER.test(text);
+}
+
+/** The value written for a text cell in 'spreadsheet' mode: an apostrophe makes it text again. */
+export function protectText(text: string): string {
+  return looksLikeFormula(text) ? `'${text}` : text;
+}
+
 /** Field quoting for CSV/TSV output: separator, quote or line break inside, or edge spaces. */
 export function quoteField(value: string, separator: Separator): string {
   return value.includes(separator) || /["\r\n]/.test(value) || value !== value.trim()
