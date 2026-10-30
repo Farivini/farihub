@@ -5,7 +5,8 @@ import { serializeTsv } from '../../core/tsv.ts';
 import { measure } from '../perf.ts';
 
 /** Kinds as produced by the engine viewport: 0 empty, 1 number, 2 text, 3 boolean, 4 error. */
-export interface GridData { values: string[]; kinds: Uint8Array }
+/** Styles: see StyleFlag in the engine (bit 0 bold, bit 1 italic, bits 2-3 alignment). */
+export interface GridData { values: string[]; kinds: Uint8Array; styles?: Uint8Array }
 export type Direction = 'up' | 'down' | 'left' | 'right';
 
 /** Everything the grid needs from its data owner. The grid itself holds no cell model, only a view cache. */
@@ -33,7 +34,8 @@ export interface GridController {
 }
 
 export interface Selection { active: CellRef; rect: Rect }
-export interface SelectionStats { count: number; numbers: number; sum: number }
+/** `unit` is set when every number in the selection is shown as a percentage or in R$. */
+export interface SelectionStats { count: number; numbers: number; sum: number; unit: '%' | 'R$' | null }
 
 export interface GridHandle {
   focus(): void;
@@ -49,20 +51,21 @@ interface Props {
   onEditingText?(text: string | null): void;
   onError?(message: string): void;
   label?: string;
+  /** 1 = 100%. Scales rows, columns and text. */
+  zoom?: number;
 }
 
-const ROW_HEIGHT = 24;
-const HEADER_HEIGHT = 26;
-const ROW_HEADER_WIDTH = 64;
+const BASE_ROW_HEIGHT = 28;
+const BASE_HEADER_HEIGHT = 30;
+const BASE_ROW_HEADER_WIDTH = 56;
 const BLOCK_ROWS = 64;
 const BLOCK_COLS = 16;
 const MAX_CACHE_BLOCKS = 600;
 /** Browsers cap element height (~17.9M px in Firefox); larger sheets scroll proportionally. */
 const MAX_SPACER = 15_000_000;
-const FONT = '13px Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif';
-const HEADER_FONT = '12px Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif';
+const FAMILY = '"Inter Variable", Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif';
 
-interface Block { values: string[]; kinds: Uint8Array; rows: number; columns: number; revision: number }
+interface Block { values: string[]; kinds: Uint8Array; styles?: Uint8Array; rows: number; columns: number; revision: number }
 type EditMode = 'enter' | 'edit';
 
 function css(name: string): string {
@@ -77,7 +80,18 @@ function displayedNumber(text: string): number {
   return text.includes('%') ? n / 100 : n;
 }
 
-export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, onSelection, onEditingText, onError, label }, ref) {
+export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, onSelection, onEditingText, onError, label, zoom = 1 }, ref) {
+  const ROW_HEIGHT = Math.round(BASE_ROW_HEIGHT * zoom);
+  const HEADER_HEIGHT = Math.round(BASE_HEADER_HEIGHT * zoom);
+  const ROW_HEADER_WIDTH = Math.round(BASE_ROW_HEADER_WIDTH * zoom);
+  const fontSize = Math.round(14 * zoom * 10) / 10;
+  const FONT = `${fontSize}px ${FAMILY}`;
+  const BOLD_FONT = `600 ${fontSize}px ${FAMILY}`;
+  const HEADER_FONT = `${Math.round(13 * zoom * 10) / 10}px ${FAMILY}`;
+  const HEADER_FONT_ACTIVE = `600 ${Math.round(13 * zoom * 10) / 10}px ${FAMILY}`;
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const widthOf = (column: number) => Math.round(ctrl.current.columnWidth(column) * zoomRef.current);
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -101,10 +115,10 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
   const geometry = useRef<{ key: string; offsets: Float64Array }>({ key: '', offsets: new Float64Array(1) });
   const offsets = (): Float64Array => {
     const c = ctrl.current;
-    const key = `${c.key}:${c.columnCount}`;
+    const key = `${c.key}:${c.columnCount}:${zoomRef.current}`;
     if (geometry.current.key !== key) {
       const result = new Float64Array(c.columnCount + 1);
-      for (let col = 1; col <= c.columnCount; col++) result[col] = result[col - 1] + c.columnWidth(col);
+      for (let col = 1; col <= c.columnCount; col++) result[col] = result[col - 1] + widthOf(col);
       geometry.current = { key, offsets: result };
     }
     return geometry.current.offsets;
@@ -199,13 +213,13 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     return settled;
   };
 
-  const cellValue = (row: number, column: number): { value: string; kind: number } | null => {
+  const cellValue = (row: number, column: number): { value: string; kind: number; style: number } | null => {
     const block = cache.current.get(blockKey(Math.floor((row - 1) / BLOCK_ROWS), Math.floor((column - 1) / BLOCK_COLS)));
     if (!block) return null;
     const r = (row - 1) % BLOCK_ROWS, c = (column - 1) % BLOCK_COLS;
     if (r >= block.rows || c >= block.columns) return null;
     const i = r * block.columns + c;
-    return { value: block.values[i], kind: block.kinds[i] };
+    return { value: block.values[i], kind: block.kinds[i], style: block.styles?.[i] ?? 0 };
   };
 
   function draw() {
@@ -218,7 +232,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     const colors = {
       bg: css('--grid-bg'), line: css('--grid-line'), header: css('--grid-header'), headerText: css('--text-3'),
       headerActive: css('--grid-header-active'), text: css('--text-1'), accent: css('--accent'),
-      selection: css('--grid-selection'), error: css('--danger'), muted: css('--text-3'),
+      selection: css('--grid-selection'), error: css('--danger'), muted: css('--text-3'), rowActive: css('--grid-row-active'),
     };
     const v = visibleRange();
     const c = ctrl.current;
@@ -238,26 +252,37 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
       const y1 = yOf(Math.min(rect.bottom, v.bottom) + 1);
       ctx.fillStyle = colors.selection;
       ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+      // The active cell stays clear inside a range, as in Excel.
+      if (rect.top !== rect.bottom || rect.left !== rect.right) {
+        ctx.fillStyle = colors.bg;
+        ctx.fillRect(xOf(sel.active.column), yOf(sel.active.row), widthOf(sel.active.column), ROW_HEIGHT);
+      }
     }
 
     // Cells
-    ctx.font = FONT;
     ctx.textBaseline = 'middle';
+    let currentFont = '';
     for (let row = v.top; row <= v.bottom; row++) {
       const y = yOf(row);
       for (let column = v.left; column <= v.right; column++) {
         const cell = cellValue(row, column);
         if (!cell || cell.kind === 0 || cell.value === '') continue;
         const x = xOf(column);
-        const w = c.columnWidth(column);
+        const w = widthOf(column);
+        const font = cell.style & 1 ? BOLD_FONT : FONT;
+        if (font !== currentFont) { ctx.font = font; currentFont = font; }
         const text = cell.value.includes('\n') ? cell.value.split('\n')[0] + ' …' : cell.value;
         const width = ctx.measureText(text).width;
         ctx.fillStyle = cell.kind === 4 ? colors.error : colors.text;
-        const clip = width > w - 12;
+        const pad = 7 * zoomRef.current;
+        const clip = width > w - pad * 2;
+        // Alignment: explicit style first; otherwise numbers right, booleans and errors centered, text left.
+        const explicit = (cell.style & 12) >> 2;
+        const align = explicit === 1 ? 'left' : explicit === 2 ? 'center' : explicit === 3 ? 'right'
+          : cell.kind === 1 ? 'right' : cell.kind === 3 || cell.kind === 4 ? 'center' : 'left';
         if (clip) { ctx.save(); ctx.beginPath(); ctx.rect(x + 1, y, w - 2, ROW_HEIGHT); ctx.clip(); }
-        if (cell.kind === 1 && !clip) ctx.fillText(text, x + w - 6 - width, y + ROW_HEIGHT / 2 + 0.5);
-        else if (cell.kind === 3 || cell.kind === 4) ctx.fillText(text, x + Math.max(6, (w - width) / 2), y + ROW_HEIGHT / 2 + 0.5);
-        else ctx.fillText(text, x + 6, y + ROW_HEIGHT / 2 + 0.5);
+        const tx = clip || align === 'left' ? x + pad : align === 'right' ? x + w - pad - width : x + (w - width) / 2;
+        ctx.fillText(text, tx, y + ROW_HEIGHT / 2 + 0.5);
         if (clip) ctx.restore();
       }
     }
@@ -276,20 +301,16 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     }
     ctx.stroke();
 
-    // Active cell and selection border
-    const border = (r: Rect, width: number) => {
-      const x0 = xOf(r.left), x1 = xOf(r.right + 1), y0 = yOf(r.top), y1 = yOf(r.bottom + 1);
-      ctx.strokeStyle = colors.accent;
-      ctx.lineWidth = width;
-      ctx.strokeRect(Math.round(x0) + 0.5, Math.round(y0) + 0.5, Math.round(x1 - x0) - 1, Math.round(y1 - y0) - 1);
-    };
+    // Selection border: the whole range in accent, 2px.
     if (rect.bottom >= v.top && rect.top <= v.bottom + 1) {
       ctx.save();
       ctx.beginPath();
       ctx.rect(ROW_HEADER_WIDTH, HEADER_HEIGHT, size.width, size.height);
       ctx.clip();
-      if (rect.top !== rect.bottom || rect.left !== rect.right) border(rect, 1);
-      border({ top: sel.active.row, bottom: sel.active.row, left: sel.active.column, right: sel.active.column }, 2);
+      const x0 = xOf(rect.left), x1 = xOf(rect.right + 1), y0 = yOf(rect.top), y1 = yOf(rect.bottom + 1);
+      ctx.strokeStyle = colors.accent;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(Math.round(x0) + 1, Math.round(y0) + 1, Math.round(x1 - x0) - 2, Math.round(y1 - y0) - 2);
       ctx.restore();
     }
 
@@ -297,12 +318,19 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     ctx.fillStyle = colors.header;
     ctx.fillRect(0, 0, size.width, HEADER_HEIGHT);
     ctx.fillRect(0, 0, ROW_HEADER_WIDTH, size.height);
-    ctx.font = HEADER_FONT;
+    const wholeRows = rect.left === 1 && rect.right === c.columnCount;
+    const wholeColumns = rect.top === 1 && rect.bottom === c.rowCount;
     for (let column = v.left; column <= v.right; column++) {
-      const x = xOf(column), w = c.columnWidth(column);
-      const active = column >= rect.left && column <= rect.right;
-      if (active) { ctx.fillStyle = colors.headerActive; ctx.fillRect(Math.max(x, ROW_HEADER_WIDTH), 0, w, HEADER_HEIGHT); }
-      ctx.fillStyle = active ? colors.text : colors.headerText;
+      const x = xOf(column), w = widthOf(column);
+      const active = column >= rect.left && column <= rect.right && !wholeRows;
+      if (active) {
+        ctx.fillStyle = colors.headerActive;
+        ctx.fillRect(Math.max(x, ROW_HEADER_WIDTH), 0, w, HEADER_HEIGHT);
+        ctx.fillStyle = colors.accent;
+        ctx.fillRect(Math.max(x, ROW_HEADER_WIDTH), HEADER_HEIGHT - 2, w, 2);
+      }
+      ctx.font = active ? HEADER_FONT_ACTIVE : HEADER_FONT;
+      ctx.fillStyle = active ? colors.accent : colors.headerText;
       const label = c.columnLabel(column);
       const lw = ctx.measureText(label).width;
       if (x + w > ROW_HEADER_WIDTH) ctx.fillText(label, x + (w - lw) / 2, HEADER_HEIGHT / 2 + 0.5);
@@ -312,12 +340,13 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     for (let row = v.top; row <= v.bottom; row++) {
       const y = yOf(row);
       if (y + ROW_HEIGHT < HEADER_HEIGHT) continue;
-      const active = row >= rect.top && row <= rect.bottom;
-      if (active) { ctx.fillStyle = colors.headerActive; ctx.fillRect(0, Math.max(y, HEADER_HEIGHT), ROW_HEADER_WIDTH, ROW_HEIGHT); }
+      const active = row >= rect.top && row <= rect.bottom && !wholeColumns;
+      if (active) { ctx.fillStyle = colors.rowActive; ctx.fillRect(0, Math.max(y, HEADER_HEIGHT), ROW_HEADER_WIDTH, ROW_HEIGHT); }
+      ctx.font = active ? HEADER_FONT_ACTIVE : HEADER_FONT;
       ctx.fillStyle = active ? colors.text : colors.headerText;
       const label = row.toLocaleString('pt-BR');
       const lw = ctx.measureText(label).width;
-      if (y >= HEADER_HEIGHT - ROW_HEIGHT / 2) ctx.fillText(label, ROW_HEADER_WIDTH - 8 - lw, y + ROW_HEIGHT / 2 + 0.5);
+      if (y >= HEADER_HEIGHT - ROW_HEIGHT / 2) ctx.fillText(label, (ROW_HEADER_WIDTH - lw) / 2, y + ROW_HEIGHT / 2 + 0.5);
     }
     ctx.strokeStyle = colors.line;
     ctx.beginPath();
@@ -368,10 +397,11 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
   }, [controller.key, controller.revision, controller.rowCount, controller.columnCount]);
 
   useEffect(() => { requestDraw(); onSelection?.(selection); }, [selection]);
+  useEffect(() => { requestDraw(); scrollIntoView(selectionRef.current.active); }, [zoom]);
 
   const scrollIntoView = (cell: CellRef) => {
     const scroller = scrollerRef.current;
-    if (!scroller) return;
+    if (!scroller || size.width === 0) return; // not laid out yet
     const m = metrics();
     const y = (cell.row - 1) * ROW_HEIGHT;
     let contentTop = m.contentTop;
@@ -379,7 +409,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     else if (y + ROW_HEIGHT > contentTop + m.viewHeight) contentTop = y + ROW_HEIGHT - m.viewHeight;
     if (contentTop !== m.contentTop && m.maxTop > 0) scroller.scrollTop = Math.ceil((contentTop / m.maxTop) * m.scrollable);
     const x = columnX(cell.column);
-    const w = ctrl.current.columnWidth(cell.column);
+    const w = widthOf(cell.column);
     const viewWidth = size.width - ROW_HEADER_WIDTH;
     if (x < scroller.scrollLeft) scroller.scrollLeft = x;
     else if (x + w > scroller.scrollLeft + viewWidth) scroller.scrollLeft = x + w - viewWidth;
@@ -614,7 +644,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     stats: rect => {
       const cells = (rect.bottom - rect.top + 1) * (rect.right - rect.left + 1);
       if (cells > 50_000) return null;
-      let count = 0, numbers = 0, sum = 0;
+      let count = 0, numbers = 0, sum = 0, percents = 0, reais = 0;
       for (let r = rect.top; r <= rect.bottom; r++) for (let col = rect.left; col <= rect.right; col++) {
         const cell = cellValue(r, col);
         if (!cell) return null;
@@ -622,10 +652,14 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
         count++;
         if (cell.kind === 1) {
           const n = displayedNumber(cell.value);
-          if (!Number.isNaN(n)) { numbers++; sum += n; }
+          if (!Number.isNaN(n)) {
+            numbers++; sum += n;
+            if (cell.value.includes('%')) percents++;
+            if (cell.value.includes('R$')) reais++;
+          }
         }
       }
-      return { count, numbers, sum };
+      return { count, numbers, sum, unit: numbers && percents === numbers ? '%' : numbers && reais === numbers ? 'R$' : null };
     },
   }));
 
@@ -635,11 +669,13 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
   const editorStyle: React.CSSProperties = m ? {
     left: ROW_HEADER_WIDTH + columnX(editorCell.column) - m.contentLeft,
     top: HEADER_HEIGHT + (editorCell.row - 1) * ROW_HEIGHT - m.contentTop,
-    minWidth: controller.columnWidth(editorCell.column),
+    minWidth: widthOf(editorCell.column),
+    font: FONT,
+    lineHeight: `${ROW_HEIGHT - 6}px`,
     height: ROW_HEIGHT,
   } : {};
   const editorLines = editing ? (editorRef.current?.value.split('\n').length ?? 1) : 1;
-  if (editing && editorLines > 1) editorStyle.height = ROW_HEIGHT + (editorLines - 1) * 18;
+  if (editing && editorLines > 1) editorStyle.height = ROW_HEIGHT + (editorLines - 1) * (ROW_HEIGHT - 6);
 
   return (
     <div className="grid-root" ref={rootRef} aria-label={label}>

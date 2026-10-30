@@ -2,6 +2,10 @@ import { preview } from 'vite';
 import { chromium } from 'playwright';
 import type { Browser, BrowserContext, Page } from 'playwright';
 
+/** Selector scoped to the visible workbook tab (each open workbook keeps its own mounted pane). */
+export const PANE = '.doc-pane:not([hidden])';
+export const inPane = (selector: string) => `${PANE} ${selector}`;
+
 /** Serves the production build (run `npm run build` first) and drives it in Chromium. */
 export async function startApp(): Promise<{ url: string; browser: Browser; close(): Promise<void> }> {
   const server = await preview({ preview: { port: 0, strictPort: false }, logLevel: 'silent' });
@@ -26,23 +30,24 @@ export async function openPage(browser: Browser, url: string, viewport = { width
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto(url);
-  await page.waitForFunction(() => document.querySelector('[data-testid=engine-state]')?.textContent?.includes('IronCalc'));
+  await page.waitForFunction(pane => document.querySelector(`${pane} [data-testid=engine-state]`)?.textContent?.includes('IronCalc'), PANE);
   return { context, page, errors };
 }
 
 export async function select(page: Page, ref: string): Promise<void> {
-  await page.fill('[aria-label="Caixa de nome"]', ref);
-  await page.press('[aria-label="Caixa de nome"]', 'Enter');
-  await page.waitForFunction(r => (document.querySelector('[aria-label="Caixa de nome"]') as HTMLInputElement).value === r, ref, { timeout: 5000 }).catch(async error => {
-    const state = await page.evaluate(() => ({ value: (document.querySelector('[aria-label="Caixa de nome"]') as HTMLInputElement).value, active: document.activeElement?.getAttribute('aria-label'), log: (window as any).__log }));
+  const box = inPane('[aria-label="Caixa de nome"]');
+  await page.fill(box, ref);
+  await page.press(box, 'Enter');
+  await page.waitForFunction(([r, b]) => (document.querySelector(b) as HTMLInputElement).value === r, [ref, box], { timeout: 5000 }).catch(async error => {
+    const state = await page.evaluate(b => ({ value: (document.querySelector(b) as HTMLInputElement).value, active: document.activeElement?.getAttribute('aria-label') }), box);
     throw new Error(`select(${ref}) failed: ${JSON.stringify(state)}\n${error}`);
   });
 }
 
 /** Waits until no engine request is pending and the grid has drawn after the last change. */
 export async function idle(page: Page): Promise<void> {
-  await page.waitForFunction(() => !document.querySelector('[data-testid=engine-state]')?.classList.contains('busy'));
-  await page.waitForFunction(() => [...document.querySelectorAll('.grid-root')].every(g => g.getAttribute('data-settled') === 'true'));
+  await page.waitForFunction(pane => !document.querySelector(`${pane} [data-testid=engine-state]`)?.classList.contains('busy'), PANE);
+  await page.waitForFunction(pane => [...document.querySelectorAll(`${pane} .grid-root`)].every(g => g.getAttribute('data-settled') === 'true'), PANE);
 }
 
 export async function typeAt(page: Page, ref: string, text: string): Promise<void> {
@@ -62,5 +67,5 @@ export async function copyText(page: Page, ref: string): Promise<string> {
 }
 
 export async function formulaBar(page: Page): Promise<string> {
-  return page.inputValue('[data-testid=formula-bar]');
+  return page.inputValue(inPane('[data-testid=formula-bar]'));
 }

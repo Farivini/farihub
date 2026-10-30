@@ -4,7 +4,7 @@ import { readFile, writeFile, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Page } from 'playwright';
-import { copyText, formulaBar, idle, openPage, select, startApp, typeAt } from './harness.ts';
+import { PANE, copyText, formulaBar, idle, inPane, openPage, select, startApp, typeAt } from './harness.ts';
 
 let app: Awaited<ReturnType<typeof startApp>>;
 before(async () => { app = await startApp(); });
@@ -45,8 +45,8 @@ test('pt-BR formulas calculate and recalculate after an edit', async () => {
   await select(page, 'A4');
   assert.equal(await formulaBar(page), '=SE(A3>12;"alto";"baixo")');
   // Edit through the formula bar.
-  await page.fill('[data-testid=formula-bar]', '=ARRED(A3/3;1)');
-  await page.press('[data-testid=formula-bar]', 'Enter');
+  await page.fill(inPane('[data-testid=formula-bar]'), '=ARRED(A3/3;1)');
+  await page.press(inPane('[data-testid=formula-bar]'), 'Enter');
   await idle(page);
   assert.equal(await copyText(page, 'A4'), '34,2');
   // Undo / redo
@@ -67,10 +67,10 @@ test('keyboard navigation, delete and selection statistics', async () => {
   await page.keyboard.type('3');
   await page.keyboard.press('Tab');
   await idle(page);
-  assert.equal(await page.inputValue('[aria-label="Caixa de nome"]'), 'C4');
+  assert.equal(await page.inputValue(inPane('[aria-label="Caixa de nome"]')), 'C4');
   await select(page, 'B2');
   await page.keyboard.press('ControlOrMeta+ArrowDown');
-  await page.waitForFunction(() => (document.querySelector('[aria-label="Caixa de nome"]') as HTMLInputElement).value === 'B4');
+  await page.waitForFunction(b => (document.querySelector(b) as HTMLInputElement).value === 'B4', inPane('[aria-label="Caixa de nome"]'));
   await page.keyboard.press('Shift+ArrowUp');
   await page.keyboard.press('Shift+ArrowUp');
   await page.waitForFunction(() => document.querySelector('[data-testid=selection-stats]')?.textContent?.includes('Soma: 6'));
@@ -111,8 +111,8 @@ async function salesData(page: Page) {
 
 /** Copies the whole pivot result (Ctrl+A, Ctrl+C on the read-only result grid). */
 async function copyPivot(page: Page): Promise<string> {
-  await page.waitForSelector('[data-testid=pivot-info][data-status=ready]');
-  await page.click('[data-testid=pivot-table] [data-testid=grid-scroller]', { position: { x: 100, y: 40 } });
+  await page.waitForSelector(inPane('[data-testid=pivot-info][data-status=ready]'));
+  await page.click(inPane('[data-testid=pivot-table] [data-testid=grid-scroller]'), { position: { x: 100, y: 40 } });
   await page.evaluate(() => navigator.clipboard.writeText('(vazio)'));
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.press('ControlOrMeta+c');
@@ -135,7 +135,7 @@ async function pivotShows(page: Page, expected: string | RegExp): Promise<string
 test('pivot: rows, columns, sum, count, filter, chart and refresh after edit', async () => {
   const { page, errors } = await fresh();
   await salesData(page);
-  await page.click('text=Tabela dinâmica');
+  await page.click(inPane('[data-testid=new-pivot]'));
   await page.waitForSelector('[data-testid=field-Região]');
   await page.click('[data-testid=field-Região]'); // first click goes to Linhas
   await page.click('[data-testid=field-Receita]'); // then to Valores (Soma)
@@ -149,7 +149,7 @@ test('pivot: rows, columns, sum, count, filter, chart and refresh after edit', a
     'Sul\t10\t5\t15',
     'Total geral\t18\t25\t43',
   ].join('\n'));
-  assert.equal(await page.locator('.chart-bar').count(), 6, 'one bar per region and channel');
+  assert.equal(await page.locator(inPane('.chart-bar')).count(), 6, 'one bar per region and channel');
   // Count instead of sum
   await page.click('[data-testid=zone-values] .chip-agg');
   await pivotShows(page, /^Contagem de Receita\tLoja\tOnline\tTotal geral[\s\S]*Total geral\t3\t2\t5$/);
@@ -163,9 +163,9 @@ test('pivot: rows, columns, sum, count, filter, chart and refresh after edit', a
   await page.locator('[data-testid=zone-filters] .chip-remove').click();
   await page.dragAndDrop('[data-testid=field-Região]', '[data-testid=zone-rows]');
   // Edit source data: the pivot follows.
-  await page.locator('.sheet-tab', { hasText: 'Planilha1' }).click();
+  await page.locator(inPane('.sheet-tab'), { hasText: 'Planilha1' }).click();
   await typeAt(page, 'C2', '100');
-  await page.locator('.sheet-tab.pivot button[role=tab]').click();
+  await page.locator(inPane('.sheet-tab.pivot button[role=tab]')).click();
   await pivotShows(page, /Sul\t100\t5\t105\nTotal geral\t108\t25\t133$/);
   assert.deepEqual(errors, []);
 });
@@ -175,7 +175,7 @@ test('save to .farcel and reopen restores cells, formulas, accents and the pivot
   await salesData(page);
   await typeAt(page, 'E1', '=SOMASE(A2:A6;"Sul";C2:C6)');
   await typeAt(page, 'E2', 'Observação: preço médio');
-  await page.click('text=Tabela dinâmica');
+  await page.click(inPane('[data-testid=new-pivot]'));
   await page.click('[data-testid=field-Região]');
   await page.click('[data-testid=field-Receita]');
   const before = await pivotShows(page, /Total geral\t43$/);
@@ -188,14 +188,14 @@ test('save to .farcel and reopen restores cells, formulas, accents and the pivot
   await file.saveAs(path);
   const bytes = await readFile(path);
   assert.equal(bytes.subarray(0, 8).toString('latin1'), 'FARCEL01');
-  await page.waitForFunction(() => document.querySelector('[data-testid=status-message]')?.textContent?.includes('Não é XLSX'));
+  await page.waitForFunction(() => document.querySelector('.doc-pane:not([hidden]) [data-testid=status-message]')?.textContent?.includes('Não é XLSX'));
 
   const second = await openPage(app.browser, app.url);
   await second.page.setInputFiles('[data-testid=open-input]', path);
-  await second.page.waitForFunction(() => document.querySelector('[data-testid=status-message]')?.textContent?.startsWith('Aberto'));
+  await second.page.waitForFunction(() => document.querySelector('.doc-pane:not([hidden]) [data-testid=status-message]')?.textContent?.startsWith('Aberto'));
   assert.equal(await pivotShows(second.page, before), before, 'pivot configuration and result restored');
-  await second.page.locator('.sheet-tab', { hasText: 'Planilha1' }).click();
-  await page.locator('.sheet-tab', { hasText: 'Planilha1' }).click();
+  await second.page.locator(inPane('.sheet-tab'), { hasText: 'Planilha1' }).click();
+  await page.locator(inPane('.sheet-tab'), { hasText: 'Planilha1' }).click();
   const original = await copyText(page, 'A1:C6');
   assert.equal(await copyText(second.page, 'A1:C6'), original);
   assert.match(original, /^Região\tCanal\tReceita\nSul\tLoja\t10/);
@@ -209,7 +209,8 @@ test('save to .farcel and reopen restores cells, formulas, accents and the pivot
   const bad = join(dir, 'corrompido.farcel');
   await writeFile(bad, corrupted);
   await second.page.setInputFiles('[data-testid=open-input]', bad);
-  await second.page.waitForFunction(() => document.querySelector('[data-testid=status-message]')?.textContent?.includes('CRC32'));
+  await second.page.waitForSelector('[data-testid=notice] >> text=corrompido');
+  assert.equal(await second.page.locator('[data-testid=doc-tab]').count(), 1, 'the tab opened for the bad file is closed');
   assert.equal(await copyText(second.page, 'E2'), 'Observação: preço médio', 'current workbook kept');
   assert.deepEqual([...errors, ...second.errors], []);
 });
@@ -219,11 +220,121 @@ test('spaces, assistant context and honest placeholders', async () => {
   await salesData(page);
   await page.waitForFunction(() => document.querySelector('[data-testid=assistant-context]')?.textContent?.includes('Região · Canal · Receita'));
   const context = await page.textContent('[data-testid=assistant-context]');
+  assert.match(await page.textContent('.assistant-scope') ?? '', /^Pasta1 · Planilha1 · /);
   assert.match(context!, /Linhas de dados5/);
-  assert.equal(await page.locator('.assistant-input textarea').isDisabled(), true);
+  assert.equal(await page.locator('.composer textarea').isDisabled(), true);
+  assert.equal(await page.locator('.composer .send').isDisabled(), true);
+  // Visible names, not internal ids.
+  assert.deepEqual(await page.locator('.space-switcher [role=tab]').allTextContents(), ['PlanilhasPlanilhas', 'DocumentosDocs', 'ApresentaçõesSlides']);
+  assert.equal(await page.evaluate(() => /Farcel|Fardoc|Farcanvas/.test(document.body.innerText)), false, 'internal names are not visible');
   await page.click('[data-testid=space-fardoc]');
-  await page.waitForSelector('text=Em preparação');
+  await page.waitForSelector('[data-testid=placeholder] >> text=Em preparação');
+  assert.match(await page.textContent('[data-testid=placeholder]') ?? '', /^Documentos/);
+  await page.click('[data-testid=space-farcanvas]');
+  assert.match(await page.textContent('[data-testid=placeholder]') ?? '', /^Apresentações/);
   await page.click('[data-testid=space-farcel]');
   assert.equal(await copyText(page, 'A2'), 'Sul', 'workbook kept while switching spaces');
+  assert.deepEqual(errors, []);
+});
+
+test('formatting: number formats, bold and alignment through the toolbar, kept on reopen', async () => {
+  const { page, errors } = await fresh();
+  await page.evaluate(() => navigator.clipboard.writeText('Receita\tMargem\n1234,5\t0,265\n99\t0,1'));
+  await select(page, 'A1');
+  await page.keyboard.press('ControlOrMeta+v');
+  await idle(page);
+  await select(page, 'A2:A3');
+  await page.click(inPane('[data-testid=number-format]'));
+  await page.click('role=menuitemradio[name=/Moeda/]');
+  await idle(page);
+  await select(page, 'B2:B3');
+  await page.click(inPane('[data-testid=number-format]'));
+  await page.click('role=menuitemradio[name=/Porcentagem/]');
+  await idle(page);
+  await select(page, 'A1:B1');
+  await page.click(inPane('[data-testid=bold]'));
+  await page.click(inPane('[aria-label=Centralizar]'));
+  await idle(page);
+  assert.equal(await copyText(page, 'A2:B3'), 'R$ 1.234,50\t26,5%\nR$ 99,00\t10,0%');
+  await select(page, 'A1');
+  assert.equal(await page.getAttribute(inPane('[data-testid=bold]'), 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute(inPane('[aria-label=Centralizar]'), 'aria-pressed'), 'true');
+  assert.equal(await formulaBar(page), 'Receita', 'formatting does not change the value');
+  await select(page, 'A2:A3');
+  await page.waitForFunction(p => document.querySelector(`${p} [data-testid=selection-stats]`)?.textContent?.includes('Soma: R$ 1.333,5'), PANE);
+  await select(page, 'B2:B3');
+  await page.waitForFunction(p => document.querySelector(`${p} [data-testid=selection-stats]`)?.textContent?.includes('Soma: 36,5%'), PANE);
+  // Undo removes one formatting step at a time.
+  await page.keyboard.press('ControlOrMeta+z');
+  await idle(page);
+  await select(page, 'A1');
+  assert.equal(await page.getAttribute(inPane('[aria-label=Centralizar]'), 'aria-pressed'), 'false');
+  // Save and reopen keeps the formats.
+  const download = page.waitForEvent('download');
+  await page.keyboard.press('ControlOrMeta+s');
+  const dir = await mkdtemp(join(tmpdir(), 'farcel-format-'));
+  const path = join(dir, 'formatos.farcel');
+  await (await download).saveAs(path);
+  const second = await openPage(app.browser, app.url);
+  await second.page.setInputFiles('[data-testid=open-input]', path);
+  await second.page.waitForFunction(() => document.querySelector('.doc-pane:not([hidden]) [data-testid=save-state]')?.textContent?.includes('Salvo neste dispositivo'));
+  assert.equal(await copyText(second.page, 'A2:B3'), 'R$ 1.234,50\t26,5%\nR$ 99,00\t10,0%');
+  await select(second.page, 'A1');
+  assert.equal(await second.page.getAttribute(inPane('[data-testid=bold]'), 'aria-pressed'), 'true');
+  assert.deepEqual([...errors, ...second.errors], []);
+});
+
+test('workbook tabs: each tab keeps its own workbook; switching spaces keeps the work', async () => {
+  const { page, errors } = await fresh();
+  await typeAt(page, 'A1', 'Primeira pasta');
+  await page.click('button[aria-label="Nova planilha"].doc-new');
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid=doc-tab]').length === 2);
+  await page.waitForFunction(p => document.querySelector(`${p} [data-testid=engine-state]`)?.textContent?.includes('IronCalc'), PANE);
+  assert.equal(await copyText(page, 'A1'), '', 'new tab starts empty');
+  await typeAt(page, 'A1', '=1+1');
+  assert.equal(await copyText(page, 'A1'), '2');
+  await page.locator('[data-testid=doc-tab] [role=tab]').first().click();
+  assert.equal(await copyText(page, 'A1'), 'Primeira pasta');
+  await page.click('[data-testid=space-farcanvas]');
+  await page.click('[data-testid=space-farcel]');
+  assert.equal(await copyText(page, 'A1'), 'Primeira pasta', 'kept after switching spaces');
+  // Closing a tab with unsaved changes asks first.
+  await page.locator('[data-testid=doc-tab] .doc-close').nth(1).click();
+  await page.waitForSelector('[data-testid=confirm-close]');
+  await page.click('[data-testid=confirm-close] button.danger');
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid=doc-tab]').length === 1);
+  assert.equal(await copyText(page, 'A1'), 'Primeira pasta');
+  assert.deepEqual(errors, []);
+});
+
+test('window controls are not presented as working in the browser; assistant collapses and resizes', async () => {
+  const { page, errors } = await fresh();
+  const controls = page.locator('.window-controls');
+  assert.equal(await controls.getAttribute('class'), 'window-controls unavailable');
+  assert.equal(await controls.locator('button').count(), 0, 'no clickable fake window buttons');
+  assert.match(await controls.getAttribute('aria-label') ?? '', /indisponíveis no navegador/);
+  const panel = page.locator('aside.assistant');
+  const before = (await panel.boundingBox())!.width;
+  const handle = (await page.locator('.assistant-resizer').boundingBox())!;
+  await page.mouse.move(handle.x + 2, handle.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(handle.x - 80, handle.y + 200, { steps: 5 });
+  await page.mouse.up();
+  const after = (await panel.boundingBox())!.width;
+  assert.ok(after > before + 60, `assistant widened (${before} -> ${after})`);
+  await page.click('[data-testid=assistant-toggle]');
+  assert.equal(await panel.count(), 0);
+  await page.click('[data-testid=assistant-toggle]');
+  assert.equal(await page.locator('aside.assistant').count(), 1);
+  // Function menu inserts a pt-BR function into the formula bar.
+  await select(page, 'C3');
+  await page.click(inPane('[data-testid=function-menu]'));
+  await page.fill('.function-menu input', 'procv');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('1;A1:B2;2;FALSO)');
+  await page.keyboard.press('Enter');
+  await idle(page);
+  await select(page, 'C3');
+  assert.equal(await formulaBar(page), '=PROCV(1;A1:B2;2;FALSO)');
   assert.deepEqual(errors, []);
 });

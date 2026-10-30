@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="268" height="48" viewBox="0 0 134 24" role="img" aria-label="Fariv">
+  <title>Fariv</title>
+  <defs>
+    <linearGradient id="fariv-a" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#e4561a"/>
+      <stop offset="1" stop-color="#ff9a52"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke-width="2.2" stroke-linejoin="miter" stroke-linecap="butt">
+    <path d="M2 22V2h12M2 12h10" stroke="#f2f2f4"/>
+    <path d="M32 22L40 2l8 20" stroke="url(#fariv-a)"/>
+    <path d="M66 22V2h8.5a5 5 0 0 1 0 10H66M74 12l7 10" stroke="#f2f2f4"/>
+    <path d="M99 2v20" stroke="#f2f2f4"/>
+    <path d="M116 2l8 20 8-20" stroke="#f2f2f4"/>
+  </g>
+</svg>

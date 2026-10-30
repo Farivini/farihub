@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { WorkbookEngine } from '../src/engine/workbook-engine.ts';
+import { StyleFlag, WorkbookEngine } from '../src/engine/workbook-engine.ts';
 import { pivotCell, EMPTY_LABEL } from '../src/core/pivot.ts';
 import type { PivotConfig } from '../src/core/pivot.ts';
 import { REGIONS, CHANNELS, syntheticTotals } from '../src/core/synthetic.ts';
@@ -144,4 +144,33 @@ test('synthetic base matches the independent expectation (5,000 rows)', async ()
     });
   });
   assert.equal(engine.canUndo(), false, 'generation steps are not undoable edits');
+});
+
+test('formatting: bold, alignment and number formats are styles, undoable and saved', () => {
+  const engine = salesSheet();
+  engine.format(0, { top: 2, left: 2, bottom: 4, right: 2 }, { kind: 'number', value: 'currency' });
+  engine.format(0, { top: 1, left: 1, bottom: 1, right: 2 }, { kind: 'bold', value: true });
+  engine.format(0, { top: 1, left: 2, bottom: 1, right: 2 }, { kind: 'align', value: 'center' });
+  assert.equal(engine.formatted(0, 2, 2), 'R$ 10,50');
+  assert.deepEqual(engine.cellFormat(0, 1, 2), { bold: true, align: 'center', numberFormat: 'general', numberFormatCode: 'general' });
+  assert.equal(engine.cellFormat(0, 2, 2).numberFormat, 'currency');
+  const view = engine.viewport(0, 1, 1, 2, 2);
+  assert.deepEqual([...view.styles], [StyleFlag.Bold, StyleFlag.Bold | (2 << StyleFlag.AlignShift), 0, 0]);
+  const reopened = WorkbookEngine.fromFile(ic, engine.toFile({})).engine;
+  assert.equal(reopened.formatted(0, 2, 2), 'R$ 10,50');
+  assert.equal(reopened.cellFormat(0, 1, 1).bold, true);
+  engine.undo();
+  assert.equal(engine.cellFormat(0, 1, 2).align, 'general');
+  engine.undo();
+  assert.equal(engine.cellFormat(0, 1, 1).bold, false);
+  engine.undo();
+  assert.equal(engine.formatted(0, 2, 2), '10,5');
+  assert.equal(engine.input(0, 2, 2), '10,5', 'value unchanged by formatting');
+});
+
+test('formatting a whole column only touches the rows with data; huge ranges are refused', () => {
+  const engine = salesSheet();
+  const change = engine.format(0, { top: 1, left: 2, bottom: 1_048_576, right: 2 }, { kind: 'bold', value: true });
+  assert.deepEqual(change.rect, { top: 1, left: 2, bottom: 4, right: 2 });
+  assert.throws(() => engine.format(0, { top: 1, left: 1, bottom: 300_000, right: 1 }, { kind: 'bold', value: true }), /grande demais/);
 });
