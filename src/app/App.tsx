@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { EngineClient } from '../engine/client.ts';
 import { FILE_EXTENSION } from '../core/file-format.ts';
 import { DEFAULT_SEED } from '../core/synthetic.ts';
-import { FarcelWorkspace } from './farcel/FarcelWorkspace.tsx';
-import type { ContextRequest, Startup, WorkspaceHandle, WorkspaceStatus } from './farcel/FarcelWorkspace.tsx';
+import { FarcelWorkspace, OPEN_EXTENSIONS } from './farcel/FarcelWorkspace.tsx';
+import type { ContextRequest, ExportFormat, Startup, WorkspaceHandle, WorkspaceStatus } from './farcel/FarcelWorkspace.tsx';
 import { AssistantPanel } from './AssistantPanel.tsx';
 import { Placeholder } from './Placeholder.tsx';
 import { FileBadge, Icon } from './ui/Icon.tsx';
@@ -108,6 +108,7 @@ export function App() {
   };
 
   const save = () => { setSpace('farcel'); void handles.current.get(active.id)?.save(); };
+  const exportAs = (format: ExportFormat) => { setSpace('farcel'); handles.current.get(active.id)?.exportFile(format); };
 
   // Global shortcuts go to the visible workbook only.
   const shortcuts = useRef({ save, open: () => openInput.current?.click() });
@@ -141,6 +142,9 @@ export function App() {
     { id: 'new', label: 'Nova planilha', icon: <Icon name="plus" size={16} />, onSelect: () => addDoc({ kind: 'new' }) },
     { id: 'open', label: 'Abrir…', hint: 'Ctrl+O', icon: <Icon name="open" size={16} />, onSelect: () => openInput.current?.click() },
     { id: 'save', label: 'Salvar', hint: 'Ctrl+S', icon: <Icon name="save" size={16} />, disabled: activeStatus.busy && activeStatus.engine.startsWith('Gerando'), onSelect: save },
+    { id: 'export-xlsx', label: 'Exportar como Excel (.xlsx)…', separatorBefore: true, icon: <Icon name="export" size={16} />, disabled: activeStatus.busy, onSelect: () => exportAs('xlsx') },
+    { id: 'export-csv', label: 'Exportar planilha como CSV (;)…', icon: <Icon name="export" size={16} />, disabled: activeStatus.busy, onSelect: () => exportAs('csv') },
+    { id: 'export-tsv', label: 'Exportar planilha como TSV…', icon: <Icon name="export" size={16} />, disabled: activeStatus.busy, onSelect: () => exportAs('tsv') },
     { id: 'base', label: 'Base de teste…', separatorBefore: true, icon: <Icon name="base" size={16} />, onSelect: () => setGenerator({ rows: '1.000.000', seed: String(DEFAULT_SEED) }) },
   ];
 
@@ -197,7 +201,7 @@ export function App() {
                   active={doc.id === active.id && space === 'farcel'}
                   onStatus={statusCallback(doc.id)}
                   onContext={onContext}
-                  onStartupFailed={message => { closeDoc(doc, true); setNotice(message); }}
+                  onStartupFailed={message => { closeDoc(doc, true); if (message) setNotice(message); }}
                 />
               </div>
             ))}
@@ -227,7 +231,7 @@ export function App() {
         )}
       </div>
 
-      <input ref={openInput} type="file" accept={`${FILE_EXTENSION},.xlsx`} hidden data-testid="open-input"
+      <input ref={openInput} type="file" accept={OPEN_EXTENSIONS.join(',')} hidden data-testid="open-input"
         onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) openFile(file); }} />
 
       {generator && (
