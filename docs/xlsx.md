@@ -73,7 +73,8 @@ O IronCalc guarda fórmulas como árvore, não como texto. A digitação passa p
 - **Pasta nova ou importada de CSV/TSV/TXT**: Ctrl+S abre **Salvar como**, com XLSX como padrão e `.farcel` como alternativa.
 - **Perdas**: se o XLSX não teria algo (dinâmicas do Planilhas; o que o arquivo original tinha e não foi importado), o app lista e deixa escolher entre salvar o XLSX assim mesmo e salvar como `.farcel`. Aceito uma vez, o mesmo conjunto de perdas não é perguntado de novo nesta sessão; uma perda nova (outra dinâmica) ou a reabertura do arquivo perguntam outra vez.
 - **Salvar como…** (Ctrl+Shift+S): nome e formato; depois disso, Ctrl+S grava o arquivo escolhido.
-- **Estado de salvo**: só é marcado quando o arquivo tem a pasta inteira (um XLSX com dinâmicas não marca) e nada mudou durante a gravação — a regra da PR #5, válida para XLSX e `.farcel`, com testes para os dois.
+- **Estado de salvo**: só é marcado quando o arquivo tem a pasta inteira (um XLSX com dinâmicas não marca) e nada mudou durante a gravação; uma gravação incompleta desmarca a pasta mesmo que ela estivesse salva antes — a regra da PR #5, válida para XLSX e `.farcel`, com testes para os dois.
+- **Uma gravação de cada vez**: um Ctrl+S feito enquanto outro grava espera a vez e tira o snapshot quando começa, então o arquivo termina sempre com o estado mais novo.
 - **Gravar no lugar**: no Chromium desktop, abrir pelo diálogo nativo (Ctrl+O) guarda o arquivo aberto, e Ctrl+S grava nele de novo (File System Access API). Salvar como pede o local uma vez e passa a gravar ali.
 - **Navegador sem acesso a arquivos** (Firefox, Safari, automação): salvar **baixa uma cópia**. O diálogo diz isso antes (“Baixar cópia”), a mensagem diz “Cópia baixada … na pasta de downloads” e o estado fica “Cópia baixada”. O arquivo aberto não é alterado; cada Ctrl+S baixa uma nova cópia.
 - O executável poderá injetar `window.farivFiles` para gravar com acesso nativo (os testes usam esse ponto).

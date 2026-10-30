@@ -372,3 +372,59 @@ test('with native file access, Ctrl+S writes the opened file in place; Save as a
   assert.deepEqual(await counts(), [3, 1], 'the .farcel chosen in Save as is written again without asking');
   assert.deepEqual(errors, []);
 });
+
+test('a second Ctrl+S waits for the first write, so the newer state is what ends in the file', async () => {
+  const { page, errors } = await openPage(app.browser, app.url, undefined, () => {
+    const w = window as unknown as { farivFiles: unknown; saves: Array<{ name: string; bytes: number[] }>; release: Array<() => void> };
+    w.saves = [];
+    w.release = [];
+    w.farivFiles = {
+      save(name: string, bytes: Uint8Array) {
+        w.saves.push({ name, bytes: Array.from(bytes) });
+        return new Promise<string>(resolve => w.release.push(() => resolve(name)));
+      },
+    };
+  });
+  await page.setInputFiles('[data-testid=open-input]', fixture('openpyxl-basico.xlsx'));
+  await waitStatus(page, 'Importado openpyxl-basico.xlsx');
+  const writes = () => page.evaluate(() => (window as unknown as { saves: unknown[] }).saves.length);
+  await typeAt(page, 'A12', 'primeira');
+  await page.keyboard.press('ControlOrMeta+s');
+  await page.waitForFunction(() => (window as unknown as { saves: unknown[] }).saves.length === 1);
+  await typeAt(page, 'A12', 'segunda');
+  await page.keyboard.press('ControlOrMeta+s');
+  await idle(page);
+  await page.waitForTimeout(300);
+  assert.equal(await writes(), 1, 'the second save has not started while the first is writing');
+  await page.evaluate(() => (window as unknown as { release: Array<() => void> }).release[0]());
+  await page.waitForFunction(() => (window as unknown as { saves: unknown[] }).saves.length === 2);
+  assert.equal(await saveState(page), 'Alterações não salvas', 'the first file does not hold "segunda"');
+  await page.evaluate(() => (window as unknown as { release: Array<() => void> }).release[1]());
+  await page.waitForFunction(() => document.querySelector('.doc-pane:not([hidden]) [data-testid=save-state]')?.textContent?.includes('Salvo neste dispositivo'));
+  const files = await page.evaluate(() => (window as unknown as { saves: Array<{ bytes: number[] }> }).saves.map(s => s.bytes));
+  assert.equal(openXlsxBytes(new Uint8Array(files[0])).formatted(0, 12, 1), 'primeira');
+  assert.equal(openXlsxBytes(new Uint8Array(files[1])).formatted(0, 12, 1), 'segunda', 'last written = newest state');
+  assert.deepEqual(errors, []);
+});
+
+test('Save as .xlsx of a saved workbook with a pivot marks it unsaved again', async () => {
+  const { page, errors } = await openPage(app.browser, app.url, undefined, recordingFiles);
+  await typeAt(page, 'A1', 'Região');
+  await typeAt(page, 'A2', 'Sul');
+  await page.click(inPane('[data-testid=new-pivot]'));
+  await showSheet(page, 'Planilha1');
+  await page.keyboard.press('ControlOrMeta+s');
+  await page.check('[data-testid=save-format] input[value=farcel]');
+  await page.click('[data-testid=save-as-confirm]');
+  await saved(page, 1);
+  await waitStatus(page, 'Salvo Pasta1.farcel');
+  assert.equal(await saveState(page), 'Salvo neste dispositivo');
+  await page.keyboard.press('ControlOrMeta+Shift+s');
+  await page.check('[data-testid=save-format] input[value=xlsx]');
+  await page.click('[data-testid=save-as-confirm]');
+  assert.equal((await saved(page, 2)).name, 'Pasta1.xlsx');
+  await waitStatus(page, 'Salvo Pasta1.xlsx, sem 1 tabela dinâmica');
+  assert.equal(await saveState(page), 'Alterações não salvas', 'the .xlsx now being saved to has no pivot');
+  assert.equal(await page.locator('[data-testid=doc-tab] .dirty').count(), 1, 'closing the tab will warn');
+  assert.deepEqual(errors, []);
+});

@@ -128,6 +128,11 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
    * request is sent, together with the pivot list put in the file.
    */
   const engineChanges = useRef(0);
+  /** Read when a write starts (it may wait behind another), not when it was requested. */
+  const targetRef = useRef<Target | null>(null);
+  const originRef = useRef<Origin | null>(null);
+  /** Writes run one after another, so an older snapshot can never land after a newer one. */
+  const writing = useRef<Promise<void>>(Promise.resolve());
   const appChanges = useRef(0);
   const pivotsRef = useRef(pivots);
 
@@ -154,6 +159,8 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
     setPivots(pivotsRef.current);
     setPivotStates({});
     setTab(app.activeTab && (app.activeTab.kind === 'sheet' ? app.activeTab.index < result.sheets.length : app.pivots?.some(p => p.id === (app.activeTab as { id: string }).id)) ? app.activeTab : { kind: 'sheet', index: 0 });
+    targetRef.current = file;
+    originRef.current = from;
     setTarget(file);
     setOrigin(from);
     acceptedLosses.current = null;
@@ -286,9 +293,18 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
    * while the file was being written, the workbook stays unsaved. A file that leaves out part
    * of the workbook (pivots in an .xlsx) does not mark it saved either.
    */
-  const write = async (format: SaveFormat, name: string, choose: boolean) => {
+  const write = (format: SaveFormat, name: string | null, choose: boolean) => {
+    writing.current = writing.current.then(() => writeNow(format, name, choose));
+    return writing.current;
+  };
+
+  /** `name` null: the current file (Ctrl+S), resolved when the write starts. */
+  const writeNow = async (format: SaveFormat, requested: string | null, choose: boolean) => {
     try {
       const started = performance.now();
+      const target = targetRef.current;
+      const origin = originRef.current;
+      const name = requested ?? target?.name ?? `${stem(origin?.name ?? info?.name ?? 'Pasta1')}${SAVE_EXTENSIONS[format]}`;
       const appSnapshot = appChanges.current;
       const losses = saveLosses(format, { pivots: pivotsRef.current.length, origin });
       let bytes: Uint8Array;
@@ -307,14 +323,15 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
       }
       const handle = !choose && target?.format === format ? target.handle : undefined;
       const written = await fileSink().write({ name, kind: FILE_KINDS[format], handle }, bytes);
-      setTarget({ name: written.name, format, handle: written.handle });
+      targetRef.current = { name: written.name, format, handle: written.handle };
+      setTarget(targetRef.current);
       setSavedMode(written.mode);
       const current = engineChanges.current === engineSnapshot && appChanges.current === appSnapshot;
       const complete = isComplete(losses);
-      if (current && complete) {
-        setDirty(false);
-        setSaved(true);
-      }
+      // Only a file holding the whole workbook as it is now marks it saved; anything else marks
+      // it unsaved, even if it was saved before (Save as .xlsx of a saved .farcel with pivots).
+      setDirty(!(current && complete));
+      setSaved(current && complete);
       const verb = written.mode === 'download' ? 'Cópia baixada' : 'Salvo';
       const where = written.mode === 'download' ? ' na pasta de downloads' : '';
       const copyNote = written.mode === 'download' ? ' O navegador não grava sobre o arquivo aberto: cada Ctrl+S baixa uma nova cópia.' : '';
@@ -341,7 +358,7 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
       setSaveDialog({ start: 'confirm', format: target.format, name: stem(target.name) });
       return;
     }
-    void write(target.format, target.name, false);
+    void write(target.format, null, false);
   };
 
   const saveAs = () => {
@@ -353,7 +370,7 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
     setSaveDialog(null);
     const losses = xlsxLosses(format);
     if (losses.length) acceptedLosses.current = lossKey(losses);
-    void write(format, choose || !target ? `${name.trim() || 'Pasta1'}${SAVE_EXTENSIONS[format]}` : target.name, choose || !target);
+    void write(format, choose || !target ? `${name.trim() || 'Pasta1'}${SAVE_EXTENSIONS[format]}` : null, choose || !target);
   };
 
   /**
