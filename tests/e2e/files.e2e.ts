@@ -23,6 +23,13 @@ async function waitStatus(page: Page, prefix: string) {
   await page.waitForFunction(p => document.querySelector('.doc-pane:not([hidden]) [data-testid=status-message]')?.textContent?.startsWith(p), prefix);
 }
 
+/** Switches sheet tab and waits until the grid shows that sheet, so the next selection lands on it. */
+async function showSheet(page: Page, name: string) {
+  await page.locator(inPane('.sheet-tab'), { hasText: name }).click();
+  await page.waitForSelector(inPane(`.grid-root[aria-label="Planilha ${name}"]`));
+  await idle(page);
+}
+
 async function exportFrom(page: Page, label: string, confirm: boolean): Promise<{ name: string; bytes: Buffer }> {
   const download = page.waitForEvent('download');
   await page.click('[data-testid=files-menu]');
@@ -50,9 +57,9 @@ test('XLSX: open, edit, export and reopen; formulas stay formulas in pt-BR', asy
   assert.equal(await copyText(page, 'F6'), 'R$ 1.319,26');
   await select(page, 'F9');
   assert.equal(await formulaBar(page), '=PROCV("Nordeste";A2:F4;6;FALSO)');
-  await page.locator(inPane('.sheet-tab'), { hasText: 'Resumo Geral' }).click();
+  await showSheet(page, 'Resumo Geral');
   assert.equal(await copyText(page, 'B2:B3'), '4,5%\n3');
-  await page.locator(inPane('.sheet-tab'), { hasText: 'Vendas' }).click();
+  await showSheet(page, 'Vendas');
 
   // Edit, then export: no losses for this workbook, so no confirmation.
   await typeAt(page, 'D2', '30');
@@ -107,7 +114,7 @@ test('XLSX export of a workbook with a pivot asks first and leaves it unsaved', 
   await typeAt(page, 'A1', 'Região');
   await typeAt(page, 'A2', 'Sul');
   await page.click(inPane('[data-testid=new-pivot]'));
-  await page.locator(inPane('.sheet-tab'), { hasText: 'Planilha1' }).click();
+  await showSheet(page, 'Planilha1');
   await page.click('[data-testid=files-menu]');
   await page.locator('[role=menuitem]', { hasText: 'Excel (.xlsx)' }).click();
   assert.match(await page.textContent('[data-testid=export-losses]') ?? '', /1 tabela dinâmica/);
