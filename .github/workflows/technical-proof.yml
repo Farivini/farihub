@@ -53,6 +53,9 @@ jobs:
       - run: |
           version="$(grep -A1 '^name = "wasm-bindgen"$' native/xlsx-bridge/Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')"
           command -v wasm-bindgen >/dev/null && [ "$(wasm-bindgen --version | cut -d' ' -f2)" = "$version" ] || cargo install wasm-bindgen-cli --version "$version" --locked
+      # Installs the Rust version and wasm32 target pinned in rust-toolchain.toml.
+      - run: rustup toolchain install
+        working-directory: native/xlsx-bridge
       - run: bash native/xlsx-bridge/build.sh
       - run: git diff --exit-code vendor/xlsx-bridge
 

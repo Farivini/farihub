@@ -3,7 +3,9 @@
 # output does not depend on the machine; CI rebuilds and compares byte for byte.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
-out="$here/../../vendor/xlsx-bridge"
+out="$(cd "$here/../.." && pwd)/vendor/xlsx-bridge"
+# From here rustup uses rust-toolchain.toml (pinned Rust and the wasm32 target).
+cd "$here"
 registry="${CARGO_HOME:-$HOME/.cargo}/registry/src"
 # The CLI must match the wasm-bindgen crate in Cargo.lock.
 want="$(grep -A1 '^name = "wasm-bindgen"$' "$here/Cargo.lock" | sed -n 's/^version = "\(.*\)"/\1/p')"
