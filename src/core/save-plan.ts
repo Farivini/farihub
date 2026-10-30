@@ -19,11 +19,15 @@ export interface Loss { text: string; inWorkbook: boolean }
 
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString('pt-BR')} ${n === 1 ? one : many}`;
 
-export function saveLosses(format: SaveFormat, state: { pivots: number; origin: Origin | null }): Loss[] {
+/** `filters`: sheets with a filter (the XLSX keeps its hidden rows, not the filter). */
+export function saveLosses(format: SaveFormat, state: { pivots: number; origin: Origin | null; filters?: number }): Loss[] {
   if (format === 'farcel') return [];
   const losses: Loss[] = [];
   if (state.pivots) {
     losses.push({ text: `${plural(state.pivots, 'tabela dinâmica', 'tabelas dinâmicas')} do Planilhas e seus gráficos: o XLSX não guarda; só o .farcel.`, inWorkbook: true });
+  }
+  if (state.filters) {
+    losses.push({ text: `O filtro de ${plural(state.filters, 'planilha', 'planilhas')} (botões e critérios): o XLSX guarda as linhas que ele ocultou, que continuam ocultas, mas não o filtro; só o .farcel.`, inWorkbook: true });
   }
   const lost = state.origin?.report ? lostFeatures(state.origin.report) : [];
   if (lost.length) {

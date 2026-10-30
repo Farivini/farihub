@@ -15,6 +15,7 @@ const paths: Record<string, string> = {
   plus: 'M12 5.5v13M5.5 12h13',
   close: 'M7 7l10 10M17 7L7 17',
   filter: 'M5 6h14l-5.5 6.5V18l-3 1.5v-7z',
+  sort: 'M7.5 4.5v15M4.5 16.5l3 3 3-3M13 6.5h6.5M13 11h5M13 15.5h3.5',
   chevron: 'M9 6l6 6-6 6',
   'chevron-down': 'M7 10l5 5 5-5',
   bold: 'M7.5 5h5.5a3.5 3.5 0 0 1 0 7H7.5zM7.5 12h6.5a3.5 3.5 0 0 1 0 7H7.5z',

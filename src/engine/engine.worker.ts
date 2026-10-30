@@ -1,9 +1,11 @@
 /// <reference lib="webworker" />
 import init, * as ironcalc from '@ironcalc/wasm';
 import wasmUrl from '@ironcalc/wasm/wasm_bg.wasm?url';
+import bridgeWasmUrl from '../../vendor/xlsx-bridge/xlsx_bridge_bg.wasm?url';
 import { ENGINE_LOCALE, WorkbookEngine, IRONCALC_VERSION } from './workbook-engine.ts';
 import type { Change } from './workbook-engine.ts';
 import type { EngineApi, EngineEvent, MutationResult, Request, RequestType, Response, WorkbookInfo } from './protocol.ts';
+import { SLOW_OPERATION_SECONDS, isStructural, parseFilters } from '../core/table-ops.ts';
 import { boundContext } from '../core/assistant-context.ts';
 import { cellName, rectName } from '../core/address.ts';
 
@@ -20,10 +22,37 @@ const ready = init({ module_or_path: wasmUrl }).then(output => {
 /** Long tasks that replace the model; edits are refused meanwhile. */
 let busy: string | null = null;
 
+/**
+ * The engine-data editor (sort, hidden rows), compiled with the same IronCalc. Loaded on the
+ * first table operation or file opened, not with the worker.
+ */
+let bridge: Promise<void> | null = null;
+function ensureBridge(): Promise<void> {
+  bridge ??= import('../../vendor/xlsx-bridge/xlsx_bridge.js').then(async module => {
+    await module.default({ module_or_path: bridgeWasmUrl });
+    WorkbookEngine.bridge = module;
+  }).catch(error => {
+    bridge = null;
+    throw error;
+  });
+  return bridge;
+}
+
+/** Makes `next` the workbook and releases the previous one (its models and undo copies). */
+function replace(next: WorkbookEngine) {
+  if (next === engine) return;
+  const previous = engine;
+  engine = next;
+  previous?.dispose();
+}
+
 const emit = (event: EngineEvent) => self.postMessage(event);
 
 function info(): WorkbookInfo {
-  return { name: engine.name, sheets: engine.sheets(), revision: engine.revision, canUndo: engine.canUndo(), canRedo: engine.canRedo() };
+  return {
+    name: engine.name, sheets: engine.sheets(), revision: engine.revision, canUndo: engine.canUndo(), canRedo: engine.canRedo(),
+    layoutVersion: engine.layoutVersion, filtered: engine.filteredSheets(), historyTrimmed: engine.historyTrimmed,
+  };
 }
 
 function mutation(run: () => Change | null): MutationResult | null {
@@ -43,7 +72,7 @@ const handlers: Handlers = {
   },
   newWorkbook: () => {
     if (busy) throw new Error(`Aguarde: ${busy}.`);
-    engine = WorkbookEngine.create(ironcalc, 'Pasta1', memoryBytes);
+    replace(WorkbookEngine.create(ironcalc, 'Pasta1', memoryBytes));
     emit({ event: 'changed', revision: engine.revision });
     return info();
   },
@@ -80,26 +109,40 @@ const handlers: Handlers = {
     const bytes = engine.toFile(p.app);
     return { bytes, ms: performance.now() - started };
   },
-  open: p => {
+  open: async p => {
     if (busy) throw new Error(`Aguarde: ${busy}.`);
     busy = 'abrindo arquivo';
     try {
       const started = performance.now();
+      await ensureBridge();
       const opened = WorkbookEngine.fromFile(ironcalc, p.bytes, memoryBytes);
-      engine = opened.engine;
+      try {
+        opened.engine.loadLayout(parseFilters(opened.header.app?.filters));
+      } catch (error) {
+        opened.engine.dispose();
+        throw error;
+      }
+      replace(opened.engine);
       emit({ event: 'changed', revision: engine.revision });
       return { ...info(), header: opened.header, ms: performance.now() - started, evaluateMs: opened.evaluateMs };
     } finally {
       busy = null;
     }
   },
-  loadModel: p => {
+  loadModel: async p => {
     if (busy) throw new Error(`Aguarde: ${busy}.`);
     busy = 'abrindo arquivo';
     try {
       const started = performance.now();
+      await ensureBridge();
       const loaded = WorkbookEngine.fromModelBytes(ironcalc, p.bytes, memoryBytes);
-      engine = loaded.engine;
+      try {
+        loaded.engine.loadLayout();
+      } catch (error) {
+        loaded.engine.dispose();
+        throw error;
+      }
+      replace(loaded.engine);
       emit({ event: 'changed', revision: engine.revision });
       return { ...info(), ms: performance.now() - started, evaluateMs: loaded.evaluateMs };
     } finally {
@@ -120,7 +163,7 @@ const handlers: Handlers = {
         memoryBytes,
         onProgress: (done, total) => emit({ event: 'progress', task: 'import', done, total, label: 'linhas' }),
       });
-      engine = imported.engine;
+      replace(imported.engine);
       emit({ event: 'changed', revision: engine.revision });
       return { ...info(), rows: imported.rows, columns: imported.columns, ms: performance.now() - started };
     } finally {
@@ -138,6 +181,7 @@ const handlers: Handlers = {
     if (busy) throw new Error(`Aguarde: ${busy}.`);
     if (!Number.isSafeInteger(p.rows) || p.rows < 1 || p.rows > 1_048_575) throw new RangeError('Quantidade de linhas inválida');
     busy = 'gerando base sintética';
+    const before = engine;
     try {
       const { engine: generated, report } = await WorkbookEngine.generateSynthetic(ironcalc, p.rows, p.seed, {
         memoryBytes,
@@ -148,11 +192,28 @@ const handlers: Handlers = {
         },
       });
       engine = generated;
+      if (before !== generated) before.dispose();
       emit({ event: 'changed', revision: engine.revision });
       return { ...info(), report };
     } finally {
       busy = null;
     }
+  },
+  tableOp: async p => {
+    if (busy) throw new Error(`Aguarde: ${busy}.`);
+    if (isStructural(p.op) && !p.confirmed) {
+      const cost = engine.estimate(p.op);
+      if (cost.seconds > SLOW_OPERATION_SECONDS) return { done: false, cost };
+    }
+    if (!isStructural(p.op)) await ensureBridge();
+    return { done: true, ...mutation(() => engine.apply(p.op))! };
+  },
+  tableQuery: q => q.kind === 'region'
+    ? { kind: 'region', rect: engine.region(q.sheet, q.cell) }
+    : { kind: 'filterValues', ...engine.filterValues(q.sheet, q.column, q.search, q.limit) },
+  rowLayout: p => {
+    const layout = engine.rowLayout(p.sheet);
+    return { sheet: p.sheet, hidden: layout.hidden, filter: layout.filter, layoutVersion: engine.layoutVersion };
   },
   stats: () => ({ wasmMemoryBytes: memoryBytes(), revision: engine.revision, extraction: [...engine.pivotSource.stats] }),
   assistantContext: p => {

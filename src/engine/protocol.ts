@@ -3,11 +3,27 @@ import type { PivotConfig, PivotResult } from '../core/pivot.ts';
 import type { FarcelHeader } from '../core/file-format.ts';
 import type { AssistantContext } from '../core/assistant-context.ts';
 import type { DelimitedExportMode, DelimitedOptions, Separator } from '../core/delimited.ts';
+import type { FilterState, FilterValues, OperationCost, TableOperation, TableQuery } from '../core/table-ops.ts';
 import type { CellFormat, FormatChange, GenerationReport, Viewport } from './workbook-engine.ts';
 
-export interface WorkbookInfo { name: string; sheets: string[]; revision: number; canUndo: boolean; canRedo: boolean }
+export interface WorkbookInfo {
+  name: string; sheets: string[]; revision: number; canUndo: boolean; canRedo: boolean;
+  /** Changes when rows are hidden or shown, or a filter changes: the grid reads `rowLayout` again. */
+  layoutVersion: number;
+  /** Sheets with a filter. */
+  filtered: number[];
+  /** True once the oldest steps were released to bound memory and can no longer be undone. */
+  historyTrimmed: boolean;
+}
 export interface MutationResult extends WorkbookInfo { sheet: number; rect: Rect | null; ms: number }
 export interface PivotResponse extends PivotResult { extractMs: number; aggregateMs: number; revision: number }
+/**
+ * Result of a table operation: done, or not started because IronCalc would take longer than
+ * SLOW_OPERATION_SECONDS; the caller asks and sends it again with `confirmed`.
+ */
+export type TableOpResult = ({ done: true } & MutationResult) | { done: false; cost: OperationCost };
+export type TableQueryResult = { kind: 'region'; rect: Rect } | ({ kind: 'filterValues' } & FilterValues);
+export interface RowLayout { sheet: number; hidden: Int32Array; filter: FilterState | null; layoutVersion: number }
 export interface EngineStats { wasmMemoryBytes: number | null; revision: number; extraction: Array<{ column: string; rows: number; ms: number }> }
 
 /** Request name -> [payload, response]. */
@@ -39,6 +55,11 @@ export interface EngineApi {
   exportDelimited: [{ sheet: number; separator: Separator; mode: DelimitedExportMode }, { bytes: Uint8Array; rows: number; columns: number; protectedCells: number; ms: number }];
   generate: [{ rows: number; seed: number }, WorkbookInfo & { report: GenerationReport }];
   stats: [void, EngineStats];
+  /** Sort, filter, insert and delete rows/columns: one undo step each. */
+  tableOp: [{ op: TableOperation; confirmed?: boolean }, TableOpResult];
+  tableQuery: [TableQuery, TableQueryResult];
+  /** Hidden rows (start, end pairs) and the filter of a sheet. */
+  rowLayout: [{ sheet: number }, RowLayout];
   assistantContext: [{ sheet: number; selection: Rect; pivotRows: string[][] | null }, AssistantContext];
 }
 
