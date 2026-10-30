@@ -17,6 +17,9 @@ test('encoding: UTF-8 when valid (BOM dropped), otherwise Windows-1252', () => {
   const utf8 = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode('Ação;Preço')]);
   assert.equal(detectEncoding(utf8), 'utf-8');
   assert.equal(decodeText(utf8, 'utf-8'), 'Ação;Preço');
+  // A preview sample that ends inside "ç" (0xc3 0xa7) is still UTF-8.
+  const cut = new TextEncoder().encode('João;Preço');
+  assert.equal(detectEncoding(cut.subarray(0, cut.indexOf(0xa7))), 'utf-8');
   const latin = new Uint8Array([0x41, 0xe7, 0xe3, 0x6f]); // "Ação" in Windows-1252
   assert.equal(detectEncoding(latin), 'windows-1252');
   assert.equal(decodeText(latin, 'windows-1252'), 'Ação');
@@ -76,6 +79,15 @@ test('import into the engine and export back: types, codes, accents, quotes', as
     ['', '', '1232,06', '', ''],
   ], ';'));
   assert.ok(out.text.includes('"diz ""oi""; tchau"'));
+});
+
+test('export of a short, wide sheet: every column, one row', async () => {
+  const engine = WorkbookEngine.create(ic);
+  engine.setInput(0, 1, 1, 'início');
+  engine.setInput(0, 1, 16_384, 'fim');
+  const out = engine.toDelimited(0, ';');
+  assert.deepEqual([out.rows, out.columns], [1, 16_384]);
+  assert.equal(out.text, `início${';'.repeat(16_383)}fim\r\n`);
 });
 
 test('a file beyond the sheet limit is refused, not cut', async () => {

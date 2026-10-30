@@ -21,6 +21,7 @@ export const ENGINE_LANGUAGE = 'en';
 export const ENGINE_TIMEZONE = 'America/Sao_Paulo';
 export const MAX_COPY_CELLS = 500_000;
 export const MAX_FORMAT_CELLS = 200_000;
+const EXPORT_BLOCK_CELLS = 100_000;
 
 export const CellKind = { Empty: 0, Number: 1, Text: 2, Boolean: 3, Error: 4 } as const;
 
@@ -426,7 +427,8 @@ export class WorkbookEngine {
   toDelimited(sheet: number, separator: Separator): { text: string; rows: number; columns: number } {
     const { rows, columns } = this.usedRange(sheet);
     const out: string[] = [];
-    const block = 10_000;
+    // About EXPORT_BLOCK_CELLS per block, never more rows than the sheet uses.
+    const block = Math.max(1, Math.min(rows, Math.floor(EXPORT_BLOCK_CELLS / Math.max(1, columns))));
     const values: string[] = new Array(block * columns);
     const kinds = new Uint8Array(block * columns);
     for (let top = 1; top <= rows; top += block) {

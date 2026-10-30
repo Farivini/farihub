@@ -29,10 +29,13 @@ export const SEPARATORS: Array<{ value: Separator; label: string }> = [
   { value: '|', label: 'Barra vertical (|)' },
 ];
 
-/** UTF-8 when the bytes are valid UTF-8, otherwise Windows-1252 (Excel's "CSV" in Brazil). */
+/**
+ * UTF-8 when the bytes are valid UTF-8, otherwise Windows-1252 (Excel's "CSV" in Brazil).
+ * `bytes` may be the start of a file: a character cut at the end is not an error.
+ */
 export function detectEncoding(bytes: Uint8Array): Encoding {
   try {
-    new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    new TextDecoder('utf-8', { fatal: true }).decode(bytes, { stream: true });
     return 'utf-8';
   } catch {
     return 'windows-1252';
