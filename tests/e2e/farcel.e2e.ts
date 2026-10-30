@@ -304,6 +304,17 @@ test('workbook tabs: each tab keeps its own workbook; switching spaces keeps the
   await page.click('[data-testid=confirm-close] button.danger');
   await page.waitForFunction(() => document.querySelectorAll('[data-testid=doc-tab]').length === 1);
   assert.equal(await copyText(page, 'A1'), 'Primeira pasta');
+  // An edit still in the cell editor counts as unsaved work when the tab is closed.
+  await page.click('button[aria-label="Nova planilha"].doc-new');
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid=doc-tab]').length === 2);
+  await page.waitForFunction(p => document.querySelector(`${p} [data-testid=engine-state]`)?.textContent?.includes('IronCalc'), PANE);
+  await select(page, 'B2');
+  await page.keyboard.type('digitado agora');
+  await page.locator('[data-testid=doc-tab] .doc-close').nth(1).click();
+  await page.waitForSelector('[data-testid=confirm-close]');
+  await page.click('[data-testid=confirm-close] button:not(.danger)');
+  await idle(page);
+  assert.equal(await copyText(page, 'B2'), 'digitado agora', 'edit kept after cancelling the close');
   assert.deepEqual(errors, []);
 });
 

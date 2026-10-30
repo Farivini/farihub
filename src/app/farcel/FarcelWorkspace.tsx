@@ -33,6 +33,8 @@ export interface WorkspaceHandle {
   save(): Promise<void>;
   /** Resolves false when the file was refused; the current workbook is kept. */
   openFile(file: File): Promise<boolean>;
+  /** Unsaved changes, including writes the engine has not answered yet (read synchronously). */
+  hasUnsavedWork(): boolean;
 }
 
 type Tab = { kind: 'sheet'; index: number } | { kind: 'pivot'; id: string };
@@ -212,7 +214,13 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
     }
   }, [busy, client, fileName, info?.name, pivots, tab, track, fail]);
 
-  useImperativeHandle(ref, () => ({ save, openFile }), [save, openFile]);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  useImperativeHandle(ref, () => ({
+    save,
+    openFile,
+    hasUnsavedWork: () => dirtyRef.current || inFlight.current > 0,
+  }), [save, openFile]);
 
   // Sheet grid controller: every read and write goes to the engine worker.
   const controller = useMemo<GridController>(() => ({

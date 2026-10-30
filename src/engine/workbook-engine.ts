@@ -172,21 +172,23 @@ export class WorkbookEngine {
    */
   format(sheet: number, input: Rect, change: FormatChange): Change {
     const rect = { ...input };
-    if (rect.top === 1 && rect.bottom === MAX_ROW) {
-      let last = 1;
-      for (let column = rect.left; column <= Math.min(rect.right, rect.left + 255); column++) {
+    const wholeColumns = rect.top === 1 && rect.bottom === MAX_ROW;
+    const wholeRows = rect.left === 1 && rect.right === MAX_COLUMN;
+    if (wholeColumns || wholeRows) {
+      // Extent of the data inside the whole selection (scanning every column takes ~30 ms).
+      let lastRow = 0;
+      let lastColumn = 0;
+      for (let column = rect.left; column <= rect.right; column++) {
         const rows = this.model.getRowsWithData(sheet, column);
-        for (let i = 0; i < rows.length; i++) if (rows[i] > last) last = rows[i];
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          if (row < rect.top || row > rect.bottom) continue;
+          if (row > lastRow) lastRow = row;
+          lastColumn = column;
+        }
       }
-      rect.bottom = last;
-    }
-    if (rect.left === 1 && rect.right === MAX_COLUMN) {
-      let last = 1;
-      for (let row = rect.top; row <= Math.min(rect.bottom, rect.top + 4095); row++) {
-        const columns = this.model.getColumnsWithData(sheet, row);
-        for (let i = 0; i < columns.length; i++) if (columns[i] > last) last = columns[i];
-      }
-      rect.right = last;
+      if (wholeColumns) rect.bottom = Math.max(rect.top, lastRow);
+      if (wholeRows) rect.right = Math.max(rect.left, lastColumn);
     }
     if (rectSize(rect) > MAX_FORMAT_CELLS) {
       throw new RangeError(`Seleção grande demais para formatar nesta versão (máximo ${MAX_FORMAT_CELLS.toLocaleString('pt-BR')} células).`);

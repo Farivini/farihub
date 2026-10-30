@@ -173,4 +173,13 @@ test('formatting a whole column only touches the rows with data; huge ranges are
   const change = engine.format(0, { top: 1, left: 2, bottom: 1_048_576, right: 2 }, { kind: 'bold', value: true });
   assert.deepEqual(change.rect, { top: 1, left: 2, bottom: 4, right: 2 });
   assert.throws(() => engine.format(0, { top: 1, left: 1, bottom: 300_000, right: 1 }, { kind: 'bold', value: true }), /grande demais/);
+  // Data beyond the first 256 columns or 4,096 rows still bounds the range.
+  engine.setInput(0, 10, 257, 'IW10');
+  engine.setInput(0, 5_000, 300, 'longe');
+  assert.deepEqual(engine.format(0, { top: 1, left: 1, bottom: 1_048_576, right: 257 }, { kind: 'bold', value: true }).rect,
+    { top: 1, left: 1, bottom: 10, right: 257 });
+  assert.equal(engine.cellFormat(0, 10, 257).bold, true);
+  assert.deepEqual(engine.format(0, { top: 4_990, left: 1, bottom: 5_010, right: 16_384 }, { kind: 'bold', value: true }).rect,
+    { top: 4_990, left: 1, bottom: 5_010, right: 300 });
+  assert.equal(engine.cellFormat(0, 5_000, 300).bold, true);
 });

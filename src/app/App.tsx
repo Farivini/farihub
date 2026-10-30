@@ -85,7 +85,10 @@ export function App() {
   };
 
   const closeDoc = (doc: Doc, force = false) => {
-    if (!force && statuses[doc.id]?.dirty) { setClosing(doc); return; }
+    // The handle also sees an edit still on its way to the engine (submitted when the
+    // cell editor lost focus to this click), which the status has not reported yet.
+    const unsaved = statuses[doc.id]?.dirty || handles.current.get(doc.id)?.hasUnsavedWork();
+    if (!force && unsaved) { setClosing(doc); return; }
     doc.client.terminate();
     handles.current.delete(doc.id);
     statusCallbacks.current.delete(doc.id);
