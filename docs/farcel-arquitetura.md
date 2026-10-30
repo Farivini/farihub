@@ -80,6 +80,8 @@ O IronCalc 0.9.1 não tem idioma português (`pt`, `pt-BR` e `pt-PT` rejeitados;
 
 `Salvar` grava **uma pasta de trabalho Farcel**, não XLSX: `FARCEL01` + cabeçalho JSON (versão do formato, versão do IronCalc, CRC32 e configuração das dinâmicas/gráficos) + `Model.toBytes()` do IronCalc. `Abrir` valida assinatura, versão, tamanho e CRC32 antes de substituir a pasta atual; arquivo corrompido é recusado e a pasta aberta continua intacta.
 
+"Salvo neste dispositivo" descreve o que está no arquivo. O snapshot do motor é tirado quando o worker serializa o modelo, e a lista de dinâmicas quando o pedido de salvar sai. Se houver edição de célula ou mudança de dinâmica depois disso, enquanto a gravação ainda está em andamento (disco ou diálogo lentos), o arquivo é gravado com o snapshot e a pasta continua marcada com alterações não salvas. A gravação passa por `src/app/files.ts`; o executável pode injetar `window.farivFiles` para gravar com acesso nativo a arquivos.
+
 - No Chromium desktop o app usa o seletor nativo de salvar (File System Access API); em outros navegadores (e em automação) faz download. O Chromium descarta nomes com acento passados por download; nesse caminho o nome é gravado sem diacríticos.
 - O conteúdo binário é o formato interno da versão do IronCalc indicada no cabeçalho; compatibilidade entre versões do motor não é garantida.
 - XLSX: o pacote WASM 0.9.1 não expõe importação/exportação XLSX (o binding Node expõe). Para o executável Windows, a exportação pode usar o crate Rust nativo; no navegador seria preciso compilar o IronCalc com essa função para WASM. Não implementado.

@@ -22,8 +22,9 @@ export async function startApp(): Promise<{ url: string; browser: Browser; close
   };
 }
 
-export async function openPage(browser: Browser, url: string, viewport = { width: 1440, height: 900 }): Promise<{ context: BrowserContext; page: Page; errors: string[] }> {
+export async function openPage(browser: Browser, url: string, viewport = { width: 1440, height: 900 }, init?: () => void): Promise<{ context: BrowserContext; page: Page; errors: string[] }> {
   const context = await browser.newContext({ viewport, acceptDownloads: true });
+  if (init) await context.addInitScript(init);
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url });
   const page = await context.newPage();
   const errors: string[] = [];

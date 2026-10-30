@@ -16,6 +16,7 @@ import { FunctionMenu } from './FunctionMenu.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { MenuButton } from '../shell/Menu.tsx';
 import { measure } from '../perf.ts';
+import { fileSink } from '../files.ts';
 
 export interface ContextRequest { sheet: number; selection: Rect; pivotRows: string[][] | null }
 export interface WorkspaceStatus {
@@ -48,10 +49,6 @@ const statValue = (value: number, unit: SelectionStats['unit']) =>
   unit === '%' ? `${number.format(value * 100)}%` : unit === 'R$' ? `R$ ${number.format(value)}` : number.format(value);
 const ZOOMS = [0.75, 0.9, 1, 1.1, 1.25, 1.5];
 const FORMAT_SHORT: Record<string, string> = { general: 'Geral', number: '0,00', currency: 'R$', percent: '%', date: 'Data', custom: 'Pers.' };
-
-interface SaveFilePicker {
-  showSaveFilePicker?(options: unknown): Promise<{ name: string; createWritable(): Promise<{ write(data: Uint8Array): Promise<void>; close(): Promise<void> }> }>;
-}
 
 export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
   client: EngineClient;
@@ -89,6 +86,16 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
   const [zoom, setZoom] = useState(1);
   const sheet = tab.kind === 'sheet' ? tab.index : pivots.find(p => p.id === tab.id)?.sheet ?? 0;
 
+  /*
+   * What a save captures. The engine part is the model at the moment the worker serialises
+   * it: every 'changed' event for an edit processed before that arrives before the save
+   * reply, so the count read on the reply matches the bytes. The pivot part is read when the
+   * request is sent, together with the pivot list put in the file.
+   */
+  const engineChanges = useRef(0);
+  const appChanges = useRef(0);
+  const pivotsRef = useRef(pivots);
+
   const fail = useCallback((error: unknown) => {
     setMessage({ text: error instanceof Error ? error.message : String(error), tone: 'error' });
   }, []);
@@ -118,7 +125,8 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
       measure('engine:open', started, { engineMs: result.ms, evaluateMs: result.evaluateMs, bytes: size });
       const app = result.header.app as { pivots?: PivotDef[]; activeTab?: Tab };
       setInfo(result);
-      setPivots(app.pivots ?? []);
+      pivotsRef.current = app.pivots ?? [];
+      setPivots(pivotsRef.current);
       setPivotStates({});
       setTab(app.activeTab && (app.activeTab.kind === 'sheet' ? app.activeTab.index < result.sheets.length : app.pivots?.some(p => p.id === (app.activeTab as { id: string }).id)) ? app.activeTab : { kind: 'sheet', index: 0 });
       setFileName(file.name);
@@ -155,7 +163,7 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
   // Engine lifecycle, events and the startup action of this tab.
   useEffect(() => {
     const off = client.on(event => {
-      if (event.event === 'changed') { setRevision(r => r + 1); setDirty(true); setSaved(false); }
+      if (event.event === 'changed') { engineChanges.current++; setRevision(r => r + 1); setDirty(true); setSaved(false); }
       else setProgress({ label: event.task === 'generate' ? 'Gerando base' : event.task === 'pivot' ? `Lendo ${event.label}` : 'Abrindo', done: event.done, total: event.total });
     });
     let live = true;
@@ -181,38 +189,37 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
     if (busy) return;
     try {
       const started = performance.now();
-      const { bytes, ms } = await track(client.call('save', { app: { pivots, activeTab: tab } }));
+      const appSnapshot = appChanges.current;
+      const { bytes, ms } = await track(client.call('save', { app: { pivots: pivotsRef.current, activeTab: tab } }));
+      const engineSnapshot = engineChanges.current;
       measure('engine:save', started, { engineMs: ms, bytes: bytes.length });
-      const name = fileName ?? `${info?.name ?? 'Pasta1'}${FILE_EXTENSION}`;
-      const picker = window as unknown as SaveFilePicker;
-      let savedName = name;
-      if (picker.showSaveFilePicker && !navigator.webdriver) {
-        const handle = await picker.showSaveFilePicker({ suggestedName: name, types: [{ description: 'Pasta de trabalho Fariv', accept: { 'application/x-farcel': [FILE_EXTENSION] } }] });
-        const writable = await handle.createWritable();
-        await writable.write(bytes);
-        await writable.close();
-        savedName = handle.name;
-      } else {
-        const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/x-farcel' }));
-        const link = document.createElement('a');
-        link.href = url;
-        // Chromium drops non-ASCII names given through the download attribute; the native
-        // save dialog above keeps the original name.
-        link.download = name.normalize('NFD').replace(/\p{M}/gu, '').replace(/[^\x20-\x7e]/g, '_');
-        savedName = link.download;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 10_000);
-      }
+      const savedName = await fileSink().save(fileName ?? `${info?.name ?? 'Pasta1'}${FILE_EXTENSION}`, bytes);
       setFileName(savedName);
-      setDirty(false);
-      setSaved(true);
-      setMessage({ text: `Salvo ${savedName} · ${mib(bytes.length)} · ${seconds(ms)}. ${FORMAT_DESCRIPTION}`, tone: 'info' });
+      // Mark as saved only if nothing changed after the snapshot; later edits stay pending.
+      const current = engineChanges.current === engineSnapshot && appChanges.current === appSnapshot;
+      if (current) {
+        setDirty(false);
+        setSaved(true);
+        setMessage({ text: `Salvo ${savedName} · ${mib(bytes.length)} · ${seconds(ms)}. ${FORMAT_DESCRIPTION}`, tone: 'info' });
+      } else {
+        setMessage({ text: `Salvo ${savedName} com o estado do início da gravação. As alterações feitas durante a gravação ainda não estão no arquivo.`, tone: 'info' });
+      }
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) fail(error);
     }
-  }, [busy, client, fileName, info?.name, pivots, tab, track, fail]);
+  }, [busy, client, fileName, info?.name, tab, track, fail]);
+
+  /**
+   * Pivot and chart configuration is saved in the file too. The ref, the change count and the
+   * state move together, so a save never pairs a new count with an older pivot list.
+   */
+  const updatePivots = (next: (current: PivotDef[]) => PivotDef[]) => {
+    pivotsRef.current = next(pivotsRef.current);
+    appChanges.current++;
+    setPivots(pivotsRef.current);
+    setDirty(true);
+    setSaved(false);
+  };
 
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
@@ -360,12 +367,12 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
     const id = Math.random().toString(36).slice(2, 9);
     const n = pivots.length + 1;
     const source = tab.kind === 'sheet' ? tab.index : sheet;
-    setPivots(p => [...p, { id, name: `Dinâmica ${n}`, sheet: source, config: emptyConfig(), chart: 'columns', valueIndex: 0 }]);
+    updatePivots(p => [...p, { id, name: `Dinâmica ${n}`, sheet: source, config: emptyConfig(), chart: 'columns', valueIndex: 0 }]);
     setTab({ kind: 'pivot', id });
   };
 
   const closePivot = (id: string) => {
-    setPivots(p => p.filter(x => x.id !== id));
+    updatePivots(p => p.filter(x => x.id !== id));
     if (tab.kind === 'pivot' && tab.id === id) setTab({ kind: 'sheet', index: pivots.find(p => p.id === id)?.sheet ?? 0 });
   };
 
@@ -457,7 +464,7 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
             fields={fields?.sheet === activePivot.sheet ? fields.names : []}
             rows={fields?.sheet === activePivot.sheet ? fields.rows : 0}
             zoom={zoom}
-            onChange={next => { setPivots(p => p.map(x => (x.id === next.id ? next : x))); setDirty(true); setSaved(false); }}
+            onChange={next => updatePivots(p => p.map(x => (x.id === next.id ? next : x)))}
             loadLabels={loadLabels}
             onError={text => setMessage({ text, tone: 'error' })}
           />
