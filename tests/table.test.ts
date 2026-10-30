@@ -52,8 +52,11 @@ test('sort order: numbers, text, booleans, errors; empty last both ways; stable;
   const texts = ['b', '', '', 'Á', '', '', '', 'a', ''];
   assert.deepEqual([...sortOrder([key(kinds, numbers, texts)])], [4, 8, 1, 7, 3, 0, 5, 6, 2], 'ascending; a before Á; equal 2s keep their order');
   assert.deepEqual([...sortOrder([key(kinds, numbers, texts, true)])], [6, 5, 0, 3, 7, 1, 4, 8, 2], 'descending; empty still last');
-  // Case is ignored: "ana" and "Ana" are equal and keep their order.
+  // Case is ignored: "ana" and "Ana" are equal and keep their order, in both directions.
   assert.deepEqual([...sortOrder([key([2, 2, 2], [0, 0, 0], ['ana', 'Bia', 'Ana'])])], [0, 2, 1]);
+  assert.deepEqual([...sortOrder([key([2, 2, 2], [0, 0, 0], ['ana', 'Bia', 'Ana'], true)])], [1, 0, 2]);
+  // ...and the next key breaks their tie.
+  assert.deepEqual([...sortOrder([key([2, 2], [0, 0], ['ana', 'Ana']), key([1, 1], [2, 1], ['', ''])])], [1, 0]);
   // Second key breaks ties of the first.
   const region = key([2, 2, 2, 2], [0, 0, 0, 0], ['Sul', 'Norte', 'Sul', 'Norte']);
   const value = key([1, 1, 1, 1], [1, 2, 3, 4], ['', '', '', ''], true);

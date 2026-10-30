@@ -118,7 +118,9 @@ export function sortOrder(keys: KeyColumn[]): Uint32Array {
   // Text compared once per distinct value, then by rank.
   const ranks = keys.map(key => {
     const distinct = [...new Set(key.texts.filter((_, i) => key.kinds[i] === 2))].sort(collator.compare);
-    const rank = new Map(distinct.map((t, i) => [t, i]));
+    // Spellings the collator finds equal ("ana", "Ana") share a rank, so the next key decides.
+    const rank = new Map<string, number>();
+    distinct.forEach((t, i) => rank.set(t, i > 0 && collator.compare(distinct[i - 1], t) === 0 ? rank.get(distinct[i - 1])! : i));
     const out = new Float64Array(n);
     for (let i = 0; i < n; i++) out[i] = key.kinds[i] === 2 ? rank.get(key.texts[i])! : key.numbers[i];
     return out;
