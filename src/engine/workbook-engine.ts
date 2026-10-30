@@ -8,8 +8,8 @@ import type { FarcelHeader } from '../core/file-format.ts';
 import { computePivot, configFields } from '../core/pivot.ts';
 import type { PivotConfig, PivotResult } from '../core/pivot.ts';
 import { SYNTHETIC_HEADERS, rowToInputs, summaryFormulas, syntheticRows } from '../core/synthetic.ts';
-import { decodeText, interpret, parseDelimited, serializeDelimited } from '../core/delimited.ts';
-import type { DelimitedOptions, Separator } from '../core/delimited.ts';
+import { decodeText, interpret, looksLikeFormula, parseDelimited, protectText, serializeDelimited } from '../core/delimited.ts';
+import type { DelimitedExportMode, DelimitedOptions, Separator } from '../core/delimited.ts';
 import { PivotSource } from './pivot-source.ts';
 
 export type IronCalc = typeof import('@ironcalc/wasm');
@@ -423,10 +423,15 @@ export class WorkbookEngine {
     return { rows, columns };
   }
 
-  /** One sheet as delimited text with the values as displayed (results, not formulas). */
-  toDelimited(sheet: number, separator: Separator): { text: string; rows: number; columns: number } {
+  /**
+   * One sheet as delimited text with the values as displayed (results, not formulas). In
+   * 'spreadsheet' mode, text cells a spreadsheet would run as formulas get a leading
+   * apostrophe; `protectedCells` counts them. Number cells are never changed.
+   */
+  toDelimited(sheet: number, separator: Separator, mode: DelimitedExportMode = 'spreadsheet'): { text: string; rows: number; columns: number; protectedCells: number } {
     const { rows, columns } = this.usedRange(sheet);
     const out: string[] = [];
+    let protectedCells = 0;
     // About EXPORT_BLOCK_CELLS per block, never more rows than the sheet uses.
     const block = Math.max(1, Math.min(rows, Math.floor(EXPORT_BLOCK_CELLS / Math.max(1, columns))));
     const values: string[] = new Array(block * columns);
@@ -434,11 +439,19 @@ export class WorkbookEngine {
     for (let top = 1; top <= rows; top += block) {
       const height = Math.min(block, rows - top + 1);
       this.readValues(sheet, top, 1, height, columns, values, kinds);
+      if (mode === 'spreadsheet') {
+        for (let i = 0; i < height * columns; i++) {
+          if (kinds[i] === CellKind.Text && looksLikeFormula(values[i])) {
+            values[i] = protectText(values[i]);
+            protectedCells++;
+          }
+        }
+      }
       const lines: string[][] = [];
       for (let r = 0; r < height; r++) lines.push(values.slice(r * columns, (r + 1) * columns));
       out.push(serializeDelimited(lines, separator));
     }
-    return { text: out.join(''), rows, columns };
+    return { text: out.join(''), rows, columns, protectedCells };
   }
 
   /**

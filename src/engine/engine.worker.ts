@@ -129,10 +129,10 @@ const handlers: Handlers = {
   },
   exportDelimited: p => {
     const started = performance.now();
-    const { text, rows, columns } = engine.toDelimited(p.sheet, p.separator);
+    const { text, rows, columns, protectedCells } = engine.toDelimited(p.sheet, p.separator, p.mode);
     // UTF-8 with a byte order mark, so Excel detects the encoding of accented text.
     const bytes = new TextEncoder().encode(`\ufeff${text}`);
-    return { bytes, rows, columns, ms: performance.now() - started };
+    return { bytes, rows, columns, protectedCells, ms: performance.now() - started };
   },
   generate: async p => {
     if (busy) throw new Error(`Aguarde: ${busy}.`);
