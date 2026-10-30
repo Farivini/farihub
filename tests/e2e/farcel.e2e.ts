@@ -238,6 +238,12 @@ test('spaces, assistant context and honest placeholders', async () => {
   assert.deepEqual(errors, []);
 });
 
+/** Toolbar state follows the active cell asynchronously (a cellFormat request), so wait for it. */
+async function pressed(page: Page, selector: string, value: 'true' | 'false') {
+  await page.waitForFunction(([sel, v]) => document.querySelector(sel)?.getAttribute('aria-pressed') === v, [inPane(selector), value] as const, { timeout: 5000 })
+    .catch(async () => assert.equal(await page.getAttribute(inPane(selector), 'aria-pressed'), value, `${selector} aria-pressed`));
+}
+
 test('formatting: number formats, bold and alignment through the toolbar, kept on reopen', async () => {
   const { page, errors } = await fresh();
   await page.evaluate(() => navigator.clipboard.writeText('Receita\tMargem\n1234,5\t0,265\n99\t0,1'));
@@ -258,8 +264,8 @@ test('formatting: number formats, bold and alignment through the toolbar, kept o
   await idle(page);
   assert.equal(await copyText(page, 'A2:B3'), 'R$ 1.234,50\t26,5%\nR$ 99,00\t10,0%');
   await select(page, 'A1');
-  assert.equal(await page.getAttribute(inPane('[data-testid=bold]'), 'aria-pressed'), 'true');
-  assert.equal(await page.getAttribute(inPane('[aria-label=Centralizar]'), 'aria-pressed'), 'true');
+  await pressed(page, '[data-testid=bold]', 'true');
+  await pressed(page, '[aria-label=Centralizar]', 'true');
   assert.equal(await formulaBar(page), 'Receita', 'formatting does not change the value');
   await select(page, 'A2:A3');
   await page.waitForFunction(p => document.querySelector(`${p} [data-testid=selection-stats]`)?.textContent?.includes('Soma: R$ 1.333,5'), PANE);
@@ -269,7 +275,7 @@ test('formatting: number formats, bold and alignment through the toolbar, kept o
   await page.keyboard.press('ControlOrMeta+z');
   await idle(page);
   await select(page, 'A1');
-  assert.equal(await page.getAttribute(inPane('[aria-label=Centralizar]'), 'aria-pressed'), 'false');
+  await pressed(page, '[aria-label=Centralizar]', 'false');
   // Save and reopen keeps the formats.
   const download = page.waitForEvent('download');
   await page.keyboard.press('ControlOrMeta+s');
@@ -281,7 +287,7 @@ test('formatting: number formats, bold and alignment through the toolbar, kept o
   await second.page.waitForFunction(() => document.querySelector('.doc-pane:not([hidden]) [data-testid=save-state]')?.textContent?.includes('Salvo neste dispositivo'));
   assert.equal(await copyText(second.page, 'A2:B3'), 'R$ 1.234,50\t26,5%\nR$ 99,00\t10,0%');
   await select(second.page, 'A1');
-  assert.equal(await second.page.getAttribute(inPane('[data-testid=bold]'), 'aria-pressed'), 'true');
+  await pressed(second.page, '[data-testid=bold]', 'true');
   assert.deepEqual([...errors, ...second.errors], []);
 });
 
