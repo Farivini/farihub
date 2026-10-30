@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 
 /** Modal dialog drawn by the app (window.confirm is unavailable in some hosts). */
-export function Dialog({ title, children, onClose, actions, testId }: {
-  title: string; children: ReactNode; onClose(): void; actions: ReactNode; testId?: string;
+export function Dialog({ title, children, onClose, actions, testId, wide }: {
+  title: string; children: ReactNode; onClose(): void; actions: ReactNode; testId?: string; wide?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -13,7 +13,7 @@ export function Dialog({ title, children, onClose, actions, testId }: {
   }, []);
   return (
     <div className="dialog-backdrop" onMouseDown={onClose}>
-      <div ref={box} className="dialog" role="dialog" aria-modal="true" aria-label={title} data-testid={testId}
+      <div ref={box} className={wide ? 'dialog wide' : 'dialog'} role="dialog" aria-modal="true" aria-label={title} data-testid={testId}
         onMouseDown={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
         <h3>{title}</h3>
         {children}

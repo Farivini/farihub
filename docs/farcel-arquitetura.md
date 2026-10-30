@@ -84,7 +84,7 @@ O IronCalc 0.9.1 não tem idioma português (`pt`, `pt-BR` e `pt-PT` rejeitados;
 
 - No Chromium desktop o app usa o seletor nativo de salvar (File System Access API); em outros navegadores (e em automação) faz download. O Chromium descarta nomes com acento passados por download; nesse caminho o nome é gravado sem diacríticos.
 - O conteúdo binário é o formato interno da versão do IronCalc indicada no cabeçalho; compatibilidade entre versões do motor não é garantida.
-- XLSX: o pacote WASM 0.9.1 não expõe importação/exportação XLSX (o binding Node expõe). Para o executável Windows, a exportação pode usar o crate Rust nativo; no navegador seria preciso compilar o IronCalc com essa função para WASM. Não implementado.
+- XLSX: o pacote WASM 0.9.1 não expõe importação/exportação XLSX. Resolvido com um conversor separado compilado do crate Rust `ironcalc` 0.9.1 (`native/xlsx-bridge`), que troca XLSX ↔ `Model.toBytes()` sem mudar o motor; ver [xlsx.md](xlsx.md).
 
 ## Base sintética de um milhão de linhas
 

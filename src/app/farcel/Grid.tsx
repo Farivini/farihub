@@ -87,8 +87,8 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
   const [rowHeaderWidth, setRowHeaderWidth] = useState(BASE_ROW_HEADER_WIDTH);
   const ROW_HEADER_WIDTH = Math.round(Math.max(BASE_ROW_HEADER_WIDTH, rowHeaderWidth) * zoom);
   const fontSize = Math.round(14 * zoom * 10) / 10;
-  const FONT = `${fontSize}px ${FAMILY}`;
-  const BOLD_FONT = `600 ${fontSize}px ${FAMILY}`;
+  // Indexed by the bold and italic style bits.
+  const FONTS = [`${fontSize}px ${FAMILY}`, `600 ${fontSize}px ${FAMILY}`, `italic ${fontSize}px ${FAMILY}`, `italic 600 ${fontSize}px ${FAMILY}`];
   const HEADER_FONT = `${Math.round(13 * zoom * 10) / 10}px ${FAMILY}`;
   const HEADER_FONT_ACTIVE = `600 ${Math.round(13 * zoom * 10) / 10}px ${FAMILY}`;
   const zoomRef = useRef(zoom);
@@ -271,7 +271,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
         if (!cell || cell.kind === 0 || cell.value === '') continue;
         const x = xOf(column);
         const w = widthOf(column);
-        const font = cell.style & 1 ? BOLD_FONT : FONT;
+        const font = FONTS[cell.style & 3];
         if (font !== currentFont) { ctx.font = font; currentFont = font; }
         const text = cell.value.includes('\n') ? cell.value.split('\n')[0] + ' …' : cell.value;
         const width = ctx.measureText(text).width;
@@ -676,7 +676,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     left: ROW_HEADER_WIDTH + columnX(editorCell.column) - m.contentLeft,
     top: HEADER_HEIGHT + (editorCell.row - 1) * ROW_HEIGHT - m.contentTop,
     minWidth: widthOf(editorCell.column),
-    font: FONT,
+    font: FONTS[0],
     lineHeight: `${ROW_HEIGHT - 6}px`,
     height: ROW_HEIGHT,
   } : {};

@@ -38,10 +38,14 @@ Primeira versão funcional de **Planilhas no navegador**:
 - cálculo real no **IronCalc 0.9.1 (WASM) dentro de um Web Worker**, fonte única da verdade;
 - fórmulas em português (`=SOMA(A1:A3)`, `=SE(A1>0;"sim";"não")`, `1,5`) por uma camada de tokens;
 - tabela dinâmica com linhas, colunas, valores (soma, contagem) e filtros, e gráfico ligado ao resultado;
-- salvar e abrir **`.farcel`** (formato próprio; não é XLSX);
+- salvar e abrir **`.farcel`** (formato nativo: guarda também dinâmicas e gráficos);
+- **abrir e exportar XLSX** com o importador/exportador do próprio IronCalc compilado para WASM: fórmulas continuam fórmulas (em português na tela, em inglês no arquivo), várias planilhas, tipos e formatação básica; o app informa o que não é mantido e pede confirmação antes de exportar com perdas;
+- **importar CSV, TSV e TXT** com prévia (codificação, separador, decimal, cabeçalho, tipo por coluna; códigos com zeros à esquerda preservados) e **exportar CSV (;) e TSV**;
 - base sintética reprodutível de 1.000.000 de linhas, medida na interface.
 
-Documentos e Apresentações aparecem como espaços **em preparação** (as referências orientam o design futuro; não há editor). O assistente aparece **não conectado**: mostra o contexto limitado que receberia, sem enviar nada nem simular respostas. Não há executável Windows, importação/exportação XLSX nem comparação com o Microsoft Excel.
+Documentos e Apresentações aparecem como espaços **em preparação** (as referências orientam o design futuro; não há editor). O assistente aparece **não conectado**: mostra o contexto limitado que receberia, sem enviar nada nem simular respostas. Não há executável Windows. Os XLSX exportados foram verificados no LibreOffice Calc (que recalculou todas as fórmulas); **não houve verificação no Microsoft Excel**, indisponível neste ambiente.
+
+O que existe, o que é parcial e o que está planejado: [roadmap do produto](docs/roadmap-produto.md).
 
 ![Tabela dinâmica e gráfico](docs/screenshots/planilhas-dinamica.png)
 
@@ -61,7 +65,7 @@ Para experimentar em **Planilhas**:
 1. Digite nas células ou na barra de fórmulas (`=SOMA(A1:A3)`, `=SE(A1>0;"sim";"não")`), ou cole dados do Excel (Ctrl+V).
 2. Formate pela barra: formato de número (R$, %), **B**, alinhamento. O botão *fx* insere funções em português.
 3. **Dinâmica** cria uma tabela dinâmica a partir de A1 da planilha atual; arraste campos para Linhas, Colunas, Valores e Filtros. O gráfico fica abaixo.
-4. No trilho à esquerda, o ícone de arquivos tem **Nova planilha**, **Abrir…** (Ctrl+O), **Salvar** (Ctrl+S, grava `.farcel`) e **Base de teste…**, que gera 1.000.000 de linhas em uma aba nova (cerca de 25 s).
+4. No trilho à esquerda, o ícone de arquivos tem **Nova planilha**, **Abrir…** (Ctrl+O: `.farcel`, `.xlsx`, `.csv`, `.tsv`, `.txt`), **Salvar** (Ctrl+S, grava `.farcel`), **Exportar como Excel (.xlsx)**, **CSV** e **TSV**, e **Base de teste…**, que gera 1.000.000 de linhas em uma aba nova (cerca de 25 s). Um arquivo aberto entra numa aba nova quando a atual já tem conteúdo.
 5. O ✦ no canto superior direito mostra ou recolhe o assistente (ainda não conectado).
 
 ## Testes e medições
@@ -73,7 +77,12 @@ npm run build && npm run test:e2e   # fluxos no Chromium (Playwright)
 npm run bench:browser        # 1.000.000 de linhas na interface → reports/browser-million.json
 node scripts/bench-wasm-formulas.ts  # 1 M fórmulas por linha no WASM (Node)
 node scripts/screenshots.ts --million  # capturas em docs/screenshots/
+node scripts/bench-xlsx.ts           # XLSX/CSV com 100 mil e 1 M linhas → reports/xlsx-bench.json
+node scripts/xlsx-interop.ts && python3 scripts/xlsx-interop-libreoffice.py reports/interop/*.xlsx
+                                     # XLSX exportados recalculados no LibreOffice → reports/interop-libreoffice.json
 ```
+
+O conversor XLSX é WASM compilado de `native/xlsx-bridge` (Rust) e fica versionado em `vendor/xlsx-bridge/`; o `npm ci` não precisa de Rust. Para recompilar: `bash native/xlsx-bridge/build.sh` (instruções em [docs/xlsx.md](docs/xlsx.md)); o CI recompila e exige saída idêntica.
 
 `test:e2e` precisa de um Chromium para o Playwright (`npx playwright install chromium` se não houver).
 
@@ -87,6 +96,8 @@ npm run bench:ironcalc
 
 ## Documentos
 
+- [Roadmap do produto](docs/roadmap-produto.md) — implementado, parcial e planejado, por frente.
 - [Arquitetura e escolhas do Farcel](docs/farcel-arquitetura.md) — fonte da verdade, worker, grade, fórmulas pt-BR, dinâmica, arquivo, limitações.
+- [XLSX, CSV, TSV e TXT](docs/xlsx.md) — decisão técnica, o que é mantido, verificação no LibreOffice, medições, limitações.
 - [Resultados no navegador](docs/resultados-navegador.md) — 1.000.000 de linhas: tempos, memória, ambiente.
 - [Escopo da prova técnica](docs/prova-tecnica.md) e [resultados iniciais](docs/resultados-iniciais.md).

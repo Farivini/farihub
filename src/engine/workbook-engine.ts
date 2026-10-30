@@ -8,6 +8,8 @@ import type { FarcelHeader } from '../core/file-format.ts';
 import { computePivot, configFields } from '../core/pivot.ts';
 import type { PivotConfig, PivotResult } from '../core/pivot.ts';
 import { SYNTHETIC_HEADERS, rowToInputs, summaryFormulas, syntheticRows } from '../core/synthetic.ts';
+import { decodeText, interpret, parseDelimited, serializeDelimited } from '../core/delimited.ts';
+import type { DelimitedOptions, Separator } from '../core/delimited.ts';
 import { PivotSource } from './pivot-source.ts';
 
 export type IronCalc = typeof import('@ironcalc/wasm');
@@ -19,6 +21,7 @@ export const ENGINE_LANGUAGE = 'en';
 export const ENGINE_TIMEZONE = 'America/Sao_Paulo';
 export const MAX_COPY_CELLS = 500_000;
 export const MAX_FORMAT_CELLS = 200_000;
+const EXPORT_BLOCK_CELLS = 100_000;
 
 export const CellKind = { Empty: 0, Number: 1, Text: 2, Boolean: 3, Error: 4 } as const;
 
@@ -117,11 +120,17 @@ export class WorkbookEngine {
     const values: string[] = new Array(rows * columns);
     const kinds = new Uint8Array(rows * columns);
     const styles = new Uint8Array(rows * columns);
+    this.readValues(sheet, top, left, rows, columns, values, kinds, styles);
+    return { sheet, top, left, rows, columns, values, kinds, styles, revision: this.revision };
+  }
+
+  /** Displayed values (and kinds) of a block; style flags too when `styles` is given. */
+  private readValues(sheet: number, top: number, left: number, rows: number, columns: number, values: string[], kinds: Uint8Array, styles?: Uint8Array) {
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < columns; c++) {
         const i = r * columns + c;
         const value = this.model.getFormattedCellValue(sheet, top + r, left + c);
-        if (value !== '') styles[i] = this.styleFlags(sheet, top + r, left + c);
+        if (styles && value !== '') styles[i] = this.styleFlags(sheet, top + r, left + c);
         const type = this.model.getCellType(sheet, top + r, left + c);
         if (type === 1) {
           values[i] = limitPrecision(value);
@@ -138,7 +147,6 @@ export class WorkbookEngine {
         }
       }
     }
-    return { sheet, top, left, rows, columns, values, kinds, styles, revision: this.revision };
   }
 
   private styleFlags(sheet: number, row: number, column: number): number {
@@ -337,10 +345,100 @@ export class WorkbookEngine {
 
   static fromFile(ic: IronCalc, file: Uint8Array, memoryBytes?: () => number | null): { engine: WorkbookEngine; header: FarcelHeader; evaluateMs: number } {
     const { header, payload } = decodeFarcel(file);
-    const model = ic.Model.fromBytes(payload, ENGINE_LANGUAGE);
+    return { ...WorkbookEngine.fromModelBytes(ic, payload, memoryBytes), header };
+  }
+
+  /** A model from `Model.toBytes()` data (a .farcel payload or a converted .xlsx), recalculated. */
+  static fromModelBytes(ic: IronCalc, bytes: Uint8Array, memoryBytes?: () => number | null): { engine: WorkbookEngine; evaluateMs: number } {
+    const model = ic.Model.fromBytes(bytes, ENGINE_LANGUAGE);
     const started = performance.now();
     model.evaluate();
-    return { engine: new WorkbookEngine(model, memoryBytes), header, evaluateMs: performance.now() - started };
+    return { engine: new WorkbookEngine(model, memoryBytes), evaluateMs: performance.now() - started };
+  }
+
+  /** The engine's own representation of the workbook, as `Model.toBytes()` returns it. */
+  modelBytes(): Uint8Array {
+    return this.model.toBytes();
+  }
+
+  /**
+   * A new workbook with one sheet holding a delimited text file. Every value goes through
+   * `interpret` (explicit numbers, dates and text; no formulas). Refuses files beyond the
+   * sheet limits instead of cutting them.
+   */
+  static async fromDelimited(ic: IronCalc, name: string, bytes: Uint8Array, options: DelimitedOptions, settings: {
+    chunk?: number; memoryBytes?: () => number | null; onProgress?: (done: number, total: number) => void;
+  } = {}): Promise<{ engine: WorkbookEngine; rows: number; columns: number }> {
+    const chunk = settings.chunk ?? 100_000;
+    const text = decodeText(bytes, options.encoding);
+    // Progress total: line breaks, an upper bound when quoted fields hold line breaks.
+    let lines = 1;
+    for (let i = text.indexOf('\n'); i !== -1 && i < text.length - 1; i = text.indexOf('\n', i + 1)) lines++;
+    let model = new ic.Model(name, ENGINE_LOCALE, ENGINE_TIMEZONE, ENGINE_LANGUAGE);
+    model.renameSheet(0, sheetName(name));
+    model.pauseEvaluation();
+    const engine = new WorkbookEngine(model, settings.memoryBytes);
+    let row = 0;
+    let columns = 0;
+    try {
+      for (const fields of parseDelimited(text, options.separator)) {
+        row++;
+        if (row > MAX_ROW) throw new RangeError(`O arquivo tem mais de ${MAX_ROW.toLocaleString('pt-BR')} linhas, o limite de uma planilha. Nada foi importado.`);
+        if (fields.length > MAX_COLUMN) throw new RangeError(`A linha ${row} tem mais de ${MAX_COLUMN.toLocaleString('pt-BR')} colunas, o limite de uma planilha. Nada foi importado.`);
+        columns = Math.max(columns, fields.length);
+        const header = options.header && row === 1;
+        for (let c = 0; c < fields.length; c++) {
+          const value = interpret(fields[c], header ? 'text' : options.columns[c] ?? 'auto', options.decimal);
+          if (value.input !== null) model.setUserInput(0, row, c + 1, value.input);
+        }
+        if (row % chunk === 0) {
+          model = resetHistory(ic, model);
+          engine.model = model;
+          settings.onProgress?.(row, Math.max(row, lines));
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
+    } catch (error) {
+      model.free();
+      throw error;
+    }
+    engine.model = resetHistory(ic, model);
+    engine.model.resumeEvaluation();
+    engine.model.evaluate();
+    engine.pivotSource.reset(0);
+    engine.revision++;
+    return { engine, rows: row, columns };
+  }
+
+  /** Last row and column holding data in a sheet (0 when empty). Scans rows, about 0.3 s per sheet. */
+  usedRange(sheet: number): { rows: number; columns: number } {
+    let rows = 0;
+    let columns = 0;
+    for (let row = 1; row <= MAX_ROW; row++) {
+      const filled = this.model.getColumnsWithData(sheet, row);
+      if (filled.length === 0) continue;
+      rows = row;
+      for (let i = 0; i < filled.length; i++) if (filled[i] > columns) columns = filled[i];
+    }
+    return { rows, columns };
+  }
+
+  /** One sheet as delimited text with the values as displayed (results, not formulas). */
+  toDelimited(sheet: number, separator: Separator): { text: string; rows: number; columns: number } {
+    const { rows, columns } = this.usedRange(sheet);
+    const out: string[] = [];
+    // About EXPORT_BLOCK_CELLS per block, never more rows than the sheet uses.
+    const block = Math.max(1, Math.min(rows, Math.floor(EXPORT_BLOCK_CELLS / Math.max(1, columns))));
+    const values: string[] = new Array(block * columns);
+    const kinds = new Uint8Array(block * columns);
+    for (let top = 1; top <= rows; top += block) {
+      const height = Math.min(block, rows - top + 1);
+      this.readValues(sheet, top, 1, height, columns, values, kinds);
+      const lines: string[][] = [];
+      for (let r = 0; r < height; r++) lines.push(values.slice(r * columns, (r + 1) * columns));
+      out.push(serializeDelimited(lines, separator));
+    }
+    return { text: out.join(''), rows, columns };
   }
 
   /**
@@ -369,11 +467,7 @@ export class WorkbookEngine {
       if ((row - 1) % chunk === 0 || row - 1 === rows) {
         fillMs += performance.now() - fillStarted;
         const resetStarted = performance.now();
-        model.flushSendQueue();
-        const bytes = model.toBytes();
-        model.free();
-        model = ic.Model.fromBytes(bytes, ENGINE_LANGUAGE);
-        model.pauseEvaluation();
+        model = resetHistory(ic, model);
         engine.model = model;
         historyResetMs += performance.now() - resetStarted;
         options.onProgress?.(row - 1, rows, engine);
@@ -414,4 +508,23 @@ export class WorkbookEngine {
 
   canUndo(): boolean { return this.undoStack.length > 0; }
   canRedo(): boolean { return this.redoStack.length > 0; }
+}
+
+/**
+ * Rebuilds a model from its own bytes to drop the undo history IronCalc keeps for each user
+ * input (measured: hundreds of bytes per cell). Evaluation stays paused if it was.
+ */
+function resetHistory(ic: IronCalc, model: Model): Model {
+  model.flushSendQueue();
+  const bytes = model.toBytes();
+  model.free();
+  const fresh = ic.Model.fromBytes(bytes, ENGINE_LANGUAGE);
+  fresh.pauseEvaluation();
+  return fresh;
+}
+
+/** A valid sheet name from a workbook name: at most 31 characters, none of : \\ / ? * [ ]. */
+export function sheetName(workbookName: string): string {
+  const name = workbookName.replace(/[:\\/?*[\]]/g, '_').trim().slice(0, 31);
+  return name || 'Planilha1';
 }

@@ -93,6 +93,47 @@ const handlers: Handlers = {
       busy = null;
     }
   },
+  loadModel: p => {
+    if (busy) throw new Error(`Aguarde: ${busy}.`);
+    busy = 'abrindo arquivo';
+    try {
+      const started = performance.now();
+      const loaded = WorkbookEngine.fromModelBytes(ironcalc, p.bytes, memoryBytes);
+      engine = loaded.engine;
+      emit({ event: 'changed', revision: engine.revision });
+      return { ...info(), ms: performance.now() - started, evaluateMs: loaded.evaluateMs };
+    } finally {
+      busy = null;
+    }
+  },
+  modelBytes: () => {
+    const started = performance.now();
+    const bytes = engine.modelBytes();
+    return { bytes, ms: performance.now() - started };
+  },
+  importDelimited: async p => {
+    if (busy) throw new Error(`Aguarde: ${busy}.`);
+    busy = 'importando arquivo';
+    try {
+      const started = performance.now();
+      const imported = await WorkbookEngine.fromDelimited(ironcalc, p.name, p.bytes, p.options, {
+        memoryBytes,
+        onProgress: (done, total) => emit({ event: 'progress', task: 'import', done, total, label: 'linhas' }),
+      });
+      engine = imported.engine;
+      emit({ event: 'changed', revision: engine.revision });
+      return { ...info(), rows: imported.rows, columns: imported.columns, ms: performance.now() - started };
+    } finally {
+      busy = null;
+    }
+  },
+  exportDelimited: p => {
+    const started = performance.now();
+    const { text, rows, columns } = engine.toDelimited(p.sheet, p.separator);
+    // UTF-8 with a byte order mark, so Excel detects the encoding of accented text.
+    const bytes = new TextEncoder().encode(`\ufeff${text}`);
+    return { bytes, rows, columns, ms: performance.now() - started };
+  },
   generate: async p => {
     if (busy) throw new Error(`Aguarde: ${busy}.`);
     if (!Number.isSafeInteger(p.rows) || p.rows < 1 || p.rows > 1_048_575) throw new RangeError('Quantidade de linhas inválida');

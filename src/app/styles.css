@@ -461,3 +461,23 @@ button:disabled { cursor: default; opacity: 0.38; }
   .assistant-resizer { display: none; }
   .doc-tab { min-width: 120px; }
 }
+
+/* Import of delimited text: options and preview */
+.dialog.wide { width: min(880px, calc(100% - 32px)); }
+.import-options { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.import-options label { min-width: 160px; }
+.import-options label.check { flex-direction: row; align-items: center; gap: 8px; min-width: 0; height: 34px; color: var(--text-1); font-size: 13px; }
+.dialog select { height: 34px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface-1); color: var(--text-1); padding: 0 8px; outline: none; }
+.dialog select:focus { border-color: var(--orange); }
+.import-preview { max-height: 320px; overflow: auto; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--grid-bg); margin-bottom: 12px; }
+.import-preview table { border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; min-width: 100%; }
+.import-preview th { position: sticky; top: 0; background: var(--grid-header); text-align: left; font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border-strong); vertical-align: top; }
+.import-preview th span { display: block; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px; }
+.import-preview th select { height: 26px; font-size: 12px; }
+.import-preview td { padding: 4px 8px; border-bottom: 1px solid var(--grid-line); white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.import-preview td.number, .import-preview td.date { text-align: right; }
+.import-preview td.date { color: #9ec5ff; }
+.import-note { font-size: 12px; }
+.report-list { margin: 0 0 14px; padding-left: 18px; color: var(--text-2); line-height: 1.6; }
+.report-list li::marker { color: var(--text-3); }
+.dialog h4 { margin: 4px 0 6px; font-size: 13px; color: var(--text-1); font-weight: 600; }
