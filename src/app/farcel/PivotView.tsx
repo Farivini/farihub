@@ -29,9 +29,10 @@ interface Props {
   onChange(pivot: PivotDef): void;
   loadLabels(field: string): Promise<string[]>;
   onError(message: string): void;
+  zoom?: number;
 }
 
-export function PivotView({ pivot, sourceName, state, fields, rows, onChange, loadLabels, onError }: Props) {
+export function PivotView({ pivot, sourceName, state, fields, rows, onChange, loadLabels, onError, zoom = 1 }: Props) {
   const table = state?.table ?? null;
   const [tableKey] = useState(() => `pivot-${pivot.id}`);
   const version = useRef(0);
@@ -84,7 +85,7 @@ export function PivotView({ pivot, sourceName, state, fields, rows, onChange, lo
         ) : (
           <>
             <div className="pivot-table" data-testid="pivot-table">
-              <Grid controller={controller} label="Resultado da tabela dinâmica" onError={onError} />
+              <Grid controller={controller} zoom={zoom} label="Resultado da tabela dinâmica" onError={onError} />
             </div>
             <section className="pivot-chart" aria-label="Gráfico da tabela dinâmica">
               <header>

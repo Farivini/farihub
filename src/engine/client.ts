@@ -35,6 +35,14 @@ export class EngineClient {
     });
   }
 
+  /** Stops the worker and its WASM memory. Pending calls are rejected. */
+  terminate(): void {
+    this.worker.terminate();
+    const error = new Error('Pasta fechada');
+    this.pending.forEach(entry => entry.reject(error));
+    this.pending.clear();
+  }
+
   on(listener: (event: EngineEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

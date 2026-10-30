@@ -11,7 +11,7 @@
 export const MAGIC = 'FARCEL01';
 export const FORMAT_VERSION = 1;
 export const FILE_EXTENSION = '.farcel';
-export const FORMAT_DESCRIPTION = 'Pasta de trabalho Farcel (.farcel): formato próprio com o estado interno do IronCalc e metadados JSON. Não é XLSX.';
+export const FORMAT_DESCRIPTION = 'Pasta de trabalho Fariv (.farcel): formato próprio com o estado interno do IronCalc e metadados JSON. Não é XLSX.';
 
 export interface FarcelHeader {
   format: 'farcel';

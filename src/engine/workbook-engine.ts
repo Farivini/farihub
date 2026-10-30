@@ -18,10 +18,36 @@ export const ENGINE_LOCALE = 'es';
 export const ENGINE_LANGUAGE = 'en';
 export const ENGINE_TIMEZONE = 'America/Sao_Paulo';
 export const MAX_COPY_CELLS = 500_000;
+export const MAX_FORMAT_CELLS = 200_000;
 
 export const CellKind = { Empty: 0, Number: 1, Text: 2, Boolean: 3, Error: 4 } as const;
 
-export interface Viewport { sheet: number; top: number; left: number; rows: number; columns: number; values: string[]; kinds: Uint8Array; revision: number }
+/**
+ * Per-cell presentation flags in a viewport: bit 0 bold, bit 1 italic, bits 2-3 horizontal
+ * alignment (0 general, 1 left, 2 center, 3 right).
+ */
+export const StyleFlag = { Bold: 1, Italic: 2, AlignShift: 2, AlignMask: 12 } as const;
+const ALIGNMENTS = ['general', 'left', 'center', 'right'] as const;
+export type HorizontalAlign = typeof ALIGNMENTS[number];
+
+/** Number formats offered in the toolbar. Codes use the engine's canonical (en) notation. */
+export const NUMBER_FORMATS = [
+  { id: 'general', label: 'Geral', code: 'general', sample: '1234,5' },
+  { id: 'number', label: 'Número', code: '#,##0.00', sample: '1.234,50' },
+  { id: 'currency', label: 'Moeda (R$)', code: '"R$" #,##0.00', sample: 'R$ 1.234,50' },
+  { id: 'percent', label: 'Porcentagem', code: '0.0%', sample: '12,5%' },
+  { id: 'date', label: 'Data', code: 'dd/mm/yyyy', sample: '30/10/2026' },
+] as const;
+export type NumberFormatId = typeof NUMBER_FORMATS[number]['id'];
+
+export type FormatChange =
+  | { kind: 'bold'; value: boolean }
+  | { kind: 'align'; value: HorizontalAlign }
+  | { kind: 'number'; value: NumberFormatId };
+
+export interface CellFormat { bold: boolean; align: HorizontalAlign; numberFormat: NumberFormatId | 'custom'; numberFormatCode: string }
+
+export interface Viewport { sheet: number; top: number; left: number; rows: number; columns: number; values: string[]; kinds: Uint8Array; styles: Uint8Array; revision: number }
 export interface Change { sheet: number; rect: Rect }
 
 export interface GenerationReport {
@@ -90,10 +116,12 @@ export class WorkbookEngine {
     columns = Math.max(0, Math.min(columns, MAX_COLUMN - left + 1));
     const values: string[] = new Array(rows * columns);
     const kinds = new Uint8Array(rows * columns);
+    const styles = new Uint8Array(rows * columns);
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < columns; c++) {
         const i = r * columns + c;
         const value = this.model.getFormattedCellValue(sheet, top + r, left + c);
+        if (value !== '') styles[i] = this.styleFlags(sheet, top + r, left + c);
         const type = this.model.getCellType(sheet, top + r, left + c);
         if (type === 1) {
           values[i] = limitPrecision(value);
@@ -110,7 +138,70 @@ export class WorkbookEngine {
         }
       }
     }
-    return { sheet, top, left, rows, columns, values, kinds, revision: this.revision };
+    return { sheet, top, left, rows, columns, values, kinds, styles, revision: this.revision };
+  }
+
+  private styleFlags(sheet: number, row: number, column: number): number {
+    const style = this.model.getCellStyle(sheet, row, column).style;
+    let flags = 0;
+    if (style.font?.b) flags |= StyleFlag.Bold;
+    if (style.font?.i) flags |= StyleFlag.Italic;
+    const align = ALIGNMENTS.indexOf((style.alignment?.horizontal ?? 'general') as HorizontalAlign);
+    if (align > 0) flags |= align << StyleFlag.AlignShift;
+    return flags;
+  }
+
+  /** Formatting of one cell, for the toolbar state. */
+  cellFormat(sheet: number, row: number, column: number): CellFormat {
+    const style = this.model.getCellStyle(sheet, row, column).style;
+    const code = style.num_fmt ?? 'general';
+    const known = NUMBER_FORMATS.find(f => f.code.toLowerCase() === code.toLowerCase());
+    const align = (style.alignment?.horizontal ?? 'general') as HorizontalAlign;
+    return {
+      bold: !!style.font?.b,
+      align: ALIGNMENTS.includes(align) ? align : 'general',
+      numberFormat: known?.id ?? 'custom',
+      numberFormatCode: code,
+    };
+  }
+
+  /**
+   * Applies one formatting change to a range. One engine undo step.
+   * IronCalc stores the style per cell (a whole column costs about 1 s and 250 MB), so whole
+   * columns or rows are limited to the cells that hold data, and other ranges to MAX_FORMAT_CELLS.
+   */
+  format(sheet: number, input: Rect, change: FormatChange): Change {
+    const rect = { ...input };
+    const wholeColumns = rect.top === 1 && rect.bottom === MAX_ROW;
+    const wholeRows = rect.left === 1 && rect.right === MAX_COLUMN;
+    if (wholeColumns || wholeRows) {
+      // Extent of the data inside the whole selection (scanning every column takes ~30 ms).
+      let lastRow = 0;
+      let lastColumn = 0;
+      for (let column = rect.left; column <= rect.right; column++) {
+        const rows = this.model.getRowsWithData(sheet, column);
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          if (row < rect.top || row > rect.bottom) continue;
+          if (row > lastRow) lastRow = row;
+          lastColumn = column;
+        }
+      }
+      if (wholeColumns) rect.bottom = Math.max(rect.top, lastRow);
+      if (wholeRows) rect.right = Math.max(rect.left, lastColumn);
+    }
+    if (rectSize(rect) > MAX_FORMAT_CELLS) {
+      throw new RangeError(`Seleção grande demais para formatar nesta versão (máximo ${MAX_FORMAT_CELLS.toLocaleString('pt-BR')} células).`);
+    }
+    const area = { sheet, row: rect.top, column: rect.left, width: rect.right - rect.left + 1, height: rect.bottom - rect.top + 1 };
+    if (change.kind === 'bold') this.model.updateRangeStyle(area, 'font.b', String(change.value));
+    else if (change.kind === 'align') this.model.updateRangeStyle(area, 'alignment.horizontal', change.value);
+    else {
+      const format = NUMBER_FORMATS.find(f => f.id === change.value);
+      if (!format) throw new RangeError(`Formato desconhecido: ${change.value}`);
+      this.model.updateRangeStyle(area, 'num_fmt', format.code);
+    }
+    return this.commit({ sheet, rect });
   }
 
   /** Text for the formula bar / cell editor, in pt-BR. */

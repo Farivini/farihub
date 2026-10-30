@@ -2,7 +2,7 @@ import type { CellRef, Rect } from '../core/address.ts';
 import type { PivotConfig, PivotResult } from '../core/pivot.ts';
 import type { FarcelHeader } from '../core/file-format.ts';
 import type { AssistantContext } from '../core/assistant-context.ts';
-import type { GenerationReport, Viewport } from './workbook-engine.ts';
+import type { CellFormat, FormatChange, GenerationReport, Viewport } from './workbook-engine.ts';
 
 export interface WorkbookInfo { name: string; sheets: string[]; revision: number; canUndo: boolean; canRedo: boolean }
 export interface MutationResult extends WorkbookInfo { sheet: number; rect: Rect | null; ms: number }
@@ -19,6 +19,8 @@ export interface EngineApi {
   clear: [{ sheet: number; rect: Rect }, MutationResult];
   paste: [{ sheet: number; origin: CellRef; text: string }, MutationResult];
   copy: [{ sheet: number; rect: Rect }, string];
+  cellFormat: [{ sheet: number; row: number; column: number }, CellFormat];
+  format: [{ sheet: number; rect: Rect; change: FormatChange }, MutationResult];
   undo: [void, MutationResult | null];
   redo: [void, MutationResult | null];
   edge: [{ sheet: number; from: CellRef; direction: 'up' | 'down' | 'left' | 'right' }, CellRef];

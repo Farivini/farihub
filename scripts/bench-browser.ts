@@ -9,7 +9,7 @@ import { cpus, platform, release, totalmem, tmpdir, arch } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import type { Page } from 'playwright';
-import { startApp, openPage, select, idle, copyText } from '../tests/e2e/harness.ts';
+import { startApp, openPage, select, idle, copyText, inPane } from '../tests/e2e/harness.ts';
 import { syntheticTotals, REGIONS, CHANNELS, DEFAULT_SEED, centsToInput, syntheticRows } from '../src/core/synthetic.ts';
 
 const ROWS = Number(process.argv[2] ?? 1_000_000);
@@ -44,7 +44,7 @@ async function memory(page: Page) {
 async function settledAfter(page: Page, action: () => Promise<void>): Promise<number> {
   const t0 = await page.evaluate(() => performance.now());
   await action();
-  await page.waitForFunction(() => [...document.querySelectorAll('.grid-root')].every(g => g.getAttribute('data-settled') === 'true'), null, { timeout: 120_000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('.doc-pane:not([hidden]) .grid-root')].every(g => g.getAttribute('data-settled') === 'true'), null, { timeout: 120_000 });
   return page.evaluate(start => {
     const draws = performance.getEntriesByName('grid:draw');
     const last = draws[draws.length - 1];
@@ -84,7 +84,8 @@ try {
 
   // 1. Generate the base inside the engine worker.
   console.log(`Gerando ${ROWS} linhas…`);
-  await page.click('text=Base de teste');
+  await page.click('[data-testid=files-menu]');
+  await page.click('role=menuitem[name=/Base de teste/]');
   await page.fill('.dialog input[name=rows]', String(ROWS));
   await page.click('.dialog button.primary');
   await page.waitForSelector('[data-testid=generation-report]', { timeout: 15 * 60_000 });
@@ -101,7 +102,7 @@ try {
 
   // 2. Formula results against the independent expectation.
   const expected = syntheticTotals(ROWS, DEFAULT_SEED);
-  await page.locator('.sheet-tab', { hasText: 'Resumo' }).click();
+  await page.locator(inPane('.sheet-tab'), { hasText: 'Resumo' }).click();
   await idle(page);
   const summary = (await copyText(page, 'B1:B3')).split('\n');
   assert.equal(Math.round(parseNumber(summary[0]) * 100), expected.revenueCents, 'SOMA');
@@ -110,7 +111,7 @@ try {
   report.formulaCheck = { soma: summary[0], somase: summary[1], contValores: summary[2], matchesIndependentExpectation: true };
 
   // 3. Navigation and scrolling on the populated sheet.
-  await page.locator('.sheet-tab', { hasText: 'Dados' }).click();
+  await page.locator(inPane('.sheet-tab'), { hasText: 'Dados' }).click();
   await idle(page);
   const jumpLast = await settledAfter(page, async () => { await select(page, `E${ROWS + 1}`); });
   const lastRow = [...syntheticRows(ROWS, DEFAULT_SEED)].at(-1)!;
@@ -118,7 +119,7 @@ try {
   const jumpMiddle = await settledAfter(page, async () => { await select(page, `A${Math.floor(ROWS / 2)}`); });
   const drawsBefore = (await measures(page, 'grid:draw')).length;
   const fetchesBefore = (await measures(page, 'grid:fetch')).length;
-  const box = (await page.locator('.farcel-body [data-testid=grid-scroller]').boundingBox())!;
+  const box = (await page.locator(inPane('.farcel-body [data-testid=grid-scroller]')).boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   const scrollStarted = Date.now();
   for (let i = 0; i < 60; i++) { await page.mouse.wheel(0, i % 20 < 10 ? 1500 : -900); await page.waitForTimeout(16); }
@@ -138,7 +139,7 @@ try {
   await page.keyboard.type('1000');
   const editLatency = await settledAfter(page, async () => { await page.keyboard.press('Enter'); await idle(page); });
   const edit = (await measures(page, 'engine:setInput')).at(-1)!;
-  await page.locator('.sheet-tab', { hasText: 'Resumo' }).click();
+  await page.locator(inPane('.sheet-tab'), { hasText: 'Resumo' }).click();
   await idle(page);
   const afterEdit = (await copyText(page, 'B1')).split('\n');
   assert.equal(Math.round(parseNumber(afterEdit[0]) * 100), expected.revenueCents - firstRow.revenueCents + 100_000, 'SOMA after edit');
@@ -149,19 +150,19 @@ try {
   console.log('Edição', report.editRecalculation);
 
   // 5. Pivot: first build (extraction from the engine + aggregation), reconfiguration, refresh after edit.
-  await page.locator('.sheet-tab', { hasText: 'Dados' }).click();
-  await page.click('text=Tabela dinâmica');
+  await page.locator(inPane('.sheet-tab'), { hasText: 'Dados' }).click();
+  await page.click(inPane('[data-testid=new-pivot]'));
   await page.waitForSelector('[data-testid=field-Região]');
   await page.click('[data-testid=field-Região]');
   await page.click('[data-testid=field-Receita]');
-  await page.waitForFunction(() => document.querySelector('[data-testid=pivot-info]')?.getAttribute('data-status') === 'ready', null, { timeout: 10 * 60_000 });
+  await page.waitForFunction(() => document.querySelector('.doc-pane:not([hidden]) [data-testid=pivot-info]')?.getAttribute('data-status') === 'ready', null, { timeout: 10 * 60_000 });
   const pivotRuns = async () => (await measures(page, 'pivot:compute')).filter(m => (m.detail as { current: boolean }).current);
   const first = (await pivotRuns()).at(-1)!;
   await page.dragAndDrop('[data-testid=field-Canal]', '[data-testid=zone-columns]');
-  await page.waitForFunction(n => performance.getEntriesByName('pivot:compute').length > n && document.querySelector('[data-testid=pivot-info]')?.getAttribute('data-status') === 'ready', (await measures(page, 'pivot:compute')).length, { timeout: 10 * 60_000 });
+  await page.waitForFunction(n => performance.getEntriesByName('pivot:compute').length > n && document.querySelector('.doc-pane:not([hidden]) [data-testid=pivot-info]')?.getAttribute('data-status') === 'ready', (await measures(page, 'pivot:compute')).length, { timeout: 10 * 60_000 });
   const second = (await pivotRuns()).at(-1)!;
   const pivotTsv = await (async () => {
-    await page.click('[data-testid=pivot-table] [data-testid=grid-scroller]', { position: { x: 100, y: 40 } });
+    await page.click(inPane('[data-testid=pivot-table] [data-testid=grid-scroller]'), { position: { x: 100, y: 40 } });
     await page.keyboard.press('ControlOrMeta+a');
     await page.evaluate(() => navigator.clipboard.writeText('(vazio)'));
     await page.keyboard.press('ControlOrMeta+c');
@@ -177,16 +178,16 @@ try {
     assert.equal(Math.round(parseNumber(line[header.indexOf('Total geral')]) * 100), centsTotal, `pivot ${region}`);
   }
   assert.ok(CHANNELS.every(channel => header.includes(channel)));
-  const chartBars = await page.locator('.chart-bar').count();
+  const chartBars = await page.locator(inPane('.chart-bar')).count();
   // Edit a source cell, return to the pivot: snapshot patched, then aggregated again.
-  await page.locator('.sheet-tab', { hasText: 'Dados' }).click();
+  await page.locator(inPane('.sheet-tab'), { hasText: 'Dados' }).click();
   await select(page, 'E3');
   await page.keyboard.type('0');
   await page.keyboard.press('Enter');
   await idle(page);
   const beforeRefresh = (await measures(page, 'pivot:compute')).length;
-  await page.locator('.sheet-tab.pivot button[role=tab]').click();
-  await page.waitForFunction(n => performance.getEntriesByName('pivot:compute').length > n && document.querySelector('[data-testid=pivot-info]')?.getAttribute('data-status') === 'ready', beforeRefresh, { timeout: 10 * 60_000 });
+  await page.locator(inPane('.sheet-tab.pivot button[role=tab]')).click();
+  await page.waitForFunction(n => performance.getEntriesByName('pivot:compute').length > n && document.querySelector('.doc-pane:not([hidden]) [data-testid=pivot-info]')?.getAttribute('data-status') === 'ready', beforeRefresh, { timeout: 10 * 60_000 });
   const third = (await pivotRuns()).at(-1)!;
   const extraction = await page.evaluate(() => (window as unknown as { farcelDiagnostics: { stats(): Promise<unknown> } }).farcelDiagnostics.stats());
   report.pivot = {
@@ -211,11 +212,11 @@ try {
   await page.context().close();
   const reopened = await openPage(app.browser, app.url);
   await reopened.page.setInputFiles('[data-testid=open-input]', path);
-  await reopened.page.waitForFunction(() => /^(Aberto|.*farcel)/.test(document.querySelector('[data-testid=status-message]')?.textContent ?? '') , null, { timeout: 10 * 60_000 });
-  const openStatus = await reopened.page.textContent('[data-testid=status-message]');
+  await reopened.page.waitForFunction(() => /^(Aberto|.*farcel)/.test(document.querySelector('.doc-pane:not([hidden]) [data-testid=status-message]')?.textContent ?? '') , null, { timeout: 10 * 60_000 });
+  const openStatus = await reopened.page.textContent(inPane('[data-testid=status-message]'));
   assert.match(openStatus ?? '', /^Aberto/);
   const opened = (await measures(reopened.page, 'engine:open')).at(-1)!;
-  await reopened.page.locator('.sheet-tab', { hasText: 'Resumo' }).click();
+  await reopened.page.locator(inPane('.sheet-tab'), { hasText: 'Resumo' }).click();
   await idle(reopened.page);
   const reopenedSum = await copyText(reopened.page, 'B1');
   assert.equal(Math.round(parseNumber(reopenedSum) * 100), expected.revenueCents - firstRow.revenueCents + 100_000 - [...syntheticRows(2, DEFAULT_SEED)][1].revenueCents);

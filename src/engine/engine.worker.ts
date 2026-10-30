@@ -53,6 +53,8 @@ const handlers: Handlers = {
   clear: p => mutation(() => engine.clear(p.sheet, p.rect))!,
   paste: p => mutation(() => engine.paste(p.sheet, p.origin, p.text))!,
   copy: p => engine.copy(p.sheet, p.rect),
+  cellFormat: p => engine.cellFormat(p.sheet, p.row, p.column),
+  format: p => mutation(() => engine.format(p.sheet, p.rect, p.change))!,
   undo: () => mutation(() => engine.undo()),
   redo: () => mutation(() => engine.redo()),
   edge: p => engine.edge(p.sheet, p.from, p.direction),
