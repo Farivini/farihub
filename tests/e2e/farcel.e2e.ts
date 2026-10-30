@@ -2,6 +2,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, writeFile, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { decodeFarcel } from '../../src/core/file-format.ts';
 import { join } from 'node:path';
 import type { Page } from 'playwright';
 import { PANE, copyText, formulaBar, idle, inPane, openPage, select, startApp, typeAt } from './harness.ts';
@@ -348,4 +349,77 @@ test('window controls are not presented as working in the browser; assistant col
   await select(page, 'C3');
   assert.equal(await formulaBar(page), '=PROCV(1;A1:B2;2;FALSO)');
   assert.deepEqual(errors, []);
+});
+
+/** File sink whose write stays pending until the test releases it (a slow disk or dialog). */
+function delayedSaves() {
+  const w = window as unknown as { farivFiles: unknown; saves: Array<{ name: string; bytes: number[] }>; release: Array<() => void> };
+  w.saves = [];
+  w.release = [];
+  w.farivFiles = {
+    save(name: string, bytes: Uint8Array) {
+      w.saves.push({ name, bytes: Array.from(bytes) });
+      return new Promise<string>(resolve => w.release.push(() => resolve(name)));
+    },
+  };
+}
+
+async function startSave(page: Page, count: number) {
+  await page.keyboard.press('ControlOrMeta+s');
+  await page.waitForFunction(n => (window as unknown as { saves: unknown[] }).saves.length === n, count);
+}
+
+async function finishSave(page: Page, index: number) {
+  await page.evaluate(i => (window as unknown as { release: Array<() => void> }).release[i](), index);
+  await page.waitForFunction(() => document.querySelector('.doc-pane:not([hidden]) [data-testid=status-message]')?.textContent?.startsWith('Salvo'));
+}
+
+async function savedBytes(page: Page, index: number): Promise<Buffer> {
+  return Buffer.from(await page.evaluate(i => (window as unknown as { saves: Array<{ bytes: number[] }> }).saves[i].bytes, index));
+}
+
+const saveState = (page: Page) => page.textContent(inPane('[data-testid=save-state]'));
+
+test('a slow save marks as saved only what the file contains; edits during the write stay pending', async () => {
+  const { page, errors } = await openPage(app.browser, app.url, undefined, delayedSaves);
+  await typeAt(page, 'A1', 'antes');
+
+  // Cell edit while the write is pending.
+  await startSave(page, 1);
+  await typeAt(page, 'A2', 'durante');
+  await finishSave(page, 0);
+  assert.equal(await saveState(page), 'Alterações não salvas', 'the edit made during the write is not in the file');
+  assert.equal(await page.locator('[data-testid=doc-tab] .dirty').count(), 1);
+  assert.match(await page.textContent(inPane('[data-testid=status-message]')) ?? '', /ainda não estão no arquivo/);
+
+  const dir = await mkdtemp(join(tmpdir(), 'farcel-slow-'));
+  const first = join(dir, 'primeiro.farcel');
+  await writeFile(first, await savedBytes(page, 0));
+  const reopened = await openPage(app.browser, app.url);
+  await reopened.page.setInputFiles('[data-testid=open-input]', first);
+  await reopened.page.waitForFunction(() => document.querySelector('.doc-pane:not([hidden]) [data-testid=save-state]')?.textContent?.includes('Salvo neste dispositivo'));
+  assert.equal(await copyText(reopened.page, 'A1:A2'), 'antes\n', 'file holds the snapshot, not the later edit');
+
+  // A save with nothing happening during the write is clean.
+  await startSave(page, 2);
+  await finishSave(page, 1);
+  assert.equal(await saveState(page), 'Salvo neste dispositivo');
+
+  // Pivot configuration changed while the write is pending.
+  await page.click(inPane('[data-testid=new-pivot]'));
+  await page.waitForSelector(inPane('[data-testid=field-antes]'));
+  assert.equal(await saveState(page), 'Alterações não salvas', 'a new pivot is an unsaved change');
+  await startSave(page, 3);
+  await page.click(inPane('[data-testid=field-antes]'));
+  await finishSave(page, 2);
+  assert.equal(await saveState(page), 'Alterações não salvas', 'the pivot change made during the write is not in the file');
+  const header = decodeFarcel(new Uint8Array(await savedBytes(page, 2))).header;
+  assert.deepEqual((header.app as { pivots: Array<{ config: { rows: string[] } }> }).pivots[0].config.rows, [], 'file holds the pivot as it was at the snapshot');
+
+  await startSave(page, 4);
+  await finishSave(page, 3);
+  assert.equal(await saveState(page), 'Salvo neste dispositivo');
+  const latest = decodeFarcel(new Uint8Array(await savedBytes(page, 3))).header;
+  assert.deepEqual((latest.app as { pivots: Array<{ config: { rows: string[] } }> }).pivots[0].config.rows, ['antes']);
+  assert.deepEqual([...errors, ...reopened.errors], []);
 });
