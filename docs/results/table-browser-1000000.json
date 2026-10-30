@@ -1,0 +1,96 @@
+{
+  "createdAt": "2026-10-30T14:46:39.447Z",
+  "scope": "Planilhas UI in headless Chromium (Playwright), production build served by vite preview; the engine runs in its Web Worker. Not Windows, not a packaged app.",
+  "environment": {
+    "browser": "Chromium 153.0.8010.12",
+    "os": "linux 6.18.44-fc-v185 x64",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "logicalCpus": 4,
+    "totalMemoryBytes": 16872808448,
+    "node": "v22.22.0"
+  },
+  "corpus": {
+    "rows": 1000000,
+    "seed": 20261029,
+    "columns": [
+      "Região",
+      "Canal",
+      "Categoria",
+      "Quantidade",
+      "Receita"
+    ]
+  },
+  "steps": [
+    {
+      "label": "after generation",
+      "ironcalcWasmMiB": 593,
+      "chromiumProcessesRssMiB": 1164
+    },
+    {
+      "label": "filter on (Ctrl+Shift+L)",
+      "wallMs": 863,
+      "workerMs": 5.4,
+      "status": "Filtro em A1:E1000001: use os botões do cabeçalho · 5 ms",
+      "ironcalcWasmMiB": 593,
+      "chromiumProcessesRssMiB": 1237
+    },
+    {
+      "label": "values list of Região (button → list shown)",
+      "wallMs": 1328,
+      "workerMs": null,
+      "status": "Filtro em A1:E1000001: use os botões do cabeçalho · 5 ms",
+      "ironcalcWasmMiB": 593,
+      "chromiumProcessesRssMiB": 1232.2
+    },
+    {
+      "label": "apply Região = Sul (hides ~80%)",
+      "wallMs": 3098,
+      "workerMs": 2926.6,
+      "status": "Filtrado por A · 2,9 s",
+      "ironcalcWasmMiB": 648.1,
+      "chromiumProcessesRssMiB": 1771.5
+    },
+    {
+      "label": "PageDown ×20 over the filtered rows",
+      "wallMs": 974,
+      "workerMs": null,
+      "status": "Filtrado por A · 2,9 s",
+      "ironcalcWasmMiB": 648.1,
+      "chromiumProcessesRssMiB": 1785.9
+    },
+    {
+      "label": "filter off (Ctrl+Shift+L)",
+      "wallMs": 3619,
+      "workerMs": 3207.2,
+      "status": "Filtro removido; todas as linhas aparecem · 3,2 s · Para poupar memória, as ações mais antigas desta pasta não podem mais ser desfeitas.",
+      "ironcalcWasmMiB": 896.5,
+      "chromiumProcessesRssMiB": 2048.2
+    },
+    {
+      "label": "sort Receita descending (context menu)",
+      "wallMs": 6155,
+      "workerMs": 5504.3,
+      "status": "Ordenado A2:E1000001 por E ↓ · cabeçalho mantido · 5,5 s",
+      "ironcalcWasmMiB": 896.5,
+      "chromiumProcessesRssMiB": 2019.6
+    },
+    {
+      "label": "undo the sort (Ctrl+Z)",
+      "wallMs": 26,
+      "workerMs": null,
+      "status": "Ordenado A2:E1000001 por E ↓ · cabeçalho mantido · 5,5 s",
+      "ironcalcWasmMiB": 896.5,
+      "chromiumProcessesRssMiB": 2019.6
+    },
+    {
+      "label": "sort Região, Canal (dialog, two levels)",
+      "wallMs": 5878,
+      "workerMs": 4792.4,
+      "status": "Ordenado A2:E1000001 por A ↑, B ↑ · cabeçalho mantido · 4,8 s",
+      "ironcalcWasmMiB": 896.5,
+      "chromiumProcessesRssMiB": 2038.7
+    }
+  ],
+  "filterShown": "199.914 de 1.000.000 linhas",
+  "errors": []
+}

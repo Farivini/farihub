@@ -703,30 +703,34 @@ export class WorkbookEngine {
 
   /**
    * Excel's current region: the block of filled cells connected to `cell` (diagonals count).
-   * Reads one row of column positions per row it looks at.
+   * Reads the filled rows of each column involved once (one engine call per column), so a
+   * table of a million rows costs a few calls, not one per row.
    */
   region(sheet: number, cell: CellRef): Rect {
-    const cache = new Map<number, Int32Array>();
-    const columnsOf = (row: number) => {
-      let columns = cache.get(row);
-      if (!columns) { columns = this.model.getColumnsWithData(sheet, row); cache.set(row, columns); }
-      return columns;
+    const rowsOf = new Map<number, Int32Array>();
+    const filled = (column: number) => {
+      let rows = rowsOf.get(column);
+      if (!rows) { rows = this.model.getRowsWithData(sheet, column); rowsOf.set(column, rows); }
+      return rows;
     };
-    const rowHas = (row: number, left: number, right: number) => columnsOf(row).some(c => c >= left && c <= right);
+    // Rows with data in any column of the span around the block, grown as columns join.
+    const occupied = new Uint8Array(MAX_ROW + 2);
+    const marked = new Set<number>();
+    const mark = (column: number) => {
+      if (column < 1 || column > MAX_COLUMN || marked.has(column)) return;
+      marked.add(column);
+      for (const row of filled(column)) occupied[row] = 1;
+    };
+    const hasData = (column: number, top: number, bottom: number) => column >= 1 && column <= MAX_COLUMN && filled(column).some(row => row >= top && row <= bottom);
     const rect = { top: cell.row, left: cell.column, bottom: cell.row, right: cell.column };
     for (let changed = true; changed;) {
       changed = false;
-      const l = Math.max(1, rect.left - 1), r = Math.min(MAX_COLUMN, rect.right + 1);
-      while (rect.bottom < MAX_ROW && rowHas(rect.bottom + 1, l, r)) { rect.bottom++; changed = true; }
-      while (rect.top > 1 && rowHas(rect.top - 1, l, r)) { rect.top--; changed = true; }
-      let left = rect.left, right = rect.right;
-      for (let row = rect.top; row <= rect.bottom; row++) {
-        for (const c of columnsOf(row)) {
-          if (c < left && c >= left - 1) left = c;
-          if (c > right && c <= right + 1) right = c;
-        }
-      }
-      if (left !== rect.left || right !== rect.right) { rect.left = left; rect.right = right; changed = true; }
+      for (let column = rect.left - 1; column <= rect.right + 1; column++) mark(column);
+      while (rect.bottom < MAX_ROW && occupied[rect.bottom + 1]) { rect.bottom++; changed = true; }
+      while (rect.top > 1 && occupied[rect.top - 1]) { rect.top--; changed = true; }
+      // A column next to the block joins when it has data in the block's rows or the rows next to them.
+      if (hasData(rect.left - 1, rect.top - 1, rect.bottom + 1)) { rect.left--; changed = true; }
+      if (hasData(rect.right + 1, rect.top - 1, rect.bottom + 1)) { rect.right++; changed = true; }
     }
     return rect;
   }

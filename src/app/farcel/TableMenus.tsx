@@ -200,8 +200,8 @@ export function SortDialog({ range, header: initialHeader, headerLabels, keys: i
               {columns.map(c => <option key={c} value={c} disabled={c !== key.column && used.has(c)}>{label(c)}</option>)}
             </select>
             <select value={key.descending ? 'desc' : 'asc'} aria-label={`Ordem do nível ${index + 1}`} onChange={e => update(index, { ...key, descending: e.target.value === 'desc' })}>
-              <option value="asc">Crescente (A→Z, 1→9)</option>
-              <option value="desc">Decrescente (Z→A, 9→1)</option>
+              <option value="asc">Crescente ↑</option>
+              <option value="desc">Decrescente ↓</option>
             </select>
             <button type="button" className="icon-button" aria-label={`Remover nível ${index + 1}`} disabled={keys.length === 1}
               onClick={() => setKeys(k => k.filter((_, i) => i !== index))}><Icon name="close" size={12} /></button>
@@ -210,7 +210,7 @@ export function SortDialog({ range, header: initialHeader, headerLabels, keys: i
       </ol>
       <button type="button" className="link" data-testid="sort-add-level" disabled={used.size >= columns.length}
         onClick={() => setKeys(k => [...k, { column: columns.find(c => !used.has(c)) ?? range.left }])}>+ Adicionar nível</button>
-      <p className="hint">Números e datas vêm antes de textos; células vazias ficam sempre no fim.</p>
+      <p className="hint">Crescente: números e datas do menor ao maior, depois textos de A a Z. Células vazias ficam sempre no fim.</p>
     </Dialog>
   );
 }

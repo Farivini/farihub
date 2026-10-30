@@ -178,6 +178,16 @@ test('a range with merged cells is not sorted (and nothing changes)', () => {
   assert.equal(engine.canUndo(), false);
 });
 
+test('current region: the connected block around a cell, diagonals included', () => {
+  const engine = WorkbookEngine.create(ic);
+  const cells: Array<[number, number, string]> = [[2, 2, 'a'], [2, 3, 'b'], [2, 4, 'c'], [3, 2, '1'], [3, 4, '3'], [5, 2, '4'], [5, 3, '5'], [5, 4, '6'], [6, 5, 'x'], [9, 2, 'longe']];
+  for (const [row, column, text] of cells) engine.setInput(0, row, column, text);
+  assert.deepEqual(engine.region(0, { row: 3, column: 3 }), table(2, 2, 3, 4), 'an empty row ends the block');
+  assert.deepEqual(engine.region(0, { row: 5, column: 3 }), table(5, 2, 6, 5), 'E6 touches D5 diagonally');
+  assert.deepEqual(engine.region(0, { row: 9, column: 2 }), table(9, 2, 9, 2));
+  assert.deepEqual(engine.region(0, { row: 20, column: 20 }), table(20, 20, 20, 20));
+});
+
 // ------------------------------------------------------------------ filters
 
 test('filter hides rows without deleting data; values list, search, empty cells and clearing', () => {
