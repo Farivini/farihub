@@ -106,8 +106,14 @@ export function limitPrecision(value: string): string {
  */
 export class WorkbookEngine {
   revision = 0;
-  /** Bumped when hidden rows or filters change (the grid fetches the row layout again). */
-  layoutVersion = 0;
+  /**
+   * Changes when hidden rows or filters change (the grid fetches the row layout again). Drawn
+   * from one counter for every workbook of this thread, so a workbook opened in place of
+   * another never repeats the version the grid already has.
+   */
+  layoutVersion = WorkbookEngine.nextLayout();
+  private static layouts = 0;
+  private static nextLayout(): number { return ++WorkbookEngine.layouts; }
   /** Set when old models were released and the oldest steps can no longer be undone. */
   historyTrimmed = false;
   /** IronCalc and the bridge, set by whoever loads them (worker, tests). */
@@ -281,7 +287,7 @@ export class WorkbookEngine {
   }
 
   private layoutChanged() {
-    this.layoutVersion++;
+    this.layoutVersion = WorkbookEngine.nextLayout();
     this.clipboard = null;
     // Rows moved or appeared: the pivot source is read again (whole base, hidden rows included).
     this.pivotSource.reset(this.pivotSource.sheet);
@@ -481,7 +487,7 @@ export class WorkbookEngine {
     const kept = new Map<number, FilterState>();
     filters.forEach((list, sheet) => { if (list[0]) kept.set(sheet, list[0]); });
     this.table = { hidden, filters: kept };
-    this.layoutVersion++;
+    this.layoutVersion = WorkbookEngine.nextLayout();
   }
 
   /** What an insertion or deletion makes IronCalc move, cell by cell. */
@@ -564,7 +570,41 @@ export class WorkbookEngine {
       ? this.withTable(sheet, deleteRowsInRanges(this.table.hidden.get(sheet) ?? NO_HIDDEN, at, count), filter && deleteFilterRows(filter, at, count))
       : this.withTable(sheet, undefined, filter && deleteFilterColumns(filter, at, count));
     const rect = kind === 'deleteRows' ? { top: at, left: 1, bottom: MAX_ROW, right: MAX_COLUMN } : { top: 1, left: at, bottom: MAX_ROW, right: MAX_COLUMN };
-    return this.swapIn(copy, { sheet, rect }, table, bytes.length);
+    const change = this.swapIn(copy, { sheet, rect }, table, bytes.length);
+    if (filter) {
+      // Rows hidden by a criterion that went with its column, or by a filter that went with
+      // its header, are shown again (part of the same undo step).
+      const after = table.filters.get(sheet);
+      if (!after) {
+        const [from, to] = kind === 'deleteRows' ? survivingRows(filter.range.top + 1, filter.range.bottom, at, count) : [filter.range.top + 1, filter.range.bottom];
+        this.rehide(sheet, from, to, NO_HIDDEN);
+      } else if (after.criteria.length !== filter.criteria.length) {
+        this.rehide(sheet, after.range.top + 1, after.range.bottom, this.filterHidden(sheet, after));
+      }
+    }
+    return change;
+  }
+
+  /**
+   * Hides exactly `inside` within rows `from..to` of the current model, replacing it without a
+   * history entry: only for the model an operation just produced, which nothing else holds.
+   */
+  private rehide(sheet: number, from: number, to: number, inside: HiddenRanges) {
+    const current = this.table.hidden.get(sheet) ?? NO_HIDDEN;
+    if (from > to || sameRanges(rangesWithin(current, from, to), inside)) return;
+    const edit = new (WorkbookEngine.requireBridge()).WorkbookEdit(this.model.toBytes());
+    let model: Model;
+    try {
+      edit.setHiddenRows(sheet, from, to, inside);
+      model = WorkbookEngine.requireIronCalc().Model.fromBytes(edit.toBytes(), ENGINE_LANGUAGE);
+    } finally {
+      edit.free();
+    }
+    model.evaluate();
+    this.model.free();
+    this.model = model;
+    this.table = this.withTable(sheet, replaceRanges(current, from, to, inside), undefined);
+    this.layoutChanged();
   }
 
   /**
@@ -622,15 +662,21 @@ export class WorkbookEngine {
       if (criterion.column < range.left || criterion.column > range.right) throw new RangeError('O critério está fora do intervalo do filtro.');
     }
     const first = range.top + 1, last = range.bottom;
-    const hide = new Uint8Array(last - first + 1);
-    for (const criterion of filter.criteria) {
-      this.columnValues(sheet, first, last, criterion.column, (i, text) => { if (!passes(criterion, text)) hide[i] = 1; });
-    }
     const previous = this.table.filters.get(sheet);
     // Rows of a previous, larger filter range are shown again.
     const from = Math.min(first, previous ? previous.range.top + 1 : first);
     const to = Math.max(last, previous ? previous.range.bottom : last);
-    return this.setHidden(sheet, from, to, rangesFromFlags(first, hide), filter);
+    return this.setHidden(sheet, from, to, this.filterHidden(sheet, filter), filter);
+  }
+
+  /** Data rows of the filter's range that fail a criterion. */
+  private filterHidden(sheet: number, filter: FilterState): HiddenRanges {
+    const first = filter.range.top + 1, last = filter.range.bottom;
+    const hide = new Uint8Array(Math.max(0, last - first + 1));
+    for (const criterion of filter.criteria) {
+      this.columnValues(sheet, first, last, criterion.column, (i, text) => { if (!passes(criterion, text)) hide[i] = 1; });
+    }
+    return rangesFromFlags(first, hide);
   }
 
   private clearFilter(sheet: number): Change {
@@ -982,6 +1028,15 @@ function checkCount(count: number, max: number) {
 function isHiddenIn(ranges: HiddenRanges, row: number): boolean {
   for (let i = 0; i < ranges.length; i += 2) if (row >= ranges[i] && row <= ranges[i + 1]) return true;
   return false;
+}
+
+/** Rows `from..to` that survive deleting `count` rows at `at`, renumbered: [first, last] (first > last: none). */
+function survivingRows(from: number, to: number, at: number, count: number): [number, number] {
+  const end = at + count - 1;
+  const first = from >= at && from <= end ? end + 1 : from;
+  const last = to >= at && to <= end ? at - 1 : to;
+  const renumber = (row: number) => (row > end ? row - count : row);
+  return first > last ? [1, 0] : [renumber(first), renumber(last)];
 }
 
 function sameRanges(a: HiddenRanges, b: HiddenRanges): boolean {

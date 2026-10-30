@@ -38,6 +38,48 @@ export interface FilterValue { text: string; count: number; selected: boolean }
 export interface FilterValues { values: FilterValue[]; distinct: number; truncated: boolean }
 
 /**
+ * What the values not explicitly checked or unchecked in a filter list are: as the current
+ * criterion says, all checked ('Selecionar tudo') or all unchecked.
+ */
+export type ListBase = 'current' | 'all' | 'none';
+
+export const listChecked = (value: FilterValue, base: ListBase, changes: ReadonlyMap<string, boolean>) =>
+  changes.get(value.text) ?? (base === 'all' ? true : base === 'none' ? false : value.selected);
+
+/**
+ * The criterion a filter list stands for after the person's changes. The list may hold only
+ * part of the values (`truncated`); values it does not show keep what they were, so a
+ * criterion on a value beyond the list survives opening the list and applying it again.
+ * With a search, the rows shown are the checked results (as Excel). null: no criterion.
+ */
+export function editedCriterion(
+  current: FilterCriterion | undefined, list: { values: FilterValue[]; truncated: boolean },
+  base: ListBase, changes: ReadonlyMap<string, boolean>, searching: boolean,
+): Omit<FilterCriterion, 'column'> | null {
+  const checked = (v: FilterValue) => listChecked(v, base, changes);
+  if (searching) return { mode: 'include', values: list.values.filter(checked).map(v => v.text) };
+  if (!list.truncated) {
+    const on = list.values.filter(checked).map(v => v.text);
+    const off = list.values.filter(v => !checked(v)).map(v => v.text);
+    if (!off.length) return null;
+    return on.length <= off.length ? { mode: 'include', values: on } : { mode: 'exclude', values: off };
+  }
+  const plus = [...changes].filter(([, on]) => on).map(([text]) => text);
+  const minus = [...changes].filter(([, on]) => !on).map(([text]) => text);
+  if (base === 'none') return { mode: 'include', values: plus };
+  if (base === 'all' || !current) return minus.length ? { mode: 'exclude', values: minus } : null;
+  const values = new Set(current.values);
+  if (current.mode === 'include') {
+    plus.forEach(t => values.add(t));
+    minus.forEach(t => values.delete(t));
+    return { mode: 'include', values: [...values] };
+  }
+  minus.forEach(t => values.add(t));
+  plus.forEach(t => values.delete(t));
+  return values.size ? { mode: 'exclude', values: [...values] } : null;
+}
+
+/**
  * Cost of an operation IronCalc performs cell by cell (inserting and deleting rows or columns
  * move every cell after the insertion point). Measured under Node (scripts/bench-table.ts):
  * inserting one row above 100k and 1M rows of 5 columns moved 2.9 to 3.6 µs per cell;

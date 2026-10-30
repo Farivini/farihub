@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { columnName, rectName } from '../../core/address.ts';
 import type { Rect } from '../../core/address.ts';
-import type { FilterCriterion, FilterValue, FilterValues, SortKey } from '../../core/table-ops.ts';
+import { editedCriterion, listChecked } from '../../core/table-ops.ts';
+import type { FilterCriterion, FilterValue, FilterValues, ListBase, SortKey } from '../../core/table-ops.ts';
 import type { MenuItem } from '../shell/Menu.tsx';
 import { Dialog } from '../shell/Dialog.tsx';
 import { Icon } from '../ui/Icon.tsx';
@@ -64,8 +65,10 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
  * The list of a filter column: distinct values (as displayed) with counts, a search, and
  * sorting by this column. Applying turns the checked values into the column's criterion.
  */
-export function FilterPopover({ x, y, title, load, onApply, onSort, onRemoveFilter, onClose }: {
+export function FilterPopover({ x, y, title, criterion, load, onApply, onSort, onRemoveFilter, onClose }: {
   x: number; y: number; title: string;
+  /** The column's criterion now (none: every value shown). */
+  criterion: FilterCriterion | undefined;
   load(search: string): Promise<FilterValues>;
   /** null: no criterion for this column (every value shown). */
   onApply(criterion: Omit<FilterCriterion, 'column'> | null): void;
@@ -78,46 +81,36 @@ export function FilterPopover({ x, y, title, load, onApply, onSort, onRemoveFilt
   const [search, setSearch] = useState('');
   const [list, setList] = useState<FilterValues | null>(null);
   const [error, setError] = useState<string | null>(null);
-  /** Unchecked values, by text; kept across searches. */
-  const [unchecked, setUnchecked] = useState<Set<string> | null>(null);
+  // Checks the person changed, kept across searches; every other value is as `base` says.
+  const [base, setBase] = useState<ListBase>('current');
+  const [changes, setChanges] = useState<ReadonlyMap<string, boolean>>(new Map());
 
   useEffect(() => {
     let live = true;
     const timer = setTimeout(() => {
-      load(search).then(result => {
-        if (!live) return;
-        setList(result);
-        // The first load (no search) gives the current criterion.
-        setUnchecked(u => u ?? new Set(result.values.filter(v => !v.selected).map(v => v.text)));
-      }, e => { if (live) setError(e instanceof Error ? e.message : String(e)); });
+      load(search).then(result => { if (live) setList(result); }, e => { if (live) setError(e instanceof Error ? e.message : String(e)); });
     }, search ? 150 : 0);
     return () => { live = false; clearTimeout(timer); };
   }, [search, load]);
 
   const values = list?.values ?? [];
-  const checked = (v: FilterValue) => !unchecked?.has(v.text);
+  const searching = search.trim() !== '';
+  const checked = (v: FilterValue) => listChecked(v, base, changes);
   const allChecked = values.every(checked);
-  const toggle = (text: string) => setUnchecked(u => {
-    const next = new Set(u);
-    if (next.has(text)) next.delete(text); else next.add(text);
-    return next;
-  });
-  const toggleAll = () => setUnchecked(u => {
-    const next = new Set(u);
-    for (const v of values) { if (allChecked) next.add(v.text); else next.delete(v.text); }
-    return next;
-  });
+  const toggle = (v: FilterValue) => setChanges(c => new Map(c).set(v.text, !checked(v)));
+  const toggleAll = () => {
+    if (searching) {
+      setChanges(c => { const next = new Map(c); for (const v of values) next.set(v.text, !allChecked); return next; });
+    } else {
+      // Every value, listed or not.
+      setBase(allChecked ? 'none' : 'all');
+      setChanges(new Map());
+    }
+  };
 
   const apply = () => {
-    if (!list || !unchecked) return;
-    if (search.trim()) {
-      // As Excel: with a search, the rows shown are the checked matches.
-      const include = values.filter(checked).map(v => v.text);
-      onApply({ mode: 'include', values: include });
-    } else if (unchecked.size === 0) onApply(null);
-    else if (!list.truncated && values.length - unchecked.size <= unchecked.size) {
-      onApply({ mode: 'include', values: values.filter(checked).map(v => v.text) });
-    } else onApply({ mode: 'exclude', values: [...unchecked] });
+    if (!list) return;
+    onApply(editedCriterion(criterion, list, base, changes, searching));
     onClose();
   };
 
@@ -139,11 +132,11 @@ export function FilterPopover({ x, y, title, load, onApply, onSort, onRemoveFilt
         <div className="filter-values" data-testid="filter-values">
           <label className="filter-value all">
             <input type="checkbox" checked={allChecked} onChange={toggleAll} data-testid="filter-all" />
-            <span>{search.trim() ? 'Selecionar resultados' : 'Selecionar tudo'}</span>
+            <span>{searching ? 'Selecionar resultados' : 'Selecionar tudo'}</span>
           </label>
           {values.map(v => (
             <label key={v.text} className="filter-value">
-              <input type="checkbox" checked={checked(v)} onChange={() => toggle(v.text)} />
+              <input type="checkbox" checked={checked(v)} onChange={() => toggle(v)} />
               <span className={v.text === '' ? 'empty' : ''}>{v.text === '' ? '(Vazias)' : v.text}</span>
               <em>{v.count.toLocaleString('pt-BR')}</em>
             </label>

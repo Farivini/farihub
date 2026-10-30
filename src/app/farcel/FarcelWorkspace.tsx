@@ -978,6 +978,7 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
           x={filterMenu.x - 290}
           y={filterMenu.y + 2}
           title={columnName(filterMenu.column)}
+          criterion={filter.criteria.find(c => c.column === filterMenu.column)}
           load={loadFilterValues}
           onApply={criterion => applyCriterion(filterMenu.column, criterion)}
           onSort={descending => {

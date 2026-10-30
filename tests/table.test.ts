@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { WorkbookEngine } from '../src/engine/workbook-engine.ts';
 import { modelToXlsx, xlsxToModel } from '../src/engine/xlsx.ts';
 import { RowMap, deleteRowsInRanges, insertRowsInRanges, rangesFromFlags, replaceRanges } from '../src/core/row-map.ts';
-import { parseFilters, sortOrder } from '../src/core/table-ops.ts';
+import { editedCriterion, parseFilters, sortOrder } from '../src/core/table-ops.ts';
 import type { KeyColumn, TableOperation } from '../src/core/table-ops.ts';
 import { saveLosses } from '../src/core/save-plan.ts';
 import { decodeFarcel } from '../src/core/file-format.ts';
@@ -75,6 +75,28 @@ test('row map: display indexes skip hidden rows; ranges follow insertions and de
   assert.deepEqual([...replaceRanges(Int32Array.from([1, 10]), 4, 6, Int32Array.from([5, 5]))], [1, 3, 5, 5, 7, 10]);
   assert.deepEqual([...insertRowsInRanges(Int32Array.from([3, 5]), 4, 2)], [3, 3, 6, 7]);
   assert.deepEqual([...deleteRowsInRanges(Int32Array.from([3, 5, 9, 9]), 4, 3)], [3, 3, 6, 6]);
+});
+
+test('a filter list keeps the criterion of values it does not show', () => {
+  const shown = (pairs: Array<[string, boolean]>, truncated: boolean) =>
+    ({ values: pairs.map(([text, selected]) => ({ text, count: 1, selected })), truncated });
+  const none = new Map<string, boolean>();
+  // A value beyond the first page was chosen with a search; reopening and applying keeps it.
+  const far = { column: 1, mode: 'include' as const, values: ['v1500'] };
+  assert.deepEqual(editedCriterion(far, shown([['v1', false], ['v2', false]], true), 'current', none, false), { mode: 'include', values: ['v1500'] });
+  // Checking a listed value adds it; values beyond the list stay as they were.
+  assert.deepEqual(editedCriterion(far, shown([['v1', false]], true), 'current', new Map([['v1', true]]), false), { mode: 'include', values: ['v1500', 'v1'] });
+  const excluded = { column: 1, mode: 'exclude' as const, values: ['v1500', 'v2'] };
+  assert.deepEqual(editedCriterion(excluded, shown([['v1', true], ['v2', false]], true), 'current', new Map([['v2', true]]), false), { mode: 'exclude', values: ['v1500'] });
+  // "Select all" covers values beyond the list too.
+  assert.equal(editedCriterion(excluded, shown([['v1', true]], true), 'all', none, false), null);
+  assert.deepEqual(editedCriterion(excluded, shown([['v1', true]], true), 'none', new Map([['v1', true]]), false), { mode: 'include', values: ['v1'] });
+  // A complete list: the smaller of the two sets is kept.
+  assert.deepEqual(editedCriterion(undefined, shown([['a', true], ['b', true], ['c', true]], false), 'current', new Map([['c', false]]), false), { mode: 'exclude', values: ['c'] });
+  assert.deepEqual(editedCriterion(undefined, shown([['a', true], ['b', true], ['c', true]], false), 'none', new Map([['a', true]]), false), { mode: 'include', values: ['a'] });
+  assert.equal(editedCriterion(undefined, shown([['a', true]], false), 'current', none, false), null);
+  // With a search, the checked results (as Excel), using each value's current state.
+  assert.deepEqual(editedCriterion(far, shown([['v1500', true], ['v150', false]], false), 'current', none, true), { mode: 'include', values: ['v1500'] });
 });
 
 test('saved filters are validated when a file is opened', () => {
@@ -311,6 +333,37 @@ test('insert and delete keep the filter and hidden rows in place', () => {
   assert.deepEqual(engine.rowLayout(0).filter?.criteria, [{ column: 1, mode: 'include', values: ['Sul'] }]);
   engine.apply({ kind: 'deleteRows', sheet: 0, at: 2, count: 1 }); // the header row
   assert.equal(engine.rowLayout(0).filter, null, 'deleting the header row removes the filter');
+});
+
+test('deleting a criterion column or the header row shows the rows the filter hid', () => {
+  const engine = sales();
+  engine.apply({ kind: 'setFilter', sheet: 0, range: table(1, 1, 6, 6), criteria: [
+    { column: 2, mode: 'include', values: ['Sul', 'Norte'] }, { column: 4, mode: 'exclude', values: ['5'] },
+  ] });
+  assert.deepEqual([...engine.rowLayout(0).hidden], [3, 3, 5, 5], 'ana (Norte, 5) and Ana (Leste)');
+  engine.apply({ kind: 'deleteColumns', sheet: 0, at: 4, count: 1 }); // Preço, and its criterion
+  assert.deepEqual([...engine.rowLayout(0).hidden], [5, 5], 'ana is shown again; Ana still fails Região');
+  engine.undo();
+  assert.deepEqual([...engine.rowLayout(0).hidden], [3, 3, 5, 5]);
+  assert.equal(engine.rowLayout(0).filter?.criteria.length, 2);
+  engine.apply({ kind: 'deleteRows', sheet: 0, at: 1, count: 1 }); // the header
+  assert.equal(engine.rowLayout(0).filter, null);
+  assert.deepEqual([...engine.rowLayout(0).hidden], [], 'no filter, nothing hidden by it');
+  engine.undo();
+  assert.deepEqual([...engine.rowLayout(0).hidden], [3, 3, 5, 5]);
+  // The rows are hidden in the model too: a file saved now has none hidden.
+  engine.redo();
+  const reopened = WorkbookEngine.fromFile(ic, engine.toFile({})).engine;
+  reopened.loadLayout();
+  assert.deepEqual([...reopened.rowLayout(0).hidden], []);
+});
+
+test('each workbook of a worker has its own layout version', () => {
+  const a = WorkbookEngine.fromModelBytes(ic, sales().modelBytes()).engine;
+  a.loadLayout();
+  const b = WorkbookEngine.fromModelBytes(ic, sales().modelBytes()).engine;
+  b.loadLayout();
+  assert.notEqual(a.layoutVersion, b.layoutVersion, 'opening another file always refreshes the grid layout');
 });
 
 test('large insertions are estimated before they run', () => {
