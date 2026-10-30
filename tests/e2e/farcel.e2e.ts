@@ -369,9 +369,15 @@ async function startSave(page: Page, count: number) {
   await page.waitForFunction(n => (window as unknown as { saves: unknown[] }).saves.length === n, count);
 }
 
+/** Releases a pending write and waits for its own outcome, not the "Salvo …" left by the previous save. */
 async function finishSave(page: Page, index: number) {
+  const status = '.doc-pane:not([hidden]) [data-testid=status-message]';
+  const before = await page.evaluate(s => document.querySelector(s)?.textContent ?? '', status);
   await page.evaluate(i => (window as unknown as { release: Array<() => void> }).release[i](), index);
-  await page.waitForFunction(() => document.querySelector('.doc-pane:not([hidden]) [data-testid=status-message]')?.textContent?.startsWith('Salvo'));
+  await page.waitForFunction(([s, previous]) => {
+    const text = document.querySelector(s)?.textContent ?? '';
+    return text.startsWith('Salvo') && text !== previous;
+  }, [status, before] as const);
 }
 
 async function savedBytes(page: Page, index: number): Promise<Buffer> {
