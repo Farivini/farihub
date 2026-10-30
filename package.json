@@ -16,7 +16,9 @@
     "preview": "vite preview",
     "typecheck": "tsc -p .",
     "test:e2e": "node --test --test-concurrency=1 tests/e2e/*.e2e.ts",
-    "bench:browser": "node scripts/bench-browser.ts"
+    "bench:browser": "node scripts/bench-browser.ts",
+    "bench:table": "node scripts/bench-table.ts",
+    "bench:table:browser": "node scripts/bench-table-browser.ts"
   },
   "devDependencies": {
     "@ironcalc/nodejs": "0.9.1",

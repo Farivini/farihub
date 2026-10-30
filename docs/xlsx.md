@@ -54,10 +54,12 @@ Ambos merecem ser reportados ao IronCalc.
 | Várias planilhas, referências entre planilhas | sim | sim | sim |
 | Negrito, itálico, alinhamento horizontal, formatos de número | sim | sim | sim |
 | Fontes, tamanhos, cores, preenchimento, bordas, quebra de texto | sim | **não** | sim |
-| Mesclagem, painéis congelados, larguras e alturas, ocultas | sim | **não** | sim |
+| Linhas ocultas (inclusive as ocultas por um filtro do Excel) | sim | sim (marcadas na grade) | sim |
+| Mesclagem, painéis congelados, larguras e alturas, colunas ocultas | sim | **não** | sim |
 | Formatação condicional, hiperlinks, nomes definidos | sim | **não** | sim |
 | Comentários, tabelas formatadas (estrutura) | sim | não | **não** |
-| Gráficos, imagens, desenhos, tabelas dinâmicas do Excel, macros, validação de dados, filtros, proteção, minigráficos, segmentações, conexões, configuração de impressão, formatação parcial de texto | **não** | — | — |
+| Filtro do Planilhas (botões e critérios) | — | sim | **não** (as linhas que ele oculta saem ocultas; ver [operações de tabela](tabela.md)) |
+| Gráficos, imagens, desenhos, tabelas dinâmicas do Excel, macros, validação de dados, filtros do Excel (a definição), proteção, minigráficos, segmentações, conexões, configuração de impressão, formatação parcial de texto | **não** | — | — |
 
 Ao abrir, o app mostra um **relatório** com os itens das duas últimas categorias que o arquivo tem (“Não importados” e “Mantidos, ainda não exibidos”), com base na inspeção do pacote e da estrutura importada. Ao salvar em XLSX, lista de novo o que não volta e **deixa escolher** (salvar assim mesmo ou guardar em `.farcel`). As dinâmicas e gráficos do Planilhas não existem no XLSX e também entram na lista; só o `.farcel` as guarda.
 

@@ -23,6 +23,8 @@ export function pivotInfo(result: PivotResponse): string {
 interface Props {
   pivot: PivotDef;
   sourceName: string;
+  /** The source sheet has a filter: the pivot still reads every row (stated next to the source). */
+  sourceFiltered?: boolean;
   state: PivotState | undefined;
   fields: string[];
   rows: number;
@@ -32,7 +34,7 @@ interface Props {
   zoom?: number;
 }
 
-export function PivotView({ pivot, sourceName, state, fields, rows, onChange, loadLabels, onError, zoom = 1 }: Props) {
+export function PivotView({ pivot, sourceName, sourceFiltered, state, fields, rows, onChange, loadLabels, onError, zoom = 1 }: Props) {
   const table = state?.table ?? null;
   const [tableKey] = useState(() => `pivot-${pivot.id}`);
   const version = useRef(0);
@@ -74,7 +76,7 @@ export function PivotView({ pivot, sourceName, state, fields, rows, onChange, lo
           <div>
             <h2>{pivot.name}</h2>
             <p data-testid="pivot-info" data-status={state?.loading ? 'loading' : state?.error ? 'error' : state?.result ? 'ready' : 'empty'} data-version={state?.version ?? 0}>
-              Origem: {sourceName}!A1 · {state?.loading ? (state.progress ?? 'Calculando…') : state?.error ? state.error : state?.result ? pivotInfo(state.result) : 'Sem campos'}
+              Origem: {sourceName}!A1{sourceFiltered ? ' · base inteira, inclusive linhas ocultas pelo filtro' : ''} · {state?.loading ? (state.progress ?? 'Calculando…') : state?.error ? state.error : state?.result ? pivotInfo(state.result) : 'Sem campos'}
             </p>
           </div>
         </header>

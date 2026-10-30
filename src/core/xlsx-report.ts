@@ -28,7 +28,7 @@ const LOST: Record<string, string> = {
   connections: 'conexões de dados e consultas',
   controls: 'controles de formulário',
   dataValidation: 'validação de dados',
-  autoFilter: 'filtros aplicados',
+  autoFilter: 'filtros aplicados (a definição; as linhas que ocultavam continuam ocultas)',
   protection: 'proteção de planilha ou pasta',
   sparklines: 'minigráficos',
   printSettings: 'configuração de impressão',
@@ -40,6 +40,8 @@ const KEPT: Record<string, string> = {
   frozenPanes: 'painéis congelados',
   columnWidths: 'larguras de coluna',
   rowHeights: 'alturas de linha',
+  hiddenColumns: 'colunas ocultas',
+  // Reports saved before hidden rows were shown by the grid.
   hiddenRowsColumns: 'linhas ou colunas ocultas',
   conditionalFormatting: 'formatação condicional',
   hyperlinks: 'hiperlinks',

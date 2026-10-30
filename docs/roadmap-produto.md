@@ -1,6 +1,6 @@
 # Roadmap do produto
 
-Atualizado em 30/10/2026, com o estado conferido no código da `main` (inclui a correção de salvamento concorrente da PR #5, a entrada e saída de arquivos da PR #6) e nesta entrega (salvar por formato, CSV protegido, ressalvas persistentes). Com isso o comportamento de arquivos fica fechado; as próximas frentes são operações de tabela (filtros, ordenação, inserir/excluir linhas e colunas) e IA contextual.
+Atualizado em 30/10/2026, com o estado conferido no código da `main` (até a PR #7: arquivos por formato, CSV protegido, ressalvas persistentes) e nesta entrega: **operações de tabela** — filtros, ordenação, inserir e excluir linhas e colunas, com desfazer, por uma API tipada que a IA vai usar. A próxima frente é a IA contextual sobre essas operações.
 
 ## Visão
 
@@ -18,7 +18,7 @@ Nada aqui é estimativa de prazo.
 
 ## Estado atual (resumo)
 
-- **Implementado:** planilha funcional com IronCalc 0.9.1 (WASM) em Web Worker, fonte única da verdade; fórmulas em português; formatação básica (número, moeda R$, porcentagem, data, negrito, alinhamento); várias pastas em abas, cada uma com seu motor; tabela dinâmica e gráfico ligado a ela; abrir e salvar `.xlsx` (padrão) e `.farcel` (nativo), com Salvar como e perdas explicadas; importar CSV/TSV/TXT com prévia e exportar CSV/TSV protegido ou original; base sintética de 1.000.000 de linhas medida no navegador.
+- **Implementado:** planilha funcional com IronCalc 0.9.1 (WASM) em Web Worker, fonte única da verdade; fórmulas em português; formatação básica (número, moeda R$, porcentagem, data, negrito, alinhamento); várias pastas em abas, cada uma com seu motor; filtros, ordenação e inserir/excluir linhas e colunas com desfazer ([operações de tabela](tabela.md)); tabela dinâmica e gráfico ligado a ela; abrir e salvar `.xlsx` (padrão) e `.farcel` (nativo), com Salvar como e perdas explicadas; importar CSV/TSV/TXT com prévia e exportar CSV/TSV protegido ou original; base sintética de 1.000.000 de linhas medida no navegador.
 - **Parcial:** assistente (painel existe, **não conectado**).
 - **Placeholders:** Documentos e Apresentações aparecem como “em preparação”; não há editor.
 - **Atenção:** o painel do assistente monta um contexto limitado (até 20 linhas de amostra, 30 colunas, 50 linhas de dinâmica). Isso **não** é capacidade de analisar a base inteira; ver “Execução da IA”.
@@ -29,14 +29,16 @@ Nada aqui é estimativa de prazo.
 | --- | --- | --- |
 | Fórmulas familiares ao Excel, em português | **Implementado** | 166 funções traduzidas (`=SOMA`, `=PROCV`, `;` e vírgula decimal). Funções que o IronCalc não calcula mostram `#NOME?` e o texto da fórmula é preservado. |
 | Formatação | **Parcial** | Número, moeda R$, porcentagem, data, negrito, itálico (exibição), alinhamento. Faltam fontes, cores, bordas, preenchimento, quebra de texto (o motor já guarda quando vêm de um XLSX). |
-| Filtros na grade | Planejado | Hoje só há filtros dentro da tabela dinâmica. |
-| Ordenação | Planejado | |
-| Inserir/excluir linhas e colunas | Planejado | O motor tem as operações (`insertRows`, `deleteColumns`…); falta interface e espelho do desfazer. |
+| Filtros na grade | **Implementado** | Um filtro por planilha, botões no cabeçalho com valores, contagem, busca e `(Vazias)`; linhas ocultas sem apagar dados, marcadas na grade; copiar, Delete e a soma da barra de status pegam só as visíveis. Gravado no `.farcel`; no XLSX ficam as linhas ocultas e o app avisa que o filtro não vai. Faltam: filtros por condição (maior que, contém, entre datas), por cor, reaplicar automaticamente depois de editar, filtro em mais de uma tabela por planilha. Ver [operações de tabela](tabela.md). |
+| Ordenação | **Implementado** | Crescente/decrescente, várias colunas, com ou sem cabeçalho; registros inteiros (valores, fórmulas, estilos); números/datas, texto pt-BR, booleanos, erros, vazias no fim; pergunta “tabela inteira?” quando a seleção corta a tabela. Recusa intervalos com células mescladas ou fórmulas matriciais. Faltam: ordenar por cor, lista personalizada, ordenar colunas (da esquerda para a direita). |
+| Inserir/excluir linhas e colunas | **Implementado** | Pela seleção, pelo menu dos cabeçalhos, várias de uma vez; referências atualizadas em todas as planilhas pelo IronCalc; desfazer devolve fórmulas que viraram `#REF!`. Em bases grandes inserir perto do topo é lento (o motor move célula a célula): acima de ~3 s o app mostra a estimativa e pede confirmação. Excluir linhas com linhas ocultas na seleção fica desabilitado. |
+| Desfazer/refazer de operações de tabela | **Implementado** | Cada operação é um passo. Ordenação, filtro e exclusão guardam o modelo anterior (até 4; 1 em pastas grandes) e o app avisa quando os passos mais antigos são descartados. |
+| Ocultar/reexibir linhas e colunas manualmente | **Parcial** | Linhas ocultas de arquivos aparecem ocultas e podem ser reexibidas pelo menu; falta “Ocultar” e todo o tratamento de colunas ocultas (guardadas e exportadas, não exibidas). |
 | Congelar painéis | Planejado | O motor guarda e exporta painéis congelados de um XLSX; a grade não exibe. |
 | Larguras de coluna e alturas de linha | Planejado | Mesma situação: guardadas e exportadas, não exibidas. |
 | Validação de dados | Planejado | Também não é importada de XLSX (o IronCalc 0.9.1 não lê). |
 | Busca (localizar/substituir) | Planejado | |
-| Tabela dinâmica | **Implementado** | Linhas, colunas, valores (soma, contagem), filtros; atualiza após edição. Faltam média, mínimo, máximo, campos calculados, ordenação. |
+| Tabela dinâmica | **Implementado** | Linhas, colunas, valores (soma, contagem), filtros; atualiza após edição e após ordenar, filtrar, inserir ou excluir. Usa **a base inteira**, inclusive linhas ocultas pelo filtro da grade (dito na própria dinâmica). Faltam média, mínimo, máximo, campos calculados, ordenação. |
 | Gráficos | **Parcial** | Colunas e linhas ligados a uma dinâmica. Faltam gráficos sobre intervalos, outros tipos e exportação para XLSX. |
 
 ## Desempenho
@@ -49,7 +51,8 @@ Objetivo: **1.000.000 de linhas por aba** com a interface responsiva.
 | Dinâmica sobre 1 M linhas | **Implementado** (medido) | Extração colunar com invalidação por região. |
 | Memória (WASM) | **Parcial** | Medida no gerador e na dinâmica; falta perfil por operação. |
 | Edição e recálculo em base grande | Planejado | Medir tempo de uma edição com dependentes em 1 M linhas. |
-| Filtros e ordenação em base grande | Planejado | Depende de existirem. |
+| Filtros e ordenação em base grande | **Implementado** (medido) | 100 mil e 1 milhão de linhas, no Node e no navegador, tempo e memória: ver [operações de tabela](tabela.md#medições). Em 1 milhão: filtrar e ordenar levam segundos (com a interface livre, no worker); a primeira operação grande da sessão é mais lenta porque o WASM aloca memória para a cópia do modelo. Falta medir no Windows e em arquivos reais. |
+| Inserir/excluir no topo de base grande | **Parcial** | Medido: ~18 s para inserir uma linha acima de 1 milhão de linhas (o IronCalc move cada célula). O app estima e pede confirmação; uma implementação mais rápida dependeria do motor. |
 | Importação/exportação em base grande | **Parcial** | Medido no Node com o mesmo WASM (`scripts/bench-xlsx.ts`, ver `docs/xlsx.md`); falta medir na interface e no Windows. |
 | Arquivos reais | Planejado | Todos os números atuais vêm de **bases sintéticas**. Precisamos de um conjunto de arquivos reais (anonimizados) e de reportar os dois separadamente. |
 
@@ -105,7 +108,8 @@ Capacidades desejadas: **analisar, explicar, preparar dados, criar fórmulas, ta
 
 | Item | Estado | Observação |
 | --- | --- | --- |
-| Ferramentas tipadas para consultar e calcular sobre a **base completa** | Planejado | A IA pede agregações, filtros e amostras ao motor; a base inteira não vai para o modelo. O contexto de 20 linhas de hoje é só amostra. |
+| Operações de tabela tipadas (ordenar, filtrar, inserir, excluir) | **Implementado** | `tableOp`/`tableQuery`/`rowLayout` no worker, com tipos em `src/core/table-ops.ts`; a interface usa a mesma API. Cada chamada é um passo de desfazer e as lentas pedem confirmação. Ver [operações de tabela](tabela.md#api-tipada). |
+| Ferramentas tipadas para consultar e calcular sobre a **base completa** | **Parcial** | Já existem consultas sobre a base inteira no worker (valores distintos com contagem de uma coluna, região da tabela, dinâmica). Faltam agregações e amostras sob demanda para o modelo. A base inteira não vai para o modelo; o contexto de 20 linhas de hoje é só amostra. |
 | Operações verificáveis | Planejado | Cada alteração proposta é uma lista de operações sobre o motor (célula, intervalo, fórmula, dinâmica), validada antes de aplicar. |
 | Prévia, aceitar/rejeitar | Planejado | |
 | Desfazer a tarefa inteira | Planejado | Um passo de desfazer por tarefa, não por célula. |

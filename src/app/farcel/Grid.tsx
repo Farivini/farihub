@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffec
 import { clampRef, normalizeRect } from '../../core/address.ts';
 import type { CellRef, Rect } from '../../core/address.ts';
 import { serializeTsv } from '../../core/tsv.ts';
+import { NO_HIDDEN, RowMap } from '../../core/row-map.ts';
 import { measure } from '../perf.ts';
 
 /** Kinds as produced by the engine viewport: 0 empty, 1 number, 2 text, 3 boolean, 4 error. */
@@ -31,7 +32,14 @@ export interface GridController {
   undo?(): Promise<void>;
   redo?(): Promise<void>;
   edge?(from: CellRef, direction: Direction): Promise<CellRef>;
+  /** Hidden rows (filters, files): the grid skips them. Absent = every row shown. */
+  rowMap?: RowMap;
+  /** The sheet's filter: buttons on its header cells; `active` columns have a criterion. */
+  filter?: { range: Rect; active: ReadonlySet<number> } | null;
 }
+
+/** Where a context menu or filter button was opened, in client coordinates. */
+export interface GridMenuRequest { x: number; y: number; target: 'cells' | 'rows' | 'columns' }
 
 export interface Selection { active: CellRef; rect: Rect }
 /** `unit` is set when every number in the selection is shown as a percentage or in R$. */
@@ -53,6 +61,10 @@ interface Props {
   label?: string;
   /** 1 = 100%. Scales rows, columns and text. */
   zoom?: number;
+  /** Right click (or the context-menu key) on cells or headers; the selection is already updated. */
+  onContextMenu?(request: GridMenuRequest): void;
+  /** Click on a filter button of the header row. */
+  onFilterButton?(column: number, anchor: { x: number; y: number }): void;
 }
 
 const BASE_ROW_HEIGHT = 28;
@@ -80,7 +92,7 @@ function displayedNumber(text: string): number {
   return text.includes('%') ? n / 100 : n;
 }
 
-export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, onSelection, onEditingText, onError, label, zoom = 1 }, ref) {
+export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, onSelection, onEditingText, onError, label, zoom = 1, onContextMenu, onFilterButton }, ref) {
   const ROW_HEIGHT = Math.round(BASE_ROW_HEIGHT * zoom);
   const HEADER_HEIGHT = Math.round(BASE_HEADER_HEIGHT * zoom);
   // Grows with the widest visible row number (999.990 needs more room than 12).
@@ -109,6 +121,16 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
   const ctrl = useRef(controller);
   ctrl.current = controller;
   const selectionRef = useRef(selection);
+  // Rows shown: display index 1..count maps to sheet rows, skipping hidden ones.
+  const identity = useRef<RowMap>(new RowMap(NO_HIDDEN, 0));
+  const rows = (): RowMap => {
+    const c = ctrl.current;
+    if (c.rowMap) return c.rowMap;
+    if (identity.current.totalRows !== c.rowCount) identity.current = new RowMap(NO_HIDDEN, c.rowCount);
+    return identity.current;
+  };
+  /** A shown row: `row` itself, or the next shown one (the last one at the end). */
+  const shown = (row: number) => rows().rowAt(rows().indexOf(row));
   /** Updates the ref immediately so key repeats before the next render see the new selection. */
   const applySelection = (next: Selection) => { selectionRef.current = next; setSelection(next); };
   const editingRef = useRef(editing);
@@ -139,7 +161,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
   // Vertical scroll mapping between the (possibly capped) spacer and the content.
   const metrics = () => {
     const scroller = scrollerRef.current;
-    const contentHeight = ctrl.current.rowCount * ROW_HEIGHT;
+    const contentHeight = rows().count * ROW_HEIGHT;
     const viewHeight = Math.max(0, size.height - HEADER_HEIGHT);
     const maxTop = Math.max(0, contentHeight - viewHeight);
     const spacerHeight = Math.min(contentHeight, MAX_SPACER) + HEADER_HEIGHT;
@@ -152,12 +174,13 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
   const visibleRange = () => {
     const m = metrics();
     const top = Math.floor(m.contentTop / ROW_HEIGHT) + 1;
-    const rows = Math.ceil((size.height - HEADER_HEIGHT) / ROW_HEIGHT) + 1;
+    const count = Math.ceil((size.height - HEADER_HEIGHT) / ROW_HEIGHT) + 1;
     const left = columnAt(m.contentLeft);
     let right = left;
     const limit = m.contentLeft + size.width - ROW_HEADER_WIDTH;
     while (right < ctrl.current.columnCount && columnX(right + 1) < limit) right++;
-    return { top, bottom: Math.min(ctrl.current.rowCount, top + rows), left, right, ...m };
+    // top and bottom are display indexes (see rows()).
+    return { top, bottom: Math.min(rows().count, top + count), left, right, ...m };
   };
 
   const drawRef = useRef<() => void>(() => {});
@@ -174,9 +197,12 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     const c = ctrl.current;
     let settled = true;
     const v = visibleRange();
-    const b0 = Math.floor((v.top - 1) / BLOCK_ROWS), b1 = Math.floor((v.bottom - 1) / BLOCK_ROWS);
+    const map = rows();
+    // Blocks of the shown rows only: a filter may show rows far apart.
+    const blockRows = new Set<number>();
+    for (let i = v.top; i <= v.bottom; i++) blockRows.add(Math.floor((map.rowAt(i) - 1) / BLOCK_ROWS));
     const c0 = Math.floor((v.left - 1) / BLOCK_COLS), c1 = Math.floor((v.right - 1) / BLOCK_COLS);
-    for (let br = b0; br <= b1; br++) {
+    for (const br of blockRows) {
       for (let bc = c0; bc <= c1; bc++) {
         const key = blockKey(br, bc);
         const block = cache.current.get(key);
@@ -201,7 +227,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
             for (const old of cache.current.keys()) {
               if (cache.current.size <= MAX_CACHE_BLOCKS * 0.8) break;
               const oldRow = Math.floor(old / 2048), oldCol = old % 2048;
-              if (oldRow >= b0 && oldRow <= b1 && oldCol >= c0 && oldCol <= c1) continue;
+              if (blockRows.has(oldRow) && oldCol >= c0 && oldCol <= c1) continue;
               cache.current.delete(old);
             }
           }
@@ -235,37 +261,42 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
       bg: css('--grid-bg'), line: css('--grid-line'), header: css('--grid-header'), headerText: css('--text-3'),
       headerActive: css('--grid-header-active'), text: css('--text-1'), accent: css('--accent'),
       selection: css('--grid-selection'), error: css('--danger'), muted: css('--text-3'), rowActive: css('--grid-row-active'),
+      filtered: css('--grid-filtered'),
     };
     const v = visibleRange();
     const c = ctrl.current;
+    const map = rows();
     ctx.fillStyle = colors.bg;
     ctx.fillRect(0, 0, size.width, size.height);
     const offsetY = v.contentTop - (v.top - 1) * ROW_HEIGHT;
-    const yOf = (row: number) => HEADER_HEIGHT + (row - v.top) * ROW_HEIGHT - offsetY;
+    /** Top of the display index `i`. */
+    const yOf = (i: number) => HEADER_HEIGHT + (i - v.top) * ROW_HEIGHT - offsetY;
     const xOf = (column: number) => ROW_HEADER_WIDTH + columnX(column) - v.contentLeft;
     const sel = selectionRef.current;
 
-    // Selection fill
+    // Selection fill (selected rows as display indexes; hidden rows are skipped)
     const rect = sel.rect;
-    if (rect.bottom >= v.top && rect.top <= v.bottom && rect.right >= v.left && rect.left <= v.right) {
+    const selTop = map.indexOf(rect.top), selBottom = map.indexAtOrBefore(rect.bottom);
+    if (selTop <= selBottom && selBottom >= v.top && selTop <= v.bottom && rect.right >= v.left && rect.left <= v.right) {
       const x0 = Math.max(ROW_HEADER_WIDTH, xOf(Math.max(rect.left, v.left)));
       const x1 = xOf(Math.min(rect.right, v.right) + 1);
-      const y0 = Math.max(HEADER_HEIGHT, yOf(Math.max(rect.top, v.top)));
-      const y1 = yOf(Math.min(rect.bottom, v.bottom) + 1);
+      const y0 = Math.max(HEADER_HEIGHT, yOf(Math.max(selTop, v.top)));
+      const y1 = yOf(Math.min(selBottom, v.bottom) + 1);
       ctx.fillStyle = colors.selection;
       ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
       // The active cell stays clear inside a range, as in Excel.
-      if (rect.top !== rect.bottom || rect.left !== rect.right) {
+      if ((rect.top !== rect.bottom || rect.left !== rect.right) && !map.isHidden(sel.active.row)) {
         ctx.fillStyle = colors.bg;
-        ctx.fillRect(xOf(sel.active.column), yOf(sel.active.row), widthOf(sel.active.column), ROW_HEIGHT);
+        ctx.fillRect(xOf(sel.active.column), yOf(map.indexOf(sel.active.row)), widthOf(sel.active.column), ROW_HEIGHT);
       }
     }
 
     // Cells
     ctx.textBaseline = 'middle';
     let currentFont = '';
-    for (let row = v.top; row <= v.bottom; row++) {
-      const y = yOf(row);
+    for (let i = v.top; i <= v.bottom; i++) {
+      const y = yOf(i);
+      const row = map.rowAt(i);
       for (let column = v.left; column <= v.right; column++) {
         const cell = cellValue(row, column);
         if (!cell || cell.kind === 0 || cell.value === '') continue;
@@ -293,8 +324,8 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     ctx.strokeStyle = colors.line;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    for (let row = v.top; row <= v.bottom + 1; row++) {
-      const y = Math.round(yOf(row)) + 0.5;
+    for (let i = v.top; i <= v.bottom + 1; i++) {
+      const y = Math.round(yOf(i)) + 0.5;
       ctx.moveTo(ROW_HEADER_WIDTH, y); ctx.lineTo(size.width, y);
     }
     for (let column = v.left; column <= v.right + 1; column++) {
@@ -304,16 +335,49 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     ctx.stroke();
 
     // Selection border: the whole range in accent, 2px.
-    if (rect.bottom >= v.top && rect.top <= v.bottom + 1) {
+    if (selTop <= selBottom && selBottom >= v.top && selTop <= v.bottom + 1) {
       ctx.save();
       ctx.beginPath();
       ctx.rect(ROW_HEADER_WIDTH, HEADER_HEIGHT, size.width, size.height);
       ctx.clip();
-      const x0 = xOf(rect.left), x1 = xOf(rect.right + 1), y0 = yOf(rect.top), y1 = yOf(rect.bottom + 1);
+      const x0 = xOf(rect.left), x1 = xOf(rect.right + 1), y0 = yOf(selTop), y1 = yOf(selBottom + 1);
       ctx.strokeStyle = colors.accent;
       ctx.lineWidth = 2;
       ctx.strokeRect(Math.round(x0) + 1, Math.round(y0) + 1, Math.round(x1 - x0) - 2, Math.round(y1 - y0) - 2);
       ctx.restore();
+    }
+
+    // Filter buttons on the header row of the filter, inside its cells.
+    const filter = c.filter;
+    if (filter && !map.isHidden(filter.range.top)) {
+      const i = map.indexOf(filter.range.top);
+      if (i >= v.top && i <= v.bottom) {
+        const y = yOf(i);
+        const button = filterButtonSize();
+        for (let column = Math.max(v.left, filter.range.left); column <= Math.min(v.right, filter.range.right); column++) {
+          const bx = xOf(column) + widthOf(column) - button - 3, by = y + (ROW_HEIGHT - button) / 2;
+          const active = filter.active.has(column);
+          ctx.fillStyle = active ? colors.filtered : colors.header;
+          ctx.strokeStyle = active ? colors.filtered : colors.line;
+          ctx.beginPath();
+          ctx.roundRect(bx, by, button, button, 3);
+          ctx.fill();
+          ctx.stroke();
+          // A chevron; with a criterion, a funnel.
+          ctx.fillStyle = active ? colors.bg : colors.headerText;
+          ctx.beginPath();
+          const cx = bx + button / 2, cy = by + button / 2;
+          if (active) {
+            ctx.moveTo(cx - button * 0.28, cy - button * 0.22); ctx.lineTo(cx + button * 0.28, cy - button * 0.22);
+            ctx.lineTo(cx + button * 0.06, cy + 0.02 * button); ctx.lineTo(cx + button * 0.06, cy + button * 0.26);
+            ctx.lineTo(cx - button * 0.06, cy + button * 0.2); ctx.lineTo(cx - button * 0.06, cy + 0.02 * button);
+          } else {
+            ctx.moveTo(cx - button * 0.22, cy - button * 0.1); ctx.lineTo(cx + button * 0.22, cy - button * 0.1); ctx.lineTo(cx, cy + button * 0.16);
+          }
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
     }
 
     // Headers
@@ -322,6 +386,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     ctx.fillRect(0, 0, ROW_HEADER_WIDTH, size.height);
     const wholeRows = rect.left === 1 && rect.right === c.columnCount;
     const wholeColumns = rect.top === 1 && rect.bottom === c.rowCount;
+    const filterRows = filter && map.hasHidden ? filter.range : null;
     for (let column = v.left; column <= v.right; column++) {
       const x = xOf(column), w = widthOf(column);
       const active = column >= rect.left && column <= rect.right && !wholeRows;
@@ -339,19 +404,34 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     }
     ctx.fillStyle = colors.header;
     ctx.fillRect(0, 0, ROW_HEADER_WIDTH, HEADER_HEIGHT);
-    for (let row = v.top; row <= v.bottom; row++) {
-      const y = yOf(row);
+    for (let i = v.top; i <= v.bottom; i++) {
+      const y = yOf(i);
+      const row = map.rowAt(i);
       if (y + ROW_HEIGHT < HEADER_HEIGHT) continue;
       const active = row >= rect.top && row <= rect.bottom && !wholeColumns;
       if (active) { ctx.fillStyle = colors.rowActive; ctx.fillRect(0, Math.max(y, HEADER_HEIGHT), ROW_HEADER_WIDTH, ROW_HEIGHT); }
-      ctx.font = active ? HEADER_FONT_ACTIVE : HEADER_FONT;
-      ctx.fillStyle = active ? colors.text : colors.headerText;
+      // Rows of a filtered range are numbered in the filter color, as Excel does.
+      const filtered = filterRows && row > filterRows.top && row <= filterRows.bottom;
+      ctx.font = active || filtered ? HEADER_FONT_ACTIVE : HEADER_FONT;
+      ctx.fillStyle = filtered ? colors.filtered : active ? colors.text : colors.headerText;
       const label = row.toLocaleString('pt-BR');
       const lw = ctx.measureText(label).width;
       if (y >= HEADER_HEIGHT - ROW_HEIGHT / 2) ctx.fillText(label, (ROW_HEADER_WIDTH - lw) / 2, y + ROW_HEIGHT / 2 + 0.5);
     }
+    // Hidden rows leave a mark where they were: a double line across the row header.
+    if (map.hasHidden) {
+      ctx.fillStyle = colors.filtered;
+      for (let i = v.top; i <= v.bottom + 1; i++) {
+        const row = i <= map.count ? map.rowAt(i) : c.rowCount + 1;
+        if (!map.gapBefore(row)) continue;
+        const y = Math.round(yOf(i));
+        if (y < HEADER_HEIGHT) continue;
+        ctx.fillRect(0, y - 2, ROW_HEADER_WIDTH, 1);
+        ctx.fillRect(0, y + 1, ROW_HEADER_WIDTH, 1);
+      }
+    }
     ctx.font = HEADER_FONT_ACTIVE;
-    const needed = Math.ceil((ctx.measureText(v.bottom.toLocaleString('pt-BR')).width + 22) / zoomRef.current);
+    const needed = Math.ceil((ctx.measureText(map.rowAt(Math.max(1, v.bottom)).toLocaleString('pt-BR')).width + 22) / zoomRef.current);
     if (needed !== rowHeaderWidth && Math.max(needed, BASE_ROW_HEADER_WIDTH) !== Math.max(rowHeaderWidth, BASE_ROW_HEADER_WIDTH)) setRowHeaderWidth(needed);
     ctx.strokeStyle = colors.line;
     ctx.beginPath();
@@ -386,9 +466,11 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     draw();
   }, [size]);
 
-  // Source identity change: reset cache, selection and scroll.
+  // Source identity change: reset cache, selection and scroll. A layout effect, so the reset
+  // lands before the browser handles any input: a selection made right after switching sheets
+  // is not overwritten by a late reset.
   const lastKey = useRef(controller.key);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (lastKey.current !== controller.key) {
       lastKey.current = controller.key;
       cache.current.clear();
@@ -399,7 +481,13 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
       if (scrollerRef.current) { scrollerRef.current.scrollTop = 0; scrollerRef.current.scrollLeft = 0; }
     }
     requestDraw();
-  }, [controller.key, controller.revision, controller.rowCount, controller.columnCount]);
+  }, [controller.key, controller.revision, controller.rowCount, controller.columnCount, controller.rowMap, controller.filter]);
+
+  // Rows hidden or shown: the active cell stays on a shown row.
+  useEffect(() => {
+    const active = selectionRef.current.active;
+    if (rows().isHidden(active.row)) moveTo(active, false);
+  }, [controller.rowMap]);
 
   useEffect(() => { requestDraw(); onSelection?.(selection); }, [selection]);
   useEffect(() => { requestDraw(); scrollIntoView(selectionRef.current.active); }, [zoom]);
@@ -409,7 +497,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     const scroller = scrollerRef.current;
     if (!scroller || size.width === 0) return; // not laid out yet
     const m = metrics();
-    const y = (cell.row - 1) * ROW_HEIGHT;
+    const y = (rows().indexOf(cell.row) - 1) * ROW_HEIGHT;
     let contentTop = m.contentTop;
     if (y < contentTop) contentTop = y;
     else if (y + ROW_HEIGHT > contentTop + m.viewHeight) contentTop = y + ROW_HEIGHT - m.viewHeight;
@@ -423,7 +511,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
 
   function moveTo(cell: CellRef, extend: boolean) {
     const c = ctrl.current;
-    const target = { row: Math.min(c.rowCount, clampRef(cell).row), column: Math.min(c.columnCount, clampRef(cell).column) };
+    const target = { row: shown(Math.min(c.rowCount, clampRef(cell).row)), column: Math.min(c.columnCount, clampRef(cell).column) };
     if (extend) {
       focusCellRef.current = target;
       applySelection({ active: anchorRef.current, rect: normalizeRect(anchorRef.current, target) });
@@ -475,7 +563,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
   const step = (direction: Direction, extend: boolean) => {
     const from = extend ? focusCellRef.current : selectionRef.current.active;
     const delta = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] }[direction];
-    moveTo({ row: from.row + delta[0], column: from.column + delta[1] }, extend);
+    moveTo({ row: delta[0] ? rows().step(from.row, delta[0]) : from.row, column: from.column + delta[1] }, extend);
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -533,8 +621,14 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
         event.preventDefault();
         if (!c.readOnly) report(c.clear?.(selectionRef.current.rect));
         break;
-      case 'PageDown': event.preventDefault(); moveTo({ row: selectionRef.current.active.row + pageRows(), column: selectionRef.current.active.column }, event.shiftKey); break;
-      case 'PageUp': event.preventDefault(); moveTo({ row: selectionRef.current.active.row - pageRows(), column: selectionRef.current.active.column }, event.shiftKey); break;
+      case 'PageDown': event.preventDefault(); moveTo({ row: rows().step(selectionRef.current.active.row, pageRows()), column: selectionRef.current.active.column }, event.shiftKey); break;
+      case 'PageUp': event.preventDefault(); moveTo({ row: rows().step(selectionRef.current.active.row, -pageRows()), column: selectionRef.current.active.column }, event.shiftKey); break;
+      case 'ContextMenu': {
+        event.preventDefault();
+        const bounds = editorRef.current!.getBoundingClientRect();
+        onContextMenu?.({ x: bounds.left + 8, y: bounds.bottom, target: 'cells' });
+        break;
+      }
       case 'Home': event.preventDefault(); moveTo({ row: selectionRef.current.active.row, column: 1 }, event.shiftKey); break;
       case 'Escape': break;
     }
@@ -556,13 +650,14 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     if (editingRef.current) return; // native copy inside the editor
     event.preventDefault();
     const rect = selectionRef.current.rect;
-    const rows = rect.bottom - rect.top + 1, cols = rect.right - rect.left + 1;
+    const height = rect.bottom - rect.top + 1, cols = rect.right - rect.left + 1;
     // Small loaded selections are answered synchronously from the view cache; the engine
     // copy still runs to keep its internal clipboard (formulas with relative references).
-    if (rows * cols <= 20_000 && !(ctrl.current.pending?.() ?? false)) {
+    if (height * cols <= 20_000 && !(ctrl.current.pending?.() ?? false)) {
       const lines: string[][] = [];
       let complete = true;
       for (let r = rect.top; r <= rect.bottom && complete; r++) {
+        if (rows().isHidden(r)) continue; // as Excel, a filtered range copies its shown rows
         const line: string[] = [];
         for (let col = rect.left; col <= rect.right; col++) {
           const cell = cellValue(r, col);
@@ -600,9 +695,10 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     const bounds = scrollerRef.current!.getBoundingClientRect();
     const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
     const m = metrics();
-    const row = y < HEADER_HEIGHT ? 0 : Math.floor((m.contentTop + y - HEADER_HEIGHT) / ROW_HEIGHT) + 1;
+    const map = rows();
+    const index = y < HEADER_HEIGHT ? 0 : Math.min(map.count, Math.floor((m.contentTop + y - HEADER_HEIGHT) / ROW_HEIGHT) + 1);
     const column = x < ROW_HEADER_WIDTH ? 0 : columnAt(m.contentLeft + x - ROW_HEADER_WIDTH);
-    return { row: Math.min(row, ctrl.current.rowCount), column: Math.min(column, ctrl.current.columnCount), x, y };
+    return { row: index > 0 ? map.rowAt(index) : 0, column: Math.min(column, ctrl.current.columnCount), x, y };
   };
 
   const onMouseDown = (event: React.MouseEvent) => {
@@ -615,6 +711,15 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     const h = hit(event);
     const c = ctrl.current;
     if (h.row === 0 && h.column === 0) return;
+    if (onFilterButton && onFilterButtonAt(h)) {
+      const bounds = scrollerRef.current!.getBoundingClientRect();
+      const m = metrics();
+      onFilterButton(h.column, {
+        x: bounds.left + ROW_HEADER_WIDTH + columnX(h.column) + widthOf(h.column) - m.contentLeft,
+        y: bounds.top + HEADER_HEIGHT + rows().indexOf(h.row) * ROW_HEIGHT - m.contentTop,
+      });
+      return;
+    }
     if (h.row === 0) {
       anchorRef.current = { row: 1, column: h.column };
       applySelection({ active: { row: 1, column: h.column }, rect: { top: 1, bottom: c.rowCount, left: h.column, right: h.column } });
@@ -634,9 +739,48 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     editorRef.current?.focus();
   };
 
+  const filterButtonSize = () => Math.round(16 * zoomRef.current);
+
+  /** True when the point is on a filter button (right end of a header cell of the filter). */
+  const onFilterButtonAt = (h: { row: number; column: number; x: number }) => {
+    const filter = ctrl.current.filter;
+    if (!filter || h.row !== filter.range.top || h.column < filter.range.left || h.column > filter.range.right) return false;
+    const right = ROW_HEADER_WIDTH + columnX(h.column) + widthOf(h.column) - metrics().contentLeft;
+    return h.x >= right - filterButtonSize() - 6 && h.x <= right;
+  };
+
   const onDoubleClick = (event: React.MouseEvent) => {
     const h = hit(event);
+    if (onFilterButtonAt(h)) return;
     if (h.row >= 1 && h.column >= 1) void beginEdit('edit');
+  };
+
+  const onContext = (event: React.MouseEvent) => {
+    if (!onContextMenu) return;
+    event.preventDefault();
+    if (editingRef.current) void finishEdit(true);
+    const h = hit(event);
+    const c = ctrl.current;
+    const rect = selectionRef.current.rect;
+    let target: GridMenuRequest['target'] = 'cells';
+    if (h.row === 0 && h.column > 0) {
+      target = 'columns';
+      if (!(rect.top === 1 && rect.bottom === c.rowCount && h.column >= rect.left && h.column <= rect.right)) {
+        anchorRef.current = { row: 1, column: h.column };
+        applySelection({ active: { row: 1, column: h.column }, rect: { top: 1, bottom: c.rowCount, left: h.column, right: h.column } });
+      }
+    } else if (h.column === 0 && h.row > 0) {
+      target = 'rows';
+      if (!(rect.left === 1 && rect.right === c.columnCount && h.row >= rect.top && h.row <= rect.bottom)) {
+        anchorRef.current = { row: h.row, column: 1 };
+        applySelection({ active: { row: h.row, column: 1 }, rect: { top: h.row, bottom: h.row, left: 1, right: c.columnCount } });
+      }
+    } else if (h.row > 0 && h.column > 0) {
+      // A right click outside the selection selects the cell, as Excel.
+      if (h.row < rect.top || h.row > rect.bottom || h.column < rect.left || h.column > rect.right) moveTo({ row: h.row, column: h.column }, false);
+    } else return;
+    editorRef.current?.focus();
+    onContextMenu({ x: event.clientX, y: event.clientY, target });
   };
 
   useImperativeHandle(ref, () => ({
@@ -651,7 +795,10 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
       const cells = (rect.bottom - rect.top + 1) * (rect.right - rect.left + 1);
       if (cells > 50_000) return null;
       let count = 0, numbers = 0, sum = 0, percents = 0, reais = 0;
+      const map = rows();
       for (let r = rect.top; r <= rect.bottom; r++) for (let col = rect.left; col <= rect.right; col++) {
+        // As Excel's status bar: rows hidden by a filter do not count.
+        if (map.hasHidden && map.isHidden(r)) continue;
         const cell = cellValue(r, col);
         if (!cell) return null;
         if (cell.kind === 0) continue;
@@ -674,7 +821,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
   const editorCell = editing?.cell ?? selection.active;
   const editorStyle: React.CSSProperties = m ? {
     left: ROW_HEADER_WIDTH + columnX(editorCell.column) - m.contentLeft,
-    top: HEADER_HEIGHT + (editorCell.row - 1) * ROW_HEIGHT - m.contentTop,
+    top: HEADER_HEIGHT + (rows().indexOf(editorCell.row) - 1) * ROW_HEIGHT - m.contentTop,
     minWidth: widthOf(editorCell.column),
     font: FONTS[0],
     lineHeight: `${ROW_HEIGHT - 6}px`,
@@ -692,6 +839,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
         onScroll={() => { requestDraw(); if (editingRef.current) setEditing({ ...editingRef.current }); }}
         onMouseDown={onMouseDown}
         onDoubleClick={onDoubleClick}
+        onContextMenu={onContext}
         data-testid="grid-scroller"
       >
         <div style={{ width: ROW_HEADER_WIDTH + offsets()[controller.columnCount], height: m?.spacerHeight ?? 0 }} />

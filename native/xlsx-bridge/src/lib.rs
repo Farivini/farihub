@@ -12,6 +12,9 @@ use ironcalc_base::types::{Font, SheetState, Workbook};
 use ironcalc_base::Model;
 use wasm_bindgen::prelude::*;
 
+mod edit;
+pub use edit::{SortKeys, WorkbookEdit};
+
 #[wasm_bindgen(getter_with_clone)]
 pub struct ImportedXlsx {
     /// The workbook in the engine's representation, for `Model.fromBytes()`.
@@ -227,7 +230,8 @@ fn report_json(lost: &Counts, workbook: &Workbook) -> String {
         bump(&mut kept, "frozenPanes", usize::from(sheet.frozen_rows > 0 || sheet.frozen_columns > 0));
         bump(&mut kept, "columnWidths", sheet.cols.iter().filter(|c| c.custom_width && !c.hidden).count());
         bump(&mut kept, "rowHeights", sheet.rows.iter().filter(|r| r.custom_height && !r.hidden).count());
-        bump(&mut kept, "hiddenRowsColumns", sheet.cols.iter().filter(|c| c.hidden).count() + sheet.rows.iter().filter(|r| r.hidden).count());
+        // Hidden rows are shown hidden by the grid; hidden columns are not yet.
+        bump(&mut kept, "hiddenColumns", sheet.cols.iter().filter(|c| c.hidden).count());
         bump(&mut kept, "conditionalFormatting", sheet.conditional_formatting.len());
         bump(&mut kept, "hyperlinks", sheet.links.len());
         bump(&mut kept, "hiddenSheets", usize::from(sheet.state != SheetState::Visible));

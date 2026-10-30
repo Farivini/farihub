@@ -37,7 +37,8 @@ Primeira versão funcional de **Planilhas no navegador**:
 - várias pastas abertas em abas, cada uma com seu próprio motor; trocar de espaço não perde nada;
 - cálculo real no **IronCalc 0.9.1 (WASM) dentro de um Web Worker**, fonte única da verdade;
 - fórmulas em português (`=SOMA(A1:A3)`, `=SE(A1>0;"sim";"não")`, `1,5`) por uma camada de tokens;
-- tabela dinâmica com linhas, colunas, valores (soma, contagem) e filtros, e gráfico ligado ao resultado;
+- **operações de tabela**: filtros na grade (botões no cabeçalho, valores com contagem e busca), ordenação por uma ou várias colunas mantendo os registros juntos, inserir e excluir linhas e colunas com as referências atualizadas em todas as planilhas, cada uma com desfazer e refazer, por uma API tipada que a IA vai usar ([detalhes](docs/tabela.md));
+- tabela dinâmica com linhas, colunas, valores (soma, contagem) e filtros, e gráfico ligado ao resultado (sempre sobre a base inteira, inclusive linhas ocultas pelo filtro da grade);
 - **salvar por formato**: Ctrl+S mantém o formato do arquivo aberto (`.xlsx` continua `.xlsx`); pasta nova oferece XLSX como padrão e `.farcel` (nativo, guarda também dinâmicas, gráficos e as ressalvas de importação) como alternativa; **Salvar como…**; perdas explicadas antes, com escolha; no navegador sem acesso a arquivos, o app diz que está baixando uma cópia;
 - **abrir e exportar XLSX** com o importador/exportador do próprio IronCalc compilado para WASM: fórmulas continuam fórmulas (em português na tela, em inglês no arquivo), várias planilhas, tipos e formatação básica; o app informa o que não é mantido e pede confirmação antes de exportar com perdas;
 - **importar CSV, TSV e TXT** com prévia (codificação, separador, decimal, cabeçalho, tipo por coluna; códigos com zeros à esquerda preservados) e **exportar CSV (;) e TSV** “para abrir em planilhas” (texto que viraria fórmula recebe `'`) ou com os dados originais;
@@ -64,9 +65,10 @@ Para experimentar em **Planilhas**:
 
 1. Digite nas células ou na barra de fórmulas (`=SOMA(A1:A3)`, `=SE(A1>0;"sim";"não")`), ou cole dados do Excel (Ctrl+V).
 2. Formate pela barra: formato de número (R$, %), **B**, alinhamento. O botão *fx* insere funções em português.
-3. **Dinâmica** cria uma tabela dinâmica a partir de A1 da planilha atual; arraste campos para Linhas, Colunas, Valores e Filtros. O gráfico fica abaixo.
-4. No trilho à esquerda, o ícone de arquivos tem **Nova planilha**, **Abrir…** (Ctrl+O: `.farcel`, `.xlsx`, `.csv`, `.tsv`, `.txt`), **Salvar** (Ctrl+S, no formato do arquivo; pasta nova pergunta, com XLSX como padrão), **Salvar como…** (Ctrl+Shift+S), **Exportar planilha como CSV** e **TSV**, e **Base de teste…**, que gera 1.000.000 de linhas em uma aba nova (cerca de 25 s). Um arquivo aberto entra numa aba nova quando a atual já tem conteúdo.
-5. O ✦ no canto superior direito mostra ou recolhe o assistente (ainda não conectado).
+3. Botão direito numa célula ou num cabeçalho: inserir/excluir linhas e colunas, ordenar, filtrar. Ctrl+Shift+L liga o filtro da tabela da seleção; os botões no cabeçalho filtram e ordenam.
+4. **Dinâmica** cria uma tabela dinâmica a partir de A1 da planilha atual; arraste campos para Linhas, Colunas, Valores e Filtros. O gráfico fica abaixo.
+5. No trilho à esquerda, o ícone de arquivos tem **Nova planilha**, **Abrir…** (Ctrl+O: `.farcel`, `.xlsx`, `.csv`, `.tsv`, `.txt`), **Salvar** (Ctrl+S, no formato do arquivo; pasta nova pergunta, com XLSX como padrão), **Salvar como…** (Ctrl+Shift+S), **Exportar planilha como CSV** e **TSV**, e **Base de teste…**, que gera 1.000.000 de linhas em uma aba nova (cerca de 25 s). Um arquivo aberto entra numa aba nova quando a atual já tem conteúdo.
+6. O ✦ no canto superior direito mostra ou recolhe o assistente (ainda não conectado).
 
 ## Testes e medições
 
@@ -78,6 +80,8 @@ npm run bench:browser        # 1.000.000 de linhas na interface → reports/brow
 node scripts/bench-wasm-formulas.ts  # 1 M fórmulas por linha no WASM (Node)
 node scripts/screenshots.ts --million  # capturas em docs/screenshots/
 node scripts/bench-xlsx.ts           # XLSX/CSV com 100 mil e 1 M linhas → reports/xlsx-bench.json
+npm run bench:table -- 1000000       # filtros, ordenação, inserir/excluir no motor (Node) → reports/table-node-1000000.json
+npm run bench:table:browser -- 1000000  # os mesmos fluxos pela interface no Chromium → reports/table-browser-1000000.json
 node scripts/xlsx-interop.ts && python3 scripts/xlsx-interop-libreoffice.py reports/interop/*.xlsx
                                      # XLSX exportados recalculados no LibreOffice → reports/interop-libreoffice.json
 ```
@@ -98,6 +102,7 @@ npm run bench:ironcalc
 
 - [Roadmap do produto](docs/roadmap-produto.md) — implementado, parcial e planejado, por frente.
 - [Arquitetura e escolhas do Farcel](docs/farcel-arquitetura.md) — fonte da verdade, worker, grade, fórmulas pt-BR, dinâmica, arquivo, limitações.
+- [Operações de tabela](docs/tabela.md) — filtros, ordenação, inserir/excluir, API tipada, semântica de fórmulas, arquivos, medições, limitações.
 - [XLSX, CSV, TSV e TXT](docs/xlsx.md) — decisão técnica, o que é mantido, verificação no LibreOffice, medições, limitações.
 - [Resultados no navegador](docs/resultados-navegador.md) — 1.000.000 de linhas: tempos, memória, ambiente.
 - [Escopo da prova técnica](docs/prova-tecnica.md) e [resultados iniciais](docs/resultados-iniciais.md).

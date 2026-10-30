@@ -86,6 +86,10 @@ O formato nativo `.farcel` (uma das duas opções de Salvar; a outra, padrão pa
 - O conteúdo binário é o formato interno da versão do IronCalc indicada no cabeçalho; compatibilidade entre versões do motor não é garantida.
 - XLSX: o pacote WASM 0.9.1 não expõe importação/exportação XLSX. Resolvido com um conversor separado compilado do crate Rust `ironcalc` 0.9.1 (`native/xlsx-bridge`), que troca XLSX ↔ `Model.toBytes()` sem mudar o motor; ver [xlsx.md](xlsx.md).
 
+## Operações de tabela
+
+Filtros, ordenação e inserir/excluir linhas e colunas são pedidos tipados ao worker (`tableOp`, `tableQuery`, `rowLayout`; tipos em `src/core/table-ops.ts`), um passo de desfazer cada. Inserir usa o IronCalc direto; excluir, ordenar e filtrar produzem um modelo novo (excluir numa cópia; ordenar e ocultar linhas com o `WorkbookEdit`, do mesmo crate do conversor XLSX) e o anterior fica guardado para desfazer. As linhas ocultas ficam no modelo; o filtro, ao lado dele no worker e no cabeçalho do `.farcel`. A grade recebe as linhas ocultas como pares (início, fim) e mapeia índice exibido ↔ linha da planilha por busca binária (`src/core/row-map.ts`). Detalhes, semântica e medições: [tabela.md](tabela.md).
+
 ## Base sintética de um milhão de linhas
 
 `Base de teste…` (menu de arquivos no trilho) cria, em uma aba nova com seu próprio worker, uma pasta reprodutível: planilha **Dados** com Região, Canal, Categoria, Quantidade e Receita em todas as linhas pedidas (padrão 1.000.000, semente 20261029) e planilha **Resumo** com `SOMA`, `SOMASE` e `CONT.VALORES` sobre a base. Os totais esperados são calculados independentemente pelo gerador (`syntheticTotals`) e comparados nos testes e no benchmark.
@@ -102,6 +106,6 @@ O painel mostra que a IA **não está conectada** e não envia nem responde nada
 - Formatação disponível: formato de número (Geral, Número, Moeda R$, Porcentagem, Data), negrito e alinhamento horizontal. O IronCalc guarda o estilo por célula: formatar uma coluna inteira formata só as linhas com dados, e outras seleções são limitadas a 200 mil células. Sem bordas, cores, mesclagem, largura de coluna ajustável, congelamento de painéis ou autocompletar fórmulas.
 - Recalculo: o IronCalc 0.9.1 reavalia a pasta inteira a cada edição. Com fórmulas que varrem um milhão de linhas cada edição custa centenas de milissegundos (medido); com fórmulas por linha o custo cresce proporcionalmente. A interface continua responsiva porque o cálculo está no worker, mas a célula só mostra o novo valor depois.
 - Primeira leitura da dinâmica sobre um milhão de linhas custa segundos por coluna (chamadas célula a célula ao WASM). Edições posteriores corrigem apenas as células alteradas.
-- Copiar até 500 mil células por vez.
+- Copiar até 500 mil células por vez. Com linhas ocultas na seleção, copiar leva só as visíveis, como valores.
 - Documentos e Apresentações aparecem como espaços em preparação, sem editor.
 - Sem executável Windows; nada medido em Windows.

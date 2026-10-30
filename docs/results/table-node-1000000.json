@@ -1,0 +1,231 @@
+{
+  "createdAt": "2026-10-30T14:44:23.503Z",
+  "scope": "Engine only (WorkbookEngine.apply) under Node, single thread, the same IronCalc 0.9.1 WASM and xlsx-bridge WASM the browser loads. No worker messaging, no grid drawing.",
+  "environment": {
+    "node": "v22.22.0",
+    "os": "linux 6.18.44-fc-v185 x64",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "logicalCpus": 4,
+    "totalMemoryBytes": 16872808448
+  },
+  "corpus": "Synthetic base (Dados: Região, Canal, Categoria, Quantidade, Receita; header in row 1) plus the Resumo sheet with 3 aggregate formulas over Dados.",
+  "runs": [
+    {
+      "rows": 1000000,
+      "cells": 5000005,
+      "hiddenRunsAfterFilterSul": {
+        "first": 159887,
+        "repeat": 159925
+      },
+      "estimates": {
+        "insertAtTop": {
+          "cells": 5000000,
+          "seconds": 20
+        },
+        "deleteAtTop": {
+          "cells": 5000005,
+          "seconds": 40
+        }
+      },
+      "resumoAfterOperations": [
+        "2651321665,4599",
+        "529464690,099989",
+        "1000000"
+      ],
+      "steps": [
+        {
+          "label": "after generation",
+          "ms": 24040.7,
+          "ironcalcWasmMiB": 593,
+          "bridgeWasmMiB": 1.3,
+          "nodeRssMiB": 889.2,
+          "nodeHeapUsedMiB": 4.7
+        },
+        {
+          "label": "filter on: header buttons, no criterion",
+          "ms": 7.1,
+          "ironcalcWasmMiB": 593,
+          "bridgeWasmMiB": 1.3,
+          "nodeRssMiB": 889.2,
+          "nodeHeapUsedMiB": 4.8
+        },
+        {
+          "label": "filter values of Região (distinct + counts)",
+          "ms": 1243.3,
+          "ironcalcWasmMiB": 593,
+          "bridgeWasmMiB": 1.3,
+          "nodeRssMiB": 808.8,
+          "nodeHeapUsedMiB": 21.7
+        },
+        {
+          "label": "filter values of Receita (distinct + counts)",
+          "ms": 6235.7,
+          "ironcalcWasmMiB": 593,
+          "bridgeWasmMiB": 1.3,
+          "nodeRssMiB": 851.2,
+          "nodeHeapUsedMiB": 60.6
+        },
+        {
+          "label": "filter Região = Sul (hides ~80%) · first",
+          "ms": 4942.5,
+          "ironcalcWasmMiB": 648.1,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1430,
+          "nodeHeapUsedMiB": 4.7
+        },
+        {
+          "label": "filter Região ≠ Sul and Canal = Atacado · first",
+          "ms": 5919.5,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1724.1,
+          "nodeHeapUsedMiB": 4.6
+        },
+        {
+          "label": "undo the last filter · first",
+          "ms": 0.1,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1724.1,
+          "nodeHeapUsedMiB": 4.7
+        },
+        {
+          "label": "filter off (all rows shown) · first",
+          "ms": 1634.1,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1732.7,
+          "nodeHeapUsedMiB": 13.4
+        },
+        {
+          "label": "sort by Receita descending (numbers) · first",
+          "ms": 4500.6,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1794.2,
+          "nodeHeapUsedMiB": 66.5
+        },
+        {
+          "label": "sort by Região, Canal, Receita (text, text, number) · first",
+          "ms": 5638.2,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1935.4,
+          "nodeHeapUsedMiB": 206.9
+        },
+        {
+          "label": "undo the sort · first",
+          "ms": 0.2,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1935.5,
+          "nodeHeapUsedMiB": 206.9
+        },
+        {
+          "label": "redo the sort · first",
+          "ms": 0.1,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1935.5,
+          "nodeHeapUsedMiB": 206.9
+        },
+        {
+          "label": "filter on again: header buttons, no criterion",
+          "ms": 217.6,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1935.5,
+          "nodeHeapUsedMiB": 206.9
+        },
+        {
+          "label": "filter Região = Sul (hides ~80%) · repeat",
+          "ms": 3232.3,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1816.7,
+          "nodeHeapUsedMiB": 39.4
+        },
+        {
+          "label": "filter Região ≠ Sul and Canal = Atacado · repeat",
+          "ms": 4793.5,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1811.9,
+          "nodeHeapUsedMiB": 36.9
+        },
+        {
+          "label": "undo the last filter · repeat",
+          "ms": 0,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1811.9,
+          "nodeHeapUsedMiB": 36.9
+        },
+        {
+          "label": "filter off (all rows shown) · repeat",
+          "ms": 1627.3,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1811.6,
+          "nodeHeapUsedMiB": 22.4
+        },
+        {
+          "label": "sort by Receita ascending (numbers) · repeat",
+          "ms": 2835.7,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1852,
+          "nodeHeapUsedMiB": 66.2
+        },
+        {
+          "label": "sort by Região, Canal, Receita (text, text, number), Região descending · repeat",
+          "ms": 5365,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1929.5,
+          "nodeHeapUsedMiB": 204.8
+        },
+        {
+          "label": "undo the sort · repeat",
+          "ms": 0.1,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1929.5,
+          "nodeHeapUsedMiB": 204.8
+        },
+        {
+          "label": "redo the sort · repeat",
+          "ms": 0.1,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1929.5,
+          "nodeHeapUsedMiB": 204.8
+        },
+        {
+          "label": "insert 10 rows after the data",
+          "ms": 2228.9,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1929.5,
+          "nodeHeapUsedMiB": 204.8
+        },
+        {
+          "label": "insert 1 row below the header (moves every cell)",
+          "ms": 15845.9,
+          "ironcalcWasmMiB": 927,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 1929.7,
+          "nodeHeapUsedMiB": 194.5
+        },
+        {
+          "label": "delete that row (on a copy, for a correct undo)",
+          "ms": 34146.7,
+          "ironcalcWasmMiB": 1314.1,
+          "bridgeWasmMiB": 498.3,
+          "nodeRssMiB": 2079.7,
+          "nodeHeapUsedMiB": 12.8
+        }
+      ]
+    }
+  ]
+}

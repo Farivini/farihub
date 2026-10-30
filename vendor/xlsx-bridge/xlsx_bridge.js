@@ -68,6 +68,189 @@ export class ImportedXlsx {
 if (Symbol.dispose) ImportedXlsx.prototype[Symbol.dispose] = ImportedXlsx.prototype.free;
 
 /**
+ * Values of one column for sorting. `kinds`: 0 empty, 1 number, 2 text, 3 boolean, 4 error.
+ * `numbers` holds numbers (and booleans as 0/1); `texts` holds text, empty otherwise.
+ */
+export class SortKeys {
+    static __wrap(ptr) {
+        const obj = Object.create(SortKeys.prototype);
+        obj.__wbg_ptr = ptr;
+        SortKeysFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        SortKeysFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_sortkeys_free(ptr, 0);
+    }
+    /**
+     * @returns {Uint8Array}
+     */
+    get kinds() {
+        const ret = wasm.__wbg_get_sortkeys_kinds(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    get numbers() {
+        const ret = wasm.__wbg_get_sortkeys_numbers(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @returns {string[]}
+     */
+    get texts() {
+        const ret = wasm.__wbg_get_sortkeys_texts(this.__wbg_ptr);
+        var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]);
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @param {Uint8Array | number[]} arg0
+     */
+    set kinds(arg0) {
+        const ptr0 = passArray8ToWasm0(arg0, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.__wbg_set_sortkeys_kinds(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
+     * @param {Float64Array | number[]} arg0
+     */
+    set numbers(arg0) {
+        const ptr0 = passArrayF64ToWasm0(arg0, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.__wbg_set_sortkeys_numbers(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
+     * @param {string[]} arg0
+     */
+    set texts(arg0) {
+        const ptr0 = passArrayJsValueToWasm0(arg0, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.__wbg_set_sortkeys_texts(this.__wbg_ptr, ptr0, len0);
+    }
+}
+if (Symbol.dispose) SortKeys.prototype[Symbol.dispose] = SortKeys.prototype.free;
+
+export class WorkbookEdit {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        WorkbookEditFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_workbookedit_free(ptr, 0);
+    }
+    /**
+     * Hidden rows of a sheet as (start, end) pairs, ascending.
+     * @param {number} sheet
+     * @returns {Int32Array}
+     */
+    hiddenRows(sheet) {
+        const ret = wasm.workbookedit_hiddenRows(this.__wbg_ptr, sheet);
+        if (ret[3]) {
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        var v1 = getArrayI32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @param {Uint8Array | number[]} bytes
+     */
+    constructor(bytes) {
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.workbookedit_new(ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        WorkbookEditFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * Moves the rows of the block `top..top+n-1` × `left..=right` so that new row `top + i`
+     * holds what was in row `top + order[i]`. Cells (values, formulas, styles), hyperlinks and
+     * comments move; row heights and hidden flags stay with the row numbers. Refuses blocks
+     * with merged cells or array formulas, which IronCalc ties to fixed positions.
+     * @param {number} sheet
+     * @param {number} top
+     * @param {number} left
+     * @param {number} right
+     * @param {Uint32Array | number[]} order
+     */
+    reorderRows(sheet, top, left, right, order) {
+        const val2 = +sheet;
+        const val3 = +top;
+        const val4 = +left;
+        const val5 = +right;
+        const ptr0 = passArray32ToWasm0(order, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.workbookedit_reorderRows(this.__wbg_ptr, val2, val3, val4, val5, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * Sets which rows in `from..=to` are hidden: exactly those inside the `ranges` pairs
+     * (start, end, start, end, ...). Rows outside `from..=to` are not touched.
+     * @param {number} sheet
+     * @param {number} from
+     * @param {number} to
+     * @param {Int32Array | number[]} ranges
+     */
+    setHiddenRows(sheet, from, to, ranges) {
+        const val2 = +sheet;
+        const val3 = +from;
+        const val4 = +to;
+        const ptr0 = passArray32ToWasm0(ranges, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.workbookedit_setHiddenRows(this.__wbg_ptr, val2, val3, val4, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * The stored (evaluated) value of each cell of `column` in rows `top..=bottom`.
+     * @param {number} sheet
+     * @param {number} top
+     * @param {number} bottom
+     * @param {number} column
+     * @returns {SortKeys}
+     */
+    sortKeys(sheet, top, bottom, column) {
+        const ret = wasm.workbookedit_sortKeys(this.__wbg_ptr, sheet, top, bottom, column);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return SortKeys.__wrap(ret[0]);
+    }
+    /**
+     * @returns {Uint8Array}
+     */
+    toBytes() {
+        const ret = wasm.workbookedit_toBytes(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+}
+if (Symbol.dispose) WorkbookEdit.prototype[Symbol.dispose] = WorkbookEdit.prototype.free;
+
+/**
  * Reads an .xlsx file with IronCalc's importer.
  * @param {Uint8Array | number[]} xlsx
  * @param {string} name
@@ -178,6 +361,11 @@ function __wbg_get_imports() {
             const ret = Math.random();
             return ret;
         },
+        __wbindgen_generic_0000000000000001: function(arg0, arg1) {
+            // Cast intrinsic for `Ref(String) -> Externref`.
+            const ret = getStringFromWasm0(arg0, arg1);
+            return ret;
+        },
         __wbindgen_init_externref_table: function() {
             const table = wasm.__wbindgen_externrefs;
             table.set(0, undefined);
@@ -197,6 +385,39 @@ function __wbg_get_imports() {
 const ImportedXlsxFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_importedxlsx_free(ptr, 1));
+const SortKeysFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_sortkeys_free(ptr, 1));
+const WorkbookEditFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_workbookedit_free(ptr, 1));
+
+function addToExternrefTable0(obj) {
+    const idx = wasm.__externref_table_alloc();
+    wasm.__wbindgen_externrefs.set(idx, obj);
+    return idx;
+}
+
+function getArrayF64FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getFloat64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
+}
+
+function getArrayI32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getInt32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
+
+function getArrayJsValueFromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    const mem = getDataViewMemory0();
+    const result = [];
+    for (let i = ptr; i < ptr + 4 * len; i += 4) {
+        result.push(wasm.__wbindgen_externrefs.get(mem.getUint32(i, true)));
+    }
+    wasm.__externref_drop_slice(ptr, len);
+    return result;
+}
 
 function getArrayU8FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
@@ -211,9 +432,33 @@ function getDataViewMemory0() {
     return cachedDataViewMemory0;
 }
 
+let cachedFloat64ArrayMemory0 = null;
+function getFloat64ArrayMemory0() {
+    if (cachedFloat64ArrayMemory0 === null || cachedFloat64ArrayMemory0.byteLength === 0) {
+        cachedFloat64ArrayMemory0 = new Float64Array(wasm.memory.buffer);
+    }
+    return cachedFloat64ArrayMemory0;
+}
+
+let cachedInt32ArrayMemory0 = null;
+function getInt32ArrayMemory0() {
+    if (cachedInt32ArrayMemory0 === null || cachedInt32ArrayMemory0.byteLength === 0) {
+        cachedInt32ArrayMemory0 = new Int32Array(wasm.memory.buffer);
+    }
+    return cachedInt32ArrayMemory0;
+}
+
 function getStringFromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return decodeText(getUint8ArrayMemory0().subarray(ptr, ptr + len));
+}
+
+let cachedUint32ArrayMemory0 = null;
+function getUint32ArrayMemory0() {
+    if (cachedUint32ArrayMemory0 === null || cachedUint32ArrayMemory0.byteLength === 0) {
+        cachedUint32ArrayMemory0 = new Uint32Array(wasm.memory.buffer);
+    }
+    return cachedUint32ArrayMemory0;
 }
 
 let cachedUint8ArrayMemory0 = null;
@@ -228,10 +473,34 @@ function isLikeNone(x) {
     return x === undefined || x === null;
 }
 
+function passArray32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4, 4) >>> 0;
+    getUint32ArrayMemory0().set(arg, ptr / 4);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
 function passArray8ToWasm0(arg, malloc) {
     const ptr = malloc(arg.length * 1, 1) >>> 0;
     getUint8ArrayMemory0().set(arg, ptr / 1);
     WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
+function passArrayF64ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 8, 8) >>> 0;
+    getFloat64ArrayMemory0().set(arg, ptr / 8);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
+function passArrayJsValueToWasm0(array, malloc) {
+    const ptr = malloc(array.length * 4, 4) >>> 0;
+    for (let i = 0; i < array.length; i++) {
+        const add = addToExternrefTable0(array[i]);
+        getDataViewMemory0().setUint32(ptr + 4 * i, add, true);
+    }
+    WASM_VECTOR_LEN = array.length;
     return ptr;
 }
 
@@ -313,6 +582,9 @@ function __wbg_finalize_init(instance, module) {
     wasm = instance.exports;
     wasmModule = module;
     cachedDataViewMemory0 = null;
+    cachedFloat64ArrayMemory0 = null;
+    cachedInt32ArrayMemory0 = null;
+    cachedUint32ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
     wasm.__wbindgen_start();
     return wasm;

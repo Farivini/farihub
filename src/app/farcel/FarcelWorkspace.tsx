@@ -5,11 +5,15 @@ import type { Rect } from '../../core/address.ts';
 import { emptyConfig, layoutPivot } from '../../core/pivot.ts';
 import { FILE_EXTENSION } from '../../core/file-format.ts';
 import type { EngineClient } from '../../engine/client.ts';
-import type { WorkbookInfo } from '../../engine/protocol.ts';
+import type { RowLayout, WorkbookInfo } from '../../engine/protocol.ts';
+import { RowMap, hiddenCount, rangesWithin } from '../../core/row-map.ts';
+import type { FilterCriterion, FilterValues, OperationCost, SortKey, TableOperation } from '../../core/table-ops.ts';
 import { NUMBER_FORMATS } from '../../engine/workbook-engine.ts';
 import type { CellFormat, FormatChange, GenerationReport, HorizontalAlign } from '../../engine/workbook-engine.ts';
 import { Grid } from './Grid.tsx';
-import type { GridController, GridHandle, Selection, SelectionStats } from './Grid.tsx';
+import type { GridController, GridHandle, GridMenuRequest, Selection, SelectionStats } from './Grid.tsx';
+import { ContextMenu, FilterPopover, SortDialog } from './TableMenus.tsx';
+import type { MenuItem } from '../shell/Menu.tsx';
 import { PivotView } from './PivotView.tsx';
 import type { PivotDef, PivotState } from './PivotView.tsx';
 import { FunctionMenu } from './FunctionMenu.tsx';
@@ -120,6 +124,14 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
   const [report, setReport] = useState<GenerationReport | null>(null);
   const [zoom, setZoom] = useState(1);
   const sheet = tab.kind === 'sheet' ? tab.index : pivots.find(p => p.id === tab.id)?.sheet ?? 0;
+  // Table operations: row layout of the sheet shown, and what is open around the selection.
+  const [layout, setLayout] = useState<RowLayout | null>(null);
+  const [menu, setMenu] = useState<GridMenuRequest | null>(null);
+  const [filterMenu, setFilterMenu] = useState<{ column: number; x: number; y: number } | null>(null);
+  const [sortDialog, setSortDialog] = useState<{ range: Rect; header: boolean; labels: string[]; keys: SortKey[] } | null>(null);
+  const [ambiguous, setAmbiguous] = useState<{ selection: Rect; region: Rect; then(range: Rect): void } | null>(null);
+  const [slowOp, setSlowOp] = useState<{ op: TableOperation; cost: OperationCost; label: string } | null>(null);
+  const trimNoticed = useRef(false);
 
   /*
    * What a save captures. The engine part is the model at the moment the worker serialises
@@ -135,6 +147,9 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
   const writing = useRef<Promise<void>>(Promise.resolve());
   const appChanges = useRef(0);
   const pivotsRef = useRef(pivots);
+  /** Sheets with a filter, as of the last engine reply (the XLSX does not keep filters). */
+  const filteredRef = useRef(0);
+  filteredRef.current = info?.filtered.length ?? 0;
 
   const fail = useCallback((error: unknown) => {
     setMessage({ text: error instanceof Error ? error.message : String(error), tone: 'error' });
@@ -306,7 +321,7 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
       const origin = originRef.current;
       const name = requested ?? target?.name ?? `${stem(origin?.name ?? info?.name ?? 'Pasta1')}${SAVE_EXTENSIONS[format]}`;
       const appSnapshot = appChanges.current;
-      const losses = saveLosses(format, { pivots: pivotsRef.current.length, origin });
+      const losses = saveLosses(format, { pivots: pivotsRef.current.length, origin, filters: filteredRef.current });
       let bytes: Uint8Array;
       let engineSnapshot: number;
       if (format === 'farcel') {
@@ -338,7 +353,7 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
       const text = !current
         ? `${verb} ${written.name} com o estado do início da gravação. As alterações feitas durante a gravação ainda não estão no arquivo.`
         : !complete
-          ? `${verb} ${written.name}${where}, sem ${plural(pivotsRef.current.length, 'tabela dinâmica', 'tabelas dinâmicas')}: continuam só aqui. Para guardar tudo, use Salvar como… e escolha .farcel.`
+          ? `${verb} ${written.name}${where}, sem ${missing(losses)}: continuam só aqui. Para guardar tudo, use Salvar como… e escolha .farcel.`
           : `${verb} ${written.name}${where} · ${mib(bytes.length)} · ${seconds(performance.now() - started)}.${copyNote}`;
       setMessage({ text, tone: 'info' });
     } catch (error) {
@@ -346,8 +361,16 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
     }
   };
 
+  /** What a save left out of the workbook, in a few words. */
+  const missing = (losses: Loss[]) => {
+    const parts: string[] = [];
+    if (pivotsRef.current.length && losses.some(l => l.inWorkbook && l.text.includes('dinâmica'))) parts.push(plural(pivotsRef.current.length, 'tabela dinâmica', 'tabelas dinâmicas'));
+    if (filteredRef.current && losses.some(l => l.inWorkbook && l.text.includes('filtro'))) parts.push(plural(filteredRef.current, 'filtro', 'filtros'));
+    return parts.join(' e ');
+  };
+
   const baseName = stem(target?.name ?? origin?.name ?? info?.name ?? 'Pasta1');
-  const xlsxLosses = (format: SaveFormat) => saveLosses(format, { pivots: pivotsRef.current.length, origin });
+  const xlsxLosses = (format: SaveFormat) => saveLosses(format, { pivots: pivotsRef.current.length, origin, filters: filteredRef.current });
 
   /** Ctrl+S: keeps the format of the file; a new or imported workbook asks (XLSX by default). */
   const save = () => {
@@ -422,6 +445,18 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
     hasUnsavedWork: () => dirtyRef.current || inFlight.current > 0,
   }), [openFile]);
 
+  // Hidden rows and the filter of the sheet shown, read again when the engine's layout changes.
+  useEffect(() => {
+    if (!info || tab.kind !== 'sheet') return;
+    let live = true;
+    client.call('rowLayout', { sheet }).then(next => { if (live) setLayout(next); }, fail);
+    return () => { live = false; };
+  }, [client, sheet, info?.layoutVersion, tab.kind, fail]); // eslint-disable-line
+  const sheetLayout = layout?.sheet === sheet ? layout : null;
+  const rowMap = useMemo(() => sheetLayout?.hidden.length ? new RowMap(sheetLayout.hidden, MAX_ROW) : undefined, [sheetLayout]);
+  const gridFilter = useMemo(() => sheetLayout?.filter
+    ? { range: sheetLayout.filter.range, active: new Set(sheetLayout.filter.criteria.map(c => c.column)) } : null, [sheetLayout]);
+
   // Sheet grid controller: every read and write goes to the engine worker.
   const controller = useMemo<GridController>(() => ({
     key: `sheet-${sheet}-${info?.name ?? ''}`,
@@ -450,7 +485,171 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
     undo: async () => { await track(client.call('undo')); },
     redo: async () => { await track(client.call('redo')); },
     edge: (from, direction) => client.call('edge', { sheet, from, direction }),
-  }), [client, sheet, revision, info?.name, busy, track]);
+    rowMap,
+    filter: gridFilter,
+  }), [client, sheet, revision, info?.name, busy, track, rowMap, gridFilter]);
+
+  /**
+   * Runs one table operation in the engine (one undo step). Insertions and deletions that
+   * IronCalc would take long to do are confirmed first, with the estimate.
+   */
+  const runTable = async (op: TableOperation, label: string, confirmed = false): Promise<boolean> => {
+    if (busy) return false;
+    setBusy(`${label}…`);
+    try {
+      const started = performance.now();
+      const result = await track(client.call('tableOp', { op, confirmed }));
+      if (!result.done) { setSlowOp({ op, cost: result.cost, label }); return false; }
+      measure(`table:${op.kind}`, started, { engineMs: result.ms });
+      let note = '';
+      if (result.historyTrimmed && !trimNoticed.current) {
+        trimNoticed.current = true;
+        note = ' · Para poupar memória, as ações mais antigas desta pasta não podem mais ser desfeitas.';
+      }
+      setMessage({ text: `${label} · ${seconds(result.ms)}${note}`, tone: 'info' });
+      return true;
+    } catch {
+      return false; // track() already shows the error
+    } finally {
+      setBusy(null);
+      grid.current?.focus();
+    }
+  };
+
+  const filter = sheetLayout?.filter ?? null;
+  const region = async (rect: Rect): Promise<Rect> => {
+    const result = await client.call('tableQuery', { kind: 'region', sheet, cell: { row: rect.top, column: rect.left } });
+    return result.kind === 'region' ? result.rect : rect;
+  };
+
+  /** First two rows of a range: header text, and whether the first row looks like a header. */
+  const headerOf = async (range: Rect): Promise<{ labels: string[]; likely: boolean }> => {
+    const width = range.right - range.left + 1;
+    const view = await client.call('viewport', { sheet, top: range.top, left: range.left, rows: 2, columns: width });
+    const labels = view.values.slice(0, width);
+    const textRow = Array.from({ length: width }, (_, c) => view.kinds[c] === 2 && labels[c] !== '').every(Boolean);
+    const bold = Array.from({ length: width }, (_, c) => (view.styles[c] & 1) === 1).some(Boolean);
+    const typedBelow = Array.from({ length: width }, (_, c) => view.kinds[width + c] !== 2).some(Boolean);
+    // Excel's guess: a first row of text above a row with other kinds of values, or in bold.
+    return { labels, likely: textRow && (typedBelow || bold) };
+  };
+
+  /**
+   * The range to sort: the filter's, the current region around a single cell, or the
+   * selection; when the selection leaves out adjacent columns of its table, the person
+   * chooses between the whole table and the selection only.
+   */
+  const sortRange = async (): Promise<{ range: Rect; header: boolean | null } | null> => {
+    const rect = selection.rect;
+    const { row, column } = selection.active;
+    if (filter && row >= filter.range.top && row <= filter.range.bottom && column >= filter.range.left && column <= filter.range.right) {
+      return { range: filter.range, header: true };
+    }
+    const single = rect.top === rect.bottom && rect.left === rect.right;
+    const whole = rect.top === 1 && rect.bottom === MAX_ROW || rect.left === 1 && rect.right === MAX_COLUMN;
+    const table = await region({ top: row, left: column, bottom: row, right: column });
+    if (single || whole) {
+      if (table.top === table.bottom) { setMessage({ text: 'Nada para ordenar: a célula não faz parte de uma tabela com duas ou mais linhas.', tone: 'error' }); return null; }
+      return { range: table, header: null };
+    }
+    if (table.left < rect.left || table.right > rect.right) {
+      return new Promise(resolve => setAmbiguous({ selection: rect, region: table, then: range => resolve(range === table ? { range: table, header: null } : range === rect ? { range: rect, header: null } : null) }));
+    }
+    return { range: rect, header: null };
+  };
+
+  const sortLabel = (range: Rect, header: boolean, keys: SortKey[]) =>
+    `Ordenado ${rectName({ ...range, top: header ? range.top + 1 : range.top })} por ${keys.map(k => `${columnName(k.column)} ${k.descending ? '↓' : '↑'}`).join(', ')}${header ? ' · cabeçalho mantido' : ' · sem cabeçalho'}`;
+
+  const quickSort = async (descending: boolean) => {
+    const target = await sortRange();
+    if (!target) return;
+    const header = target.header ?? (await headerOf(target.range)).likely;
+    const column = Math.min(target.range.right, Math.max(target.range.left, selection.active.column));
+    const keys = [{ column, descending }];
+    void runTable({ kind: 'sort', sheet, range: target.range, header, keys }, sortLabel(target.range, header, keys));
+  };
+
+  const openSortDialog = async () => {
+    const target = await sortRange();
+    if (!target) return;
+    const { labels, likely } = await headerOf(target.range);
+    const column = Math.min(target.range.right, Math.max(target.range.left, selection.active.column));
+    setSortDialog({ range: target.range, header: target.header ?? likely, labels, keys: [{ column }] });
+  };
+
+  /** Turns the filter on for the table around the selection, or off. */
+  const toggleFilter = async () => {
+    if (filter) { void runTable({ kind: 'clearFilter', sheet }, 'Filtro removido; todas as linhas aparecem'); return; }
+    const rect = selection.rect;
+    const single = rect.top === rect.bottom;
+    const whole = rect.top === 1 && rect.bottom === MAX_ROW || rect.left === 1 && rect.right === MAX_COLUMN;
+    const range = single || whole ? await region({ ...rect, top: selection.active.row, left: selection.active.column }) : rect;
+    if (range.bottom <= range.top) {
+      setMessage({ text: 'Para filtrar, selecione uma tabela com cabeçalho e ao menos uma linha de dados.', tone: 'error' });
+      return;
+    }
+    void runTable({ kind: 'setFilter', sheet, range, criteria: [] }, `Filtro em ${rectName(range)}: use os botões do cabeçalho`);
+  };
+
+  const applyCriterion = (column: number, criterion: Omit<FilterCriterion, 'column'> | null) => {
+    if (!filter) return;
+    const criteria = filter.criteria.filter(c => c.column !== column);
+    if (criterion) criteria.push({ column, ...criterion });
+    const label = criterion ? `Filtrado por ${columnName(column)}` : `Filtro de ${columnName(column)} limpo`;
+    void runTable({ kind: 'setFilter', sheet, range: filter.range, criteria }, label);
+  };
+
+  const loadFilterValues = useCallback(async (search: string): Promise<FilterValues> => {
+    if (!filterMenu) throw new Error('Sem filtro');
+    const result = await client.call('tableQuery', { kind: 'filterValues', sheet, column: filterMenu.column, search });
+    if (result.kind !== 'filterValues') throw new Error('Resposta inesperada do motor');
+    return result;
+  }, [client, sheet, filterMenu]);
+
+  const contextItems = (target: GridMenuRequest['target']): MenuItem[] => {
+    const r = selection.rect;
+    const rowsCount = r.bottom - r.top + 1, columnsCount = r.right - r.left + 1;
+    const wholeColumns = r.top === 1 && r.bottom === MAX_ROW;
+    const wholeRows = r.left === 1 && r.right === MAX_COLUMN;
+    const hiddenInside = !!rowMap && rangesWithin(rowMap.hidden, r.top, r.bottom).length > 0;
+    const lines = (n: number) => plural(n, 'linha', 'linhas');
+    const cols = (n: number) => plural(n, 'coluna', 'colunas');
+    const items: MenuItem[] = [];
+    if (target !== 'columns') {
+      items.push(
+        { id: 'insert-rows-above', label: `Inserir ${lines(rowsCount)} acima`, disabled: wholeColumns,
+          onSelect: () => void runTable({ kind: 'insertRows', sheet, at: r.top, count: rowsCount }, `${rowsCount === 1 ? 'Inserida' : 'Inseridas'} ${lines(rowsCount)} acima da ${r.top.toLocaleString('pt-BR')}`) },
+        { id: 'insert-rows-below', label: `Inserir ${lines(rowsCount)} abaixo`, disabled: wholeColumns || r.bottom >= MAX_ROW,
+          onSelect: () => void runTable({ kind: 'insertRows', sheet, at: r.bottom + 1, count: rowsCount }, `${rowsCount === 1 ? 'Inserida' : 'Inseridas'} ${lines(rowsCount)} abaixo da ${r.bottom.toLocaleString('pt-BR')}`) },
+        { id: 'delete-rows', label: `Excluir ${lines(rowsCount)}`, disabled: wholeColumns || hiddenInside, hint: hiddenInside ? 'há linhas ocultas' : undefined,
+          onSelect: () => void runTable({ kind: 'deleteRows', sheet, at: r.top, count: rowsCount }, `${rowsCount === 1 ? 'Excluída' : 'Excluídas'} ${lines(rowsCount)} (${r.top.toLocaleString('pt-BR')}${rowsCount > 1 ? `–${r.bottom.toLocaleString('pt-BR')}` : ''})`) },
+      );
+    }
+    if (target !== 'rows') {
+      items.push(
+        { id: 'insert-columns-left', label: `Inserir ${cols(columnsCount)} à esquerda`, disabled: wholeRows, separatorBefore: items.length > 0,
+          onSelect: () => void runTable({ kind: 'insertColumns', sheet, at: r.left, count: columnsCount }, `${columnsCount === 1 ? 'Inserida' : 'Inseridas'} ${cols(columnsCount)} à esquerda de ${columnName(r.left)}`) },
+        { id: 'insert-columns-right', label: `Inserir ${cols(columnsCount)} à direita`, disabled: wholeRows || r.right >= MAX_COLUMN,
+          onSelect: () => void runTable({ kind: 'insertColumns', sheet, at: r.right + 1, count: columnsCount }, `${columnsCount === 1 ? 'Inserida' : 'Inseridas'} ${cols(columnsCount)} à direita de ${columnName(r.right)}`) },
+        { id: 'delete-columns', label: `Excluir ${cols(columnsCount)}`, disabled: wholeRows,
+          onSelect: () => void runTable({ kind: 'deleteColumns', sheet, at: r.left, count: columnsCount }, `${columnsCount === 1 ? 'Excluída' : 'Excluídas'} ${cols(columnsCount)} (${columnName(r.left)}${columnsCount > 1 ? `–${columnName(r.right)}` : ''})`) },
+      );
+    }
+    if (target === 'cells') {
+      items.push(
+        { id: 'sort-asc', label: 'Ordenar crescente', hint: 'A→Z', separatorBefore: true, icon: <Icon name="sort" size={15} />, onSelect: () => void quickSort(false) },
+        { id: 'sort-desc', label: 'Ordenar decrescente', hint: 'Z→A', icon: <Icon name="sort" size={15} />, onSelect: () => void quickSort(true) },
+        { id: 'sort-custom', label: 'Ordenar por várias colunas…', onSelect: () => void openSortDialog() },
+        { id: 'filter', label: filter ? 'Remover filtro' : 'Filtrar', hint: 'Ctrl+Shift+L', separatorBefore: true, icon: <Icon name="filter" size={15} />, onSelect: () => void toggleFilter() },
+      );
+    }
+    if (hiddenInside) {
+      items.push({ id: 'show-rows', label: 'Reexibir linhas ocultas', separatorBefore: true,
+        onSelect: () => void runTable({ kind: 'showRows', sheet, top: r.top, bottom: r.bottom }, 'Linhas reexibidas') });
+    }
+    return items;
+  };
 
   // Formula bar and toolbar state follow the active cell.
   useEffect(() => {
@@ -605,6 +804,10 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
         <button className={format?.align === 'center' ? 'tool on' : 'tool'} aria-pressed={format?.align === 'center'} disabled={!onSheet || !!busy} onClick={align('center')} title="Centralizar" aria-label="Centralizar"><Icon name="align-center" /></button>
         <button className={format?.align === 'right' ? 'tool on' : 'tool'} aria-pressed={format?.align === 'right'} disabled={!onSheet || !!busy} onClick={align('right')} title="Alinhar à direita" aria-label="Alinhar à direita"><Icon name="align-right" /></button>
         <span className="toolbar-sep" />
+        <button className={filter ? 'tool on' : 'tool'} aria-pressed={!!filter} disabled={!onSheet || !!busy} data-testid="filter-toggle"
+          onClick={() => void toggleFilter()} title={filter ? 'Remover filtro (Ctrl+Shift+L)' : 'Filtrar a tabela da seleção (Ctrl+Shift+L)'} aria-label={filter ? 'Remover filtro' : 'Filtrar'}><Icon name="filter" /></button>
+        <button className="tool" disabled={!onSheet || !!busy} data-testid="sort-open" onClick={() => void openSortDialog()} title="Ordenar a tabela da seleção" aria-label="Ordenar"><Icon name="sort" /></button>
+        <span className="toolbar-sep" />
         <button className="tool labeled" onClick={newPivot} disabled={!!busy || !info} title="Nova tabela dinâmica a partir de A1 desta planilha" data-testid="new-pivot"><Icon name="pivot" /><span>Dinâmica</span></button>
       </div>
 
@@ -645,14 +848,19 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
         </div>
       </div>
 
-      <div className="farcel-body">
+      <div className="farcel-body" onKeyDown={e => {
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'l' && onSheet && !busy) { e.preventDefault(); void toggleFilter(); }
+      }}>
         {onSheet && (
-          <Grid ref={grid} controller={controller} zoom={zoom} onSelection={setSelection} onEditingText={setEditingText} onError={text => setMessage({ text, tone: 'error' })} label={`Planilha ${sheets[sheet]}`} />
+          <Grid ref={grid} controller={controller} zoom={zoom} onSelection={setSelection} onEditingText={setEditingText} onError={text => setMessage({ text, tone: 'error' })} label={`Planilha ${sheets[sheet]}`}
+            onContextMenu={request => { if (!busy) setMenu(request); }}
+            onFilterButton={(column, anchor) => { if (!busy) setFilterMenu({ column, ...anchor }); }} />
         )}
         {activePivot && (
           <PivotView
             pivot={activePivot}
             sourceName={sheets[activePivot.sheet] ?? ''}
+            sourceFiltered={!!info?.filtered.includes(activePivot.sheet)}
             state={pivotStates[activePivot.id]}
             fields={fields?.sheet === activePivot.sheet ? fields.names : []}
             rows={fields?.sheet === activePivot.sheet ? fields.rows : 0}
@@ -698,6 +906,11 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
           <span className="status-report" data-testid="generation-report" title="Medido neste navegador">
             Base: {report.rows.toLocaleString('pt-BR')} linhas × {report.columns} colunas + {report.formulas} fórmulas · {seconds(report.totalMs)} · WASM {mib(report.wasmMemoryBytes)}
             <button className="icon-button" aria-label="Fechar relatório" onClick={() => setReport(null)}><Icon name="close" size={12} /></button>
+          </span>
+        )}
+        {onSheet && filter && rowMap && (
+          <span className="status-filter" data-testid="filter-status" title="Linhas da tabela filtrada que estão visíveis">
+            <Icon name="filter" size={13} />{(filter.range.bottom - filter.range.top - hiddenCount(rangesWithin(rowMap.hidden, filter.range.top + 1, filter.range.bottom))).toLocaleString('pt-BR')} de {(filter.range.bottom - filter.range.top).toLocaleString('pt-BR')} linhas
           </span>
         )}
         {onSheet && stats && stats.count > 1 && (
@@ -755,6 +968,62 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
           onCancel={() => setSaveDialog(null)}
           onSave={confirmSave}
         />
+      )}
+
+      {menu && onSheet && <ContextMenu x={menu.x} y={menu.y} items={contextItems(menu.target)} onClose={() => setMenu(null)} />}
+
+      {filterMenu && filter && onSheet && (
+        <FilterPopover
+          key={`${filterMenu.column}`}
+          x={filterMenu.x - 290}
+          y={filterMenu.y + 2}
+          title={columnName(filterMenu.column)}
+          criterion={filter.criteria.find(c => c.column === filterMenu.column)}
+          load={loadFilterValues}
+          onApply={criterion => applyCriterion(filterMenu.column, criterion)}
+          onSort={descending => {
+            const keys = [{ column: filterMenu.column, descending }];
+            void runTable({ kind: 'sort', sheet, range: filter.range, header: true, keys }, sortLabel(filter.range, true, keys));
+          }}
+          onRemoveFilter={() => void runTable({ kind: 'clearFilter', sheet }, 'Filtro removido; todas as linhas aparecem')}
+          onClose={() => setFilterMenu(null)}
+        />
+      )}
+
+      {sortDialog && (
+        <SortDialog
+          range={sortDialog.range}
+          header={sortDialog.header}
+          headerLabels={sortDialog.labels}
+          keys={sortDialog.keys}
+          onCancel={() => setSortDialog(null)}
+          onSort={(header, keys) => {
+            const { range } = sortDialog;
+            setSortDialog(null);
+            void runTable({ kind: 'sort', sheet, range, header, keys }, sortLabel(range, header, keys));
+          }}
+        />
+      )}
+
+      {ambiguous && (
+        <Dialog title="Ordenar a tabela inteira?" testId="sort-ambiguous" onClose={() => { ambiguous.then({ top: 0, left: 0, bottom: 0, right: 0 }); setAmbiguous(null); }} actions={<>
+          <button type="button" onClick={() => { ambiguous.then({ top: 0, left: 0, bottom: 0, right: 0 }); setAmbiguous(null); }}>Cancelar</button>
+          <button type="button" data-testid="sort-selection-only" onClick={() => { ambiguous.then(ambiguous.selection); setAmbiguous(null); }}>Só a seleção</button>
+          <button type="button" className="primary" data-testid="sort-whole-table" onClick={() => { ambiguous.then(ambiguous.region); setAmbiguous(null); }}>Tabela inteira</button>
+        </>}>
+          <p>A seleção {rectName(ambiguous.selection)} faz parte da tabela {rectName(ambiguous.region)}, que tem dados nas colunas ao lado.</p>
+          <p>Ordenar a tabela inteira mantém cada linha junta. Ordenar só a seleção troca as células de lugar sem as colunas vizinhas, separando os registros.</p>
+        </Dialog>
+      )}
+
+      {slowOp && (
+        <Dialog title="Operação demorada" testId="slow-op" onClose={() => setSlowOp(null)} actions={<>
+          <button type="button" onClick={() => setSlowOp(null)}>Cancelar</button>
+          <button type="button" className="primary" data-testid="slow-op-confirm" onClick={() => { const { op, label } = slowOp; setSlowOp(null); void runTable(op, label, true); }}>Continuar</button>
+        </>}>
+          <p>Para isso o motor move cerca de {slowOp.cost.cells.toLocaleString('pt-BR')} células, uma a uma: estimativa de {Math.ceil(slowOp.cost.seconds).toLocaleString('pt-BR')} s. A pasta fica ocupada até terminar.</p>
+          <p>Inserir ou excluir perto do fim da tabela é mais rápido.</p>
+        </Dialog>
       )}
 
       {exportPlan && (
