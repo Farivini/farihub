@@ -481,3 +481,13 @@ button:disabled { cursor: default; opacity: 0.38; }
 .report-list { margin: 0 0 14px; padding-left: 18px; color: var(--text-2); line-height: 1.6; }
 .report-list li::marker { color: var(--text-3); }
 .dialog h4 { margin: 4px 0 6px; font-size: 13px; color: var(--text-1); font-weight: 600; }
+
+/* Save as: format choice and download note */
+.format-choice { border: 0; padding: 0; margin: 0 0 12px; display: flex; flex-direction: column; gap: 8px; }
+.format-choice .option { flex-direction: row; align-items: flex-start; gap: 10px; padding: 10px 12px; margin: 0; border-radius: 10px; border: 1px solid var(--border-strong); color: var(--text-2); font-size: 12.5px; line-height: 1.5; cursor: pointer; }
+.format-choice .option.on { border-color: var(--orange-line); background: var(--orange-soft); color: var(--text-1); }
+.format-choice .option input { height: auto; margin-top: 3px; accent-color: var(--orange); }
+.format-choice strong { color: var(--text-1); font-weight: 600; }
+.format-choice code, .dialog p code { font-family: var(--mono); font-size: 12px; color: var(--orange-bright); }
+.download-note { font-size: 12.5px; padding: 10px 12px; border-radius: 10px; background: rgba(126, 166, 255, 0.08); border: 1px solid rgba(126, 166, 255, 0.22); color: var(--text-2); }
+.download-note strong { color: var(--text-1); }

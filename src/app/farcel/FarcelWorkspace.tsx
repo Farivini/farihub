@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { MAX_COLUMN, MAX_ROW, cellName, columnName, parseRect, rectName } from '../../core/address.ts';
 import type { Rect } from '../../core/address.ts';
 import { emptyConfig, layoutPivot } from '../../core/pivot.ts';
-import { FILE_EXTENSION, FORMAT_DESCRIPTION } from '../../core/file-format.ts';
+import { FILE_EXTENSION } from '../../core/file-format.ts';
 import type { EngineClient } from '../../engine/client.ts';
 import type { WorkbookInfo } from '../../engine/protocol.ts';
 import { NUMBER_FORMATS } from '../../engine/workbook-engine.ts';
@@ -17,12 +17,15 @@ import { Icon } from '../ui/Icon.tsx';
 import { MenuButton } from '../shell/Menu.tsx';
 import { measure } from '../perf.ts';
 import { FILE_KINDS, fileSink } from '../files.ts';
+import type { FileHandle, SinkMode } from '../files.ts';
 import { importXlsx, exportXlsx } from '../../engine/xlsx-client.ts';
 import { keptFeatures, lostFeatures } from '../../core/xlsx-report.ts';
-import type { XlsxReport } from '../../core/xlsx-report.ts';
-import type { DelimitedOptions } from '../../core/delimited.ts';
+import type { DelimitedExportMode, DelimitedOptions } from '../../core/delimited.ts';
+import { delimitedLosses, isComplete, lossKey, parseOrigin, saveLosses } from '../../core/save-plan.ts';
+import type { Loss, Origin, SaveFormat } from '../../core/save-plan.ts';
 import { Dialog } from '../shell/Dialog.tsx';
 import { ImportDialog } from './ImportDialog.tsx';
+import { SaveDialog } from './SaveDialog.tsx';
 
 export interface ContextRequest { sheet: number; selection: Rect; pivotRows: string[][] | null }
 export interface WorkspaceStatus {
@@ -35,24 +38,29 @@ export interface WorkspaceStatus {
   engine: string;
   busy: boolean;
 }
-export type Startup = { kind: 'new' } | { kind: 'open'; file: File } | { kind: 'generate'; rows: number; seed: number };
-export type ExportFormat = 'xlsx' | 'csv' | 'tsv';
+export type Startup = { kind: 'new' } | { kind: 'open'; file: File; handle?: FileHandle } | { kind: 'generate'; rows: number; seed: number };
+/** CSV and TSV export one sheet; workbooks are saved as .xlsx or .farcel. */
+export type ExportFormat = 'csv' | 'tsv';
 /** Opened as .farcel; .xlsx, .csv, .tsv and .txt are imported into a new workbook. */
 export const OPEN_EXTENSIONS = [FILE_EXTENSION, '.xlsx', '.csv', '.tsv', '.txt'];
 /** How opening a file ended: refused files leave the current workbook as it was. */
 export type OpenResult = { ok: true } | { ok: false; message: string | null };
 export interface WorkspaceHandle {
-  save(): Promise<void>;
-  openFile(file: File): Promise<OpenResult>;
+  /** Ctrl+S: the file and format the workbook came from or was last saved as; asks when there is none. */
+  save(): void;
+  saveAs(): void;
+  /** `handle`: the file on disk, when the browser gave one, so Ctrl+S can write it again. */
+  openFile(file: File, handle?: FileHandle): Promise<OpenResult>;
   exportFile(format: ExportFormat): void;
   /** Unsaved changes, including writes the engine has not answered yet (read synchronously). */
   hasUnsavedWork(): boolean;
 }
 
 type Tab = { kind: 'sheet'; index: number } | { kind: 'pivot'; id: string };
-/** The file a workbook was imported from (not its .farcel save). */
-interface Source { name: string; format: 'XLSX' | 'CSV' | 'TSV' | 'TXT'; report: XlsxReport | null }
-interface ExportPlan { format: ExportFormat; losses: string[] }
+/** Where Ctrl+S writes: the file opened or last saved, in its format. */
+interface Target { name: string; format: SaveFormat; handle?: FileHandle }
+interface ExportPlan { format: ExportFormat; losses: Loss[] }
+const SAVE_EXTENSIONS: Record<SaveFormat, string> = { xlsx: '.xlsx', farcel: FILE_EXTENSION };
 
 const extension = (name: string) => name.toLowerCase().slice(name.lastIndexOf('.'));
 const stem = (name: string) => name.replace(/\.[^.]+$/, '');
@@ -96,11 +104,16 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
   const [busy, setBusy] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [source, setSource] = useState<Source | null>(null);
+  const [target, setTarget] = useState<Target | null>(null);
+  const [savedMode, setSavedMode] = useState<SinkMode>('file');
+  const [origin, setOrigin] = useState<Origin | null>(null);
   const [importing, setImporting] = useState<{ file: File; bytes: Uint8Array; done(result: OpenResult): void } | null>(null);
-  const [importReport, setImportReport] = useState<Source | null>(null);
+  const [importReport, setImportReport] = useState<Origin | null>(null);
+  const [saveDialog, setSaveDialog] = useState<{ start: 'choose' | 'confirm'; format: SaveFormat; name: string } | null>(null);
   const [exportPlan, setExportPlan] = useState<ExportPlan | null>(null);
+  const [exportMode, setExportMode] = useState<DelimitedExportMode>('spreadsheet');
+  /** XLSX losses already accepted for this workbook (asked again after reopening). */
+  const acceptedLosses = useRef<string | null>(null);
   const [pivots, setPivots] = useState<PivotDef[]>([]);
   const [pivotStates, setPivotStates] = useState<Record<string, PivotState>>({});
   const [fields, setFields] = useState<{ sheet: number; names: string[]; rows: number } | null>(null);
@@ -134,20 +147,22 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
 
   // Files
   /** Shared end of every successful open: a workbook that matches its file, no edits. */
-  const opened = (result: WorkbookInfo, name: string | null, from: Source | null, app: { pivots?: PivotDef[]; activeTab?: Tab } = {}) => {
+  const opened = (result: WorkbookInfo, file: Target | null, from: Origin | null, app: { pivots?: PivotDef[]; activeTab?: Tab } = {}) => {
     setInfo(result);
     pivotsRef.current = app.pivots ?? [];
     appChanges.current++;
     setPivots(pivotsRef.current);
     setPivotStates({});
     setTab(app.activeTab && (app.activeTab.kind === 'sheet' ? app.activeTab.index < result.sheets.length : app.pivots?.some(p => p.id === (app.activeTab as { id: string }).id)) ? app.activeTab : { kind: 'sheet', index: 0 });
-    setFileName(name);
-    setSource(from);
+    setTarget(file);
+    setOrigin(from);
+    acceptedLosses.current = null;
     setDirty(false);
-    setSaved(!!name);
+    setSaved(!!file);
+    setSavedMode('file');
   };
 
-  const openXlsx = useCallback(async (file: File): Promise<OpenResult> => {
+  const openXlsx = useCallback(async (file: File, handle?: FileHandle): Promise<OpenResult> => {
     setBusy('Importando XLSX…');
     try {
       const started = performance.now();
@@ -156,8 +171,8 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
       const converted = await importXlsx(bytes, stem(file.name));
       const result = await client.call('loadModel', { bytes: converted.model });
       measure('xlsx:import', started, { convertMs: converted.ms, engineMs: result.ms, evaluateMs: result.evaluateMs, bytes: size });
-      const from: Source = { name: file.name, format: 'XLSX', report: converted.report };
-      opened(result, null, from);
+      const from: Origin = { name: file.name, format: 'XLSX', report: converted.report };
+      opened(result, { name: file.name, format: 'xlsx', handle }, from);
       const { cells, formulas } = converted.report;
       setMessage({ text: `Importado ${file.name} · ${mib(size)} · ${plural(cells, 'célula', 'células')}, ${plural(formulas, 'fórmula', 'fórmulas')} · ${seconds(performance.now() - started)}`, tone: 'info' });
       if (lostFeatures(converted.report).length || keptFeatures(converted.report).length) setImportReport(from);
@@ -197,9 +212,9 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
     }
   };
 
-  const openFile = useCallback(async (file: File): Promise<OpenResult> => {
+  const openFile = useCallback(async (file: File, handle?: FileHandle): Promise<OpenResult> => {
     const kind = extension(file.name);
-    if (kind === '.xlsx') return openXlsx(file);
+    if (kind === '.xlsx') return openXlsx(file, handle);
     if (kind === '.csv' || kind === '.tsv' || kind === '.txt') return openDelimited(file);
     if (kind !== FILE_EXTENSION) {
       const text = `${file.name}: abrem arquivos ${OPEN_EXTENSIONS.join(', ')}. Este formato ainda não é suportado.`;
@@ -213,7 +228,8 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
       const size = bytes.length;
       const result = await client.call('open', { bytes });
       measure('engine:open', started, { engineMs: result.ms, evaluateMs: result.evaluateMs, bytes: size });
-      opened(result, file.name, null, result.header.app as { pivots?: PivotDef[]; activeTab?: Tab });
+      const app = result.header.app as { pivots?: PivotDef[]; activeTab?: Tab; origin?: unknown };
+      opened(result, { name: file.name, format: 'farcel', handle }, parseOrigin(app.origin), app);
       setMessage({ text: `Aberto ${file.name} · ${mib(size)} · ${seconds(result.ms)} (recálculo ${seconds(result.evaluateMs)}) · IronCalc ${result.header.engine.version}`, tone: 'info' });
       return { ok: true };
     } catch (error) {
@@ -256,7 +272,7 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
       setEngineName(result.engine);
       setDirty(false);
       if (startup.kind === 'open') {
-        void openFile(startup.file).then(result => { if (!result.ok) onStartupFailed?.(result.message); });
+        void openFile(startup.file, startup.handle).then(result => { if (!result.ok) onStartupFailed?.(result.message); });
       }
       if (startup.kind === 'generate') void generate(startup.rows, startup.seed);
     }, fail);
@@ -264,29 +280,81 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
     // The startup action runs once per tab.
   }, [client]); // eslint-disable-line
 
-  const save = useCallback(async () => {
-    if (busy) return;
+  /**
+   * Writes the workbook as .xlsx or .farcel. The engine snapshot is the model when the worker
+   * serialised it and the pivot snapshot is read when the request is sent; if either changed
+   * while the file was being written, the workbook stays unsaved. A file that leaves out part
+   * of the workbook (pivots in an .xlsx) does not mark it saved either.
+   */
+  const write = async (format: SaveFormat, name: string, choose: boolean) => {
     try {
       const started = performance.now();
       const appSnapshot = appChanges.current;
-      const { bytes, ms } = await track(client.call('save', { app: { pivots: pivotsRef.current, activeTab: tab } }));
-      const engineSnapshot = engineChanges.current;
-      measure('engine:save', started, { engineMs: ms, bytes: bytes.length });
-      const savedName = await fileSink().save(fileName ?? `${info?.name ?? 'Pasta1'}${FILE_EXTENSION}`, bytes);
-      setFileName(savedName);
-      // Mark as saved only if nothing changed after the snapshot; later edits stay pending.
+      const losses = saveLosses(format, { pivots: pivotsRef.current.length, origin });
+      let bytes: Uint8Array;
+      let engineSnapshot: number;
+      if (format === 'farcel') {
+        const result = await track(client.call('save', { app: { pivots: pivotsRef.current, activeTab: tab, origin } }));
+        engineSnapshot = engineChanges.current;
+        bytes = result.bytes;
+        measure('engine:save', started, { engineMs: result.ms, bytes: bytes.length });
+      } else {
+        const { bytes: model } = await track(client.call('modelBytes'));
+        engineSnapshot = engineChanges.current;
+        const converted = await track(exportXlsx(model));
+        bytes = converted.xlsx;
+        measure('xlsx:export', started, { convertMs: converted.ms, bytes: bytes.length });
+      }
+      const handle = !choose && target?.format === format ? target.handle : undefined;
+      const written = await fileSink().write({ name, kind: FILE_KINDS[format], handle }, bytes);
+      setTarget({ name: written.name, format, handle: written.handle });
+      setSavedMode(written.mode);
       const current = engineChanges.current === engineSnapshot && appChanges.current === appSnapshot;
-      if (current) {
+      const complete = isComplete(losses);
+      if (current && complete) {
         setDirty(false);
         setSaved(true);
-        setMessage({ text: `Salvo ${savedName} · ${mib(bytes.length)} · ${seconds(ms)}. ${FORMAT_DESCRIPTION}`, tone: 'info' });
-      } else {
-        setMessage({ text: `Salvo ${savedName} com o estado do início da gravação. As alterações feitas durante a gravação ainda não estão no arquivo.`, tone: 'info' });
       }
+      const verb = written.mode === 'download' ? 'Cópia baixada' : 'Salvo';
+      const where = written.mode === 'download' ? ' na pasta de downloads' : '';
+      const copyNote = written.mode === 'download' ? ' O navegador não grava sobre o arquivo aberto: cada Ctrl+S baixa uma nova cópia.' : '';
+      const text = !current
+        ? `${verb} ${written.name} com o estado do início da gravação. As alterações feitas durante a gravação ainda não estão no arquivo.`
+        : !complete
+          ? `${verb} ${written.name}${where}, sem ${plural(pivotsRef.current.length, 'tabela dinâmica', 'tabelas dinâmicas')}: continuam só aqui. Para guardar tudo, use Salvar como… e escolha .farcel.`
+          : `${verb} ${written.name}${where} · ${mib(bytes.length)} · ${seconds(performance.now() - started)}.${copyNote}`;
+      setMessage({ text, tone: 'info' });
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) fail(error);
     }
-  }, [busy, client, fileName, info?.name, tab, track, fail]);
+  };
+
+  const baseName = stem(target?.name ?? origin?.name ?? info?.name ?? 'Pasta1');
+  const xlsxLosses = (format: SaveFormat) => saveLosses(format, { pivots: pivotsRef.current.length, origin });
+
+  /** Ctrl+S: keeps the format of the file; a new or imported workbook asks (XLSX by default). */
+  const save = () => {
+    if (busy) return;
+    if (!target) { setSaveDialog({ start: 'choose', format: 'xlsx', name: baseName }); return; }
+    const losses = xlsxLosses(target.format);
+    if (losses.length && acceptedLosses.current !== lossKey(losses)) {
+      setSaveDialog({ start: 'confirm', format: target.format, name: stem(target.name) });
+      return;
+    }
+    void write(target.format, target.name, false);
+  };
+
+  const saveAs = () => {
+    if (busy) return;
+    setSaveDialog({ start: 'choose', format: target?.format ?? 'xlsx', name: baseName });
+  };
+
+  const confirmSave = (format: SaveFormat, name: string, choose: boolean) => {
+    setSaveDialog(null);
+    const losses = xlsxLosses(format);
+    if (losses.length) acceptedLosses.current = lossKey(losses);
+    void write(format, choose || !target ? `${name.trim() || 'Pasta1'}${SAVE_EXTENSIONS[format]}` : target.name, choose || !target);
+  };
 
   /**
    * Pivot and chart configuration is saved in the file too. The ref, the change count and the
@@ -301,68 +369,41 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
   };
 
   /**
-   * Exports. XLSX carries the whole workbook; CSV and TSV one sheet of displayed values. What
-   * the chosen format leaves out is listed and confirmed first, never dropped silently.
+   * CSV and TSV: one sheet of displayed values, always confirmed with what the format leaves
+   * out and how text is written (protected for spreadsheets, or as is for integrations).
    */
-  const exportBase = stem(fileName ?? source?.name ?? info?.name ?? 'Pasta1');
   const exportFile = (format: ExportFormat) => {
     if (busy) return;
-    const losses: string[] = [];
-    const pivotCount = pivotsRef.current.length;
-    if (format === 'xlsx') {
-      const lost = source?.report ? lostFeatures(source.report) : [];
-      if (lost.length) losses.push(`Do arquivo original ${source!.name}, o que não foi importado também não volta: ${lost.join(', ')}.`);
-    } else {
-      const names = info?.sheets ?? [];
-      if (names.length > 1) losses.push(`Só a planilha ${names[sheet]}: ${format.toUpperCase()} guarda uma planilha por arquivo (as outras ${names.length - 1} ficam de fora).`);
-      losses.push('Valores como aparecem na tela: fórmulas viram seus resultados e a formatação (negrito, alinhamento, formatos de número) não vai.');
-    }
-    if (pivotCount) losses.push(`${plural(pivotCount, 'tabela dinâmica', 'tabelas dinâmicas')} do Planilhas e seus gráficos: só o formato .farcel guarda.`);
-    if (losses.length) setExportPlan({ format, losses });
-    else void runExport(format);
+    setExportMode('spreadsheet');
+    setExportPlan({ format, losses: delimitedLosses(format, { sheets: info?.sheets ?? [], sheet, pivots: pivotsRef.current.length }) });
   };
 
-  const runExport = async (format: ExportFormat) => {
+  const runExport = async (format: ExportFormat, mode: DelimitedExportMode) => {
     try {
       const started = performance.now();
-      if (format === 'xlsx') {
-        const appSnapshot = appChanges.current;
-        const complete = pivotsRef.current.length === 0;
-        const { bytes: model } = await track(client.call('modelBytes'));
-        const engineSnapshot = engineChanges.current;
-        const { xlsx, ms } = await track(exportXlsx(model));
-        measure('xlsx:export', started, { convertMs: ms, bytes: xlsx.length });
-        const savedName = await fileSink().save(`${exportBase}.xlsx`, xlsx, FILE_KINDS.xlsx);
-        // Same rule as save: only the state the file holds is marked as saved.
-        const current = engineChanges.current === engineSnapshot && appChanges.current === appSnapshot;
-        if (complete && current) { setDirty(false); setSaved(true); }
-        setMessage({
-          text: current
-            ? `Exportado ${savedName} · ${mib(xlsx.length)} · ${seconds(performance.now() - started)}`
-            : `Exportado ${savedName} com o estado do início da exportação. As alterações feitas durante ela ainda não estão no arquivo.`,
-          tone: 'info',
-        });
-      } else {
-        const result = await track(client.call('exportDelimited', { sheet, separator: format === 'csv' ? ';' : '\t' }));
-        measure('delimited:export', started, { engineMs: result.ms, rows: result.rows, columns: result.columns });
-        const savedName = await fileSink().save(`${exportBase}.${format}`, result.bytes, FILE_KINDS[format]);
-        setMessage({ text: `Exportado ${savedName} · ${plural(result.rows, 'linha', 'linhas')} × ${plural(result.columns, 'coluna', 'colunas')} · ${seconds(performance.now() - started)}`, tone: 'info' });
-      }
+      const result = await track(client.call('exportDelimited', { sheet, separator: format === 'csv' ? ';' : '\t', mode }));
+      measure('delimited:export', started, { engineMs: result.ms, rows: result.rows, columns: result.columns, protectedCells: result.protectedCells });
+      const written = await fileSink().write({ name: `${baseName}.${format}`, kind: FILE_KINDS[format] }, result.bytes);
+      const protectedNote = result.protectedCells
+        ? ` · ${plural(result.protectedCells, 'texto recebeu', 'textos receberam')} ' na frente para não virar fórmula`
+        : '';
+      setMessage({ text: `${written.mode === 'download' ? 'Baixado' : 'Exportado'} ${written.name} · ${plural(result.rows, 'linha', 'linhas')} × ${plural(result.columns, 'coluna', 'colunas')}${protectedNote} · ${seconds(performance.now() - started)}`, tone: 'info' });
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) fail(error);
     }
   };
-  const exportRef = useRef(exportFile);
-  exportRef.current = exportFile;
+  const commands = useRef({ save, saveAs, exportFile });
+  commands.current = { save, saveAs, exportFile };
 
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   useImperativeHandle(ref, () => ({
-    save,
+    save: () => commands.current.save(),
+    saveAs: () => commands.current.saveAs(),
     openFile,
-    exportFile: format => exportRef.current(format),
+    exportFile: format => commands.current.exportFile(format),
     hasUnsavedWork: () => dirtyRef.current || inFlight.current > 0,
-  }), [save, openFile]);
+  }), [openFile]);
 
   // Sheet grid controller: every read and write goes to the engine worker.
   const controller = useMemo<GridController>(() => ({
@@ -458,10 +499,10 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
 
   // Status for the shell
   useEffect(() => {
-    const title = fileName ?? source?.name ?? `${info?.name ?? 'Pasta1'}${FILE_EXTENSION}`;
+    const title = target?.name ?? origin?.name ?? info?.name ?? 'Pasta1';
     const engine = busy ? busy : pending > 0 ? 'Calculando…' : engineName;
-    onStatus({ title, dirty, saved, pristine: !dirty && !fileName && !source && !busy && !report && !importing, engine, busy: !!busy || pending > 0 });
-  }, [fileName, source, info?.name, dirty, saved, busy, pending, engineName, report, importing, onStatus]);
+    onStatus({ title, dirty, saved, pristine: !dirty && !target && !origin && !busy && !report && !importing, engine, busy: !!busy || pending > 0 });
+  }, [target, origin, info?.name, dirty, saved, busy, pending, engineName, report, importing, onStatus]);
 
   // Enter commits and then blurs the input; the ref stops the blur from committing twice.
   const formulaDraftRef = useRef<string | null>(null);
@@ -631,7 +672,7 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
 
       <footer className="status-bar">
         <span className={saved && !dirty ? 'save-state saved' : 'save-state'} data-testid="save-state">
-          {saved && !dirty ? <><Icon name="check" size={14} strokeWidth={2.2} />Salvo neste dispositivo</> : dirty ? 'Alterações não salvas' : source ? `Importado de ${source.format}` : 'Nova pasta'}
+          {saved && !dirty ? <><Icon name="check" size={14} strokeWidth={2.2} />{savedMode === 'download' ? 'Cópia baixada' : 'Salvo neste dispositivo'}</> : dirty ? 'Alterações não salvas' : origin && !target ? `Importado de ${origin.format}` : 'Nova pasta'}
         </span>
         <span className={message?.tone === 'error' ? 'status-message error' : 'status-message'} data-testid="status-message" title={message?.text}>
           {statusText}
@@ -687,14 +728,38 @@ export const FarcelWorkspace = forwardRef<WorkspaceHandle, {
         </Dialog>
       )}
 
+      {saveDialog && (
+        <SaveDialog
+          start={saveDialog.start}
+          name={saveDialog.name}
+          format={saveDialog.format}
+          lossesFor={xlsxLosses}
+          sinkMode={fileSink().mode}
+          onCancel={() => setSaveDialog(null)}
+          onSave={confirmSave}
+        />
+      )}
+
       {exportPlan && (
-        <Dialog title={`Exportar como ${exportPlan.format.toUpperCase()}?`} testId="export-confirm" onClose={() => setExportPlan(null)} actions={<>
+        <Dialog title={`Exportar planilha como ${exportPlan.format.toUpperCase()}`} testId="export-confirm" onClose={() => setExportPlan(null)} actions={<>
           <button type="button" onClick={() => setExportPlan(null)}>Cancelar</button>
-          <button type="button" className="primary" data-testid="export-anyway" onClick={() => { const { format } = exportPlan; setExportPlan(null); void runExport(format); }}>Exportar assim mesmo</button>
+          <button type="button" className="primary" data-testid="export-anyway" onClick={() => { const { format } = exportPlan; setExportPlan(null); void runExport(format, exportMode); }}>
+            {fileSink().mode === 'download' ? 'Baixar' : 'Exportar'}
+          </button>
         </>}>
-          <p>O arquivo {exportBase}.{exportPlan.format} não terá:</p>
-          <ul className="report-list" data-testid="export-losses">{exportPlan.losses.map(loss => <li key={loss}>{loss}</li>)}</ul>
-          {exportPlan.format !== 'xlsx' && <p>Para entregar a pasta inteira, exporte como XLSX.</p>}
+          <fieldset className="format-choice" data-testid="export-mode">
+            <label className={exportMode === 'spreadsheet' ? 'option on' : 'option'}>
+              <input type="radio" name="export-mode" value="spreadsheet" checked={exportMode === 'spreadsheet'} onChange={() => setExportMode('spreadsheet')} />
+              <span><strong>Para abrir em planilhas</strong> (padrão) — texto que começa com <code>=</code>, <code>+</code>, <code>-</code> ou <code>@</code> recebe <code>'</code> na frente, para o Excel, o LibreOffice ou o Google Planilhas não o executarem como fórmula. Números, inclusive negativos, não mudam.</span>
+            </label>
+            <label className={exportMode === 'raw' ? 'option on' : 'option'}>
+              <input type="radio" name="export-mode" value="raw" checked={exportMode === 'raw'} onChange={() => setExportMode('raw')} />
+              <span><strong>Dados originais</strong> — cada valor exatamente como aparece, para sistemas que leem o arquivo como dados. Ao abrir num programa de planilhas, um texto como <code>=1+1</code> pode virar fórmula.</span>
+            </label>
+          </fieldset>
+          <p>O arquivo {baseName}.{exportPlan.format} não terá:</p>
+          <ul className="report-list" data-testid="export-losses">{exportPlan.losses.map(loss => <li key={loss.text}>{loss.text}</li>)}</ul>
+          <p>Para entregar a pasta inteira, use Salvar como… e escolha XLSX.</p>
         </Dialog>
       )}
     </div>

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { EngineClient } from '../engine/client.ts';
 import { FILE_EXTENSION } from '../core/file-format.ts';
+import { pickFileToOpen } from './files.ts';
+import type { FileHandle } from './files.ts';
 import { DEFAULT_SEED } from '../core/synthetic.ts';
 import { FarcelWorkspace, OPEN_EXTENSIONS } from './farcel/FarcelWorkspace.tsx';
 import type { ContextRequest, ExportFormat, Startup, WorkspaceHandle, WorkspaceStatus } from './farcel/FarcelWorkspace.tsx';
@@ -18,7 +20,7 @@ import { SettingsButton } from './shell/SettingsButton.tsx';
 
 interface Doc { id: string; client: EngineClient; startup: Startup }
 
-const INITIAL_STATUS: WorkspaceStatus = { title: 'Pasta1.farcel', dirty: false, saved: false, pristine: true, engine: 'Iniciando motor…', busy: true };
+const INITIAL_STATUS: WorkspaceStatus = { title: 'Pasta1', dirty: false, saved: false, pristine: true, engine: 'Iniciando motor…', busy: true };
 const ASSISTANT_WIDTH = { min: 320, max: 600, initial: 420 };
 let nextDoc = 1;
 const newDoc = (startup: Startup): Doc => ({ id: `doc${nextDoc++}`, client: new EngineClient(), startup });
@@ -100,24 +102,35 @@ export function App() {
     setStatuses(s => { const copy = { ...s }; delete copy[doc.id]; return copy; });
   };
 
-  const openFile = (file: File) => {
+  const openFile = (file: File, handle?: FileHandle) => {
     if (activeStatus.pristine && handles.current.has(active.id)) {
       setSpace('farcel');
-      void handles.current.get(active.id)!.openFile(file);
-    } else addDoc({ kind: 'open', file });
+      void handles.current.get(active.id)!.openFile(file, handle);
+    } else addDoc({ kind: 'open', file, handle });
   };
 
-  const save = () => { setSpace('farcel'); void handles.current.get(active.id)?.save(); };
+  /** The native dialog keeps the file's handle (Ctrl+S writes it again); otherwise a file input. */
+  const pickFile = () => {
+    pickFileToOpen(OPEN_EXTENSIONS).then(picked => {
+      if (picked) openFile(picked.file, picked.handle);
+      else openInput.current?.click();
+    }, error => {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) setNotice(error instanceof Error ? error.message : String(error));
+    });
+  };
+
+  const save = () => { setSpace('farcel'); handles.current.get(active.id)?.save(); };
+  const saveAs = () => { setSpace('farcel'); handles.current.get(active.id)?.saveAs(); };
   const exportAs = (format: ExportFormat) => { setSpace('farcel'); handles.current.get(active.id)?.exportFile(format); };
 
   // Global shortcuts go to the visible workbook only.
-  const shortcuts = useRef({ save, open: () => openInput.current?.click() });
-  shortcuts.current = { save, open: () => openInput.current?.click() };
+  const shortcuts = useRef({ save, saveAs, open: pickFile });
+  shortcuts.current = { save, saveAs, open: pickFile };
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
       const key = event.key.toLowerCase();
-      if (key === 's') { event.preventDefault(); shortcuts.current.save(); }
+      if (key === 's') { event.preventDefault(); if (event.shiftKey) shortcuts.current.saveAs(); else shortcuts.current.save(); }
       if (key === 'o') { event.preventDefault(); shortcuts.current.open(); }
     };
     window.addEventListener('keydown', onKey);
@@ -140,10 +153,10 @@ export function App() {
 
   const fileMenu = [
     { id: 'new', label: 'Nova planilha', icon: <Icon name="plus" size={16} />, onSelect: () => addDoc({ kind: 'new' }) },
-    { id: 'open', label: 'Abrir…', hint: 'Ctrl+O', icon: <Icon name="open" size={16} />, onSelect: () => openInput.current?.click() },
+    { id: 'open', label: 'Abrir…', hint: 'Ctrl+O', icon: <Icon name="open" size={16} />, onSelect: pickFile },
     { id: 'save', label: 'Salvar', hint: 'Ctrl+S', icon: <Icon name="save" size={16} />, disabled: activeStatus.busy && activeStatus.engine.startsWith('Gerando'), onSelect: save },
-    { id: 'export-xlsx', label: 'Exportar como Excel (.xlsx)…', separatorBefore: true, icon: <Icon name="export" size={16} />, disabled: activeStatus.busy, onSelect: () => exportAs('xlsx') },
-    { id: 'export-csv', label: 'Exportar planilha como CSV (;)…', icon: <Icon name="export" size={16} />, disabled: activeStatus.busy, onSelect: () => exportAs('csv') },
+    { id: 'save-as', label: 'Salvar como…', hint: 'Ctrl+Shift+S', icon: <Icon name="save" size={16} />, disabled: activeStatus.busy && activeStatus.engine.startsWith('Gerando'), onSelect: saveAs },
+    { id: 'export-csv', label: 'Exportar planilha como CSV (;)…', separatorBefore: true, icon: <Icon name="export" size={16} />, disabled: activeStatus.busy, onSelect: () => exportAs('csv') },
     { id: 'export-tsv', label: 'Exportar planilha como TSV…', icon: <Icon name="export" size={16} />, disabled: activeStatus.busy, onSelect: () => exportAs('tsv') },
     { id: 'base', label: 'Base de teste…', separatorBefore: true, icon: <Icon name="base" size={16} />, onSelect: () => setGenerator({ rows: '1.000.000', seed: String(DEFAULT_SEED) }) },
   ];
