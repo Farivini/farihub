@@ -466,9 +466,11 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
     draw();
   }, [size]);
 
-  // Source identity change: reset cache, selection and scroll.
+  // Source identity change: reset cache, selection and scroll. A layout effect, so the reset
+  // lands before the browser handles any input: a selection made right after switching sheets
+  // is not overwritten by a late reset.
   const lastKey = useRef(controller.key);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (lastKey.current !== controller.key) {
       lastKey.current = controller.key;
       cache.current.clear();
