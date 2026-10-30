@@ -1,5 +1,7 @@
 # Farcel — primeira versão funcional no navegador
 
+> Na interface o espaço se chama **Planilhas** (Documentos e Apresentações para Fardoc e Farcanvas). Os nomes internos e a extensão `.farcel` não mudaram.
+
 Este documento descreve o que foi implementado, como as peças se ligam e o que ainda falta. Resultados medidos estão em [resultados-navegador.md](resultados-navegador.md).
 
 ## Visão geral
@@ -84,7 +86,7 @@ O IronCalc 0.9.1 não tem idioma português (`pt`, `pt-BR` e `pt-PT` rejeitados;
 
 ## Base sintética de um milhão de linhas
 
-`Base de teste` cria, no worker, uma pasta reprodutível: planilha **Dados** com Região, Canal, Categoria, Quantidade e Receita em todas as linhas pedidas (padrão 1.000.000, semente 20261029) e planilha **Resumo** com `SOMA`, `SOMASE` e `CONT.VALORES` sobre a base. Os totais esperados são calculados independentemente pelo gerador (`syntheticTotals`) e comparados nos testes e no benchmark.
+`Base de teste…` (menu de arquivos no trilho) cria, em uma aba nova com seu próprio worker, uma pasta reprodutível: planilha **Dados** com Região, Canal, Categoria, Quantidade e Receita em todas as linhas pedidas (padrão 1.000.000, semente 20261029) e planilha **Resumo** com `SOMA`, `SOMASE` e `CONT.VALORES` sobre a base. Os totais esperados são calculados independentemente pelo gerador (`syntheticTotals`) e comparados nos testes e no benchmark.
 
 O IronCalc guarda histórico de desfazer para cada entrada de usuário (medido: centenas de bytes por célula). O gerador reconstrói o modelo a partir dos próprios bytes a cada 100 mil linhas para descartá-lo; sem isso a memória WASM passaria de 1 GB.
 
@@ -94,9 +96,10 @@ O painel mostra que a IA **não está conectada** e não envia nem responde nada
 
 ## Limitações conhecidas desta versão
 
-- Uma pasta por vez (a aba de documento mostra a pasta aberta); sem largura de coluna ajustável, formatação de células, mesclagem, congelamento de painéis ou autocompletar fórmulas.
+- Várias pastas podem ficar abertas em abas; cada aba tem seu próprio worker e sua própria memória WASM.
+- Formatação disponível: formato de número (Geral, Número, Moeda R$, Porcentagem, Data), negrito e alinhamento horizontal. O IronCalc guarda o estilo por célula: formatar uma coluna inteira formata só as linhas com dados, e outras seleções são limitadas a 200 mil células. Sem bordas, cores, mesclagem, largura de coluna ajustável, congelamento de painéis ou autocompletar fórmulas.
 - Recalculo: o IronCalc 0.9.1 reavalia a pasta inteira a cada edição. Com fórmulas que varrem um milhão de linhas cada edição custa centenas de milissegundos (medido); com fórmulas por linha o custo cresce proporcionalmente. A interface continua responsiva porque o cálculo está no worker, mas a célula só mostra o novo valor depois.
 - Primeira leitura da dinâmica sobre um milhão de linhas custa segundos por coluna (chamadas célula a célula ao WASM). Edições posteriores corrigem apenas as células alteradas.
 - Copiar até 500 mil células por vez.
-- Fardoc e Farcanvas aparecem como espaços em preparação, sem editor.
+- Documentos e Apresentações aparecem como espaços em preparação, sem editor.
 - Sem executável Windows; nada medido em Windows.

@@ -60,3 +60,21 @@ Conclusão: com fórmulas em todas as linhas, a edição continua sem travar a i
 - Uma execução por cenário; sem metas de desempenho aprovadas.
 - Cinco colunas de tipos simples; sem estilos, datas como datas, colunas largas ou muitos grupos distintos.
 - Geração e primeira leitura da dinâmica dominam o tempo e dependem de chamadas célula a célula ao WASM. Uma API em lote no IronCalc (ou compilada por nós) deve reduzir ambas; não testado.
+
+## Após a mudança visual — 30/10/2026
+
+Mesmo benchmark, mesma máquina, depois da nova identidade visual. A grade passou a ler também o estilo de cada célula visível (negrito, alinhamento). Fonte: [`results/browser-million-2026-10-30.json`](results/browser-million-2026-10-30.json).
+
+| Operação | 29/10 | 30/10 |
+| --- | --- | --- |
+| Gerar a base | 22,6 s | 23,3 s |
+| Saltar até a última linha | 65 ms | 59 ms |
+| Desenho de quadro na rolagem (p95) | 5,2 ms | 4,1 ms |
+| Ida e volta de um bloco 64 × 16 (média / p95) | 3,5 / 4,3 ms | 4,2 / 6,7 ms |
+| Editar com recálculo das 3 fórmulas | 387 ms | 344 ms |
+| Dinâmica, 1ª execução | 6,6 s | 6,3 s |
+| Dinâmica após editar a origem | 0,26 s | 0,20 s |
+| Abrir o arquivo | 1,0 s | 0,97 s |
+| Memória WASM após gerar | 595 MiB | 595 MiB |
+
+Uma execução por data; variações de algumas dezenas de milissegundos estão dentro do ruído deste ambiente. O custo da leitura de estilos aparece só na ida e volta dos blocos.

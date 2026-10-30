@@ -225,7 +225,7 @@ test('spaces, assistant context and honest placeholders', async () => {
   assert.equal(await page.locator('.composer textarea').isDisabled(), true);
   assert.equal(await page.locator('.composer .send').isDisabled(), true);
   // Visible names, not internal ids.
-  assert.deepEqual(await page.locator('.space-switcher [role=tab]').allTextContents(), ['PlanilhasPlanilhas', 'DocumentosDocs', 'ApresentaçõesSlides']);
+  assert.deepEqual(await page.locator('.space-switcher [role=tab]').allTextContents(), ['Planilhas', 'Documentos', 'Apresentações']);
   assert.equal(await page.evaluate(() => /Farcel|Fardoc|Farcanvas/.test(document.body.innerText)), false, 'internal names are not visible');
   await page.click('[data-testid=space-fardoc]');
   await page.waitForSelector('[data-testid=placeholder] >> text=Em preparação');

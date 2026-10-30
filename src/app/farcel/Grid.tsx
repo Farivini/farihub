@@ -83,7 +83,9 @@ function displayedNumber(text: string): number {
 export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, onSelection, onEditingText, onError, label, zoom = 1 }, ref) {
   const ROW_HEIGHT = Math.round(BASE_ROW_HEIGHT * zoom);
   const HEADER_HEIGHT = Math.round(BASE_HEADER_HEIGHT * zoom);
-  const ROW_HEADER_WIDTH = Math.round(BASE_ROW_HEADER_WIDTH * zoom);
+  // Grows with the widest visible row number (999.990 needs more room than 12).
+  const [rowHeaderWidth, setRowHeaderWidth] = useState(BASE_ROW_HEADER_WIDTH);
+  const ROW_HEADER_WIDTH = Math.round(Math.max(BASE_ROW_HEADER_WIDTH, rowHeaderWidth) * zoom);
   const fontSize = Math.round(14 * zoom * 10) / 10;
   const FONT = `${fontSize}px ${FAMILY}`;
   const BOLD_FONT = `600 ${fontSize}px ${FAMILY}`;
@@ -348,6 +350,9 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
       const lw = ctx.measureText(label).width;
       if (y >= HEADER_HEIGHT - ROW_HEIGHT / 2) ctx.fillText(label, (ROW_HEADER_WIDTH - lw) / 2, y + ROW_HEIGHT / 2 + 0.5);
     }
+    ctx.font = HEADER_FONT_ACTIVE;
+    const needed = Math.ceil((ctx.measureText(v.bottom.toLocaleString('pt-BR')).width + 22) / zoomRef.current);
+    if (needed !== rowHeaderWidth && Math.max(needed, BASE_ROW_HEADER_WIDTH) !== Math.max(rowHeaderWidth, BASE_ROW_HEADER_WIDTH)) setRowHeaderWidth(needed);
     ctx.strokeStyle = colors.line;
     ctx.beginPath();
     ctx.moveTo(0, HEADER_HEIGHT - 0.5); ctx.lineTo(size.width, HEADER_HEIGHT - 0.5);
@@ -398,6 +403,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ controller, on
 
   useEffect(() => { requestDraw(); onSelection?.(selection); }, [selection]);
   useEffect(() => { requestDraw(); scrollIntoView(selectionRef.current.active); }, [zoom]);
+  useEffect(() => { requestDraw(); }, [rowHeaderWidth]);
 
   const scrollIntoView = (cell: CellRef) => {
     const scroller = scrollerRef.current;

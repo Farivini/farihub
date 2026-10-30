@@ -1,9 +1,9 @@
 export type Space = 'farcel' | 'fardoc' | 'farcanvas';
 /** Internal ids stay farcel/fardoc/farcanvas; these are the visible names. */
-export const SPACES: Array<{ id: Space; label: string; short: string }> = [
-  { id: 'farcel', label: 'Planilhas', short: 'Planilhas' },
-  { id: 'fardoc', label: 'Documentos', short: 'Docs' },
-  { id: 'farcanvas', label: 'Apresentações', short: 'Slides' },
+export const SPACES: Array<{ id: Space; label: string }> = [
+  { id: 'farcel', label: 'Planilhas' },
+  { id: 'fardoc', label: 'Documentos' },
+  { id: 'farcanvas', label: 'Apresentações' },
 ];
 
 export function SpaceSwitcher({ space, onChange }: { space: Space; onChange(space: Space): void }) {
@@ -29,8 +29,7 @@ export function SpaceSwitcher({ space, onChange }: { space: Space; onChange(spac
           onClick={() => onChange(s.id)}
           onKeyDown={e => move(e, i)}
         >
-          <span className="space-label">{s.label}</span>
-          <span className="space-short" aria-hidden="true">{s.short}</span>
+          {s.label}
         </button>
       ))}
     </div>

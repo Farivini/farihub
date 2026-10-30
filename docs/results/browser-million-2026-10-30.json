@@ -1,0 +1,180 @@
+{
+  "createdAt": "2026-10-30T00:28:53.273Z",
+  "scope": "Farcel UI in headless Chromium (Playwright), production build served by vite preview. Not Windows, not a packaged app.",
+  "environment": {
+    "browser": "Chromium 153.0.8010.12",
+    "os": "linux 6.18.44-fc-v185 x64",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "logicalCpus": 4,
+    "totalMemoryBytes": 16872808448,
+    "node": "v22.22.0"
+  },
+  "corpus": {
+    "rows": 1000000,
+    "seed": 20261029,
+    "sheet": "Dados",
+    "columns": [
+      "Região (texto, 5)",
+      "Canal (texto, 3)",
+      "Categoria (texto, 8)",
+      "Quantidade (inteiro)",
+      "Receita (decimal)"
+    ],
+    "populatedCells": 5000005,
+    "formulas": [
+      "Resumo!B1 =SOMA(Dados!E2:E…)",
+      "Resumo!B2 =SOMASE(Dados!A2:A…;\"Sul\";Dados!E2:E…)",
+      "Resumo!B3 =CONT.VALORES(Dados!A2:A…)"
+    ]
+  },
+  "memoryEmpty": {
+    "wasmLinearMemoryBytes": 1376256,
+    "mainThreadJsHeapUsedBytes": 3424488,
+    "chromiumProcessesRssBytes": 498995200
+  },
+  "generation": {
+    "wallMs": 23334.4,
+    "engine": {
+      "rows": 1000000,
+      "columns": 5,
+      "formulas": 3,
+      "seed": 20261029,
+      "fillMs": 13701.999999999534,
+      "historyResetMs": 8262.300000000047,
+      "evaluateMs": 430.30000000004657,
+      "totalMs": 23333,
+      "wasmMemoryBytes": 624033792
+    },
+    "mainThreadLongTasksDuringGeneration": {
+      "count": 1,
+      "mean": 62,
+      "p50": 62,
+      "p95": 62,
+      "max": 62
+    },
+    "note": "Generation writes every cell through IronCalc setUserInput in the worker and rebuilds the model every 100k rows to drop undo history."
+  },
+  "memoryAfterGeneration": {
+    "wasmLinearMemoryBytes": 624033792,
+    "mainThreadJsHeapUsedBytes": 5122492,
+    "chromiumProcessesRssBytes": 1242112000
+  },
+  "formulaCheck": {
+    "soma": "2651321665,46002",
+    "somase": "529464690,09999",
+    "contValores": "1000000",
+    "matchesIndependentExpectation": true
+  },
+  "navigation": {
+    "jumpToLastRowUntilDrawnMs": 59,
+    "jumpToMiddleUntilDrawnMs": 216.3,
+    "scroll": {
+      "wheelEvents": 60,
+      "wallMs": 2043,
+      "drawMs": {
+        "count": 81,
+        "mean": 2.1,
+        "p50": 1.8,
+        "p95": 4.1,
+        "max": 5.5
+      },
+      "blockFetchRoundTripMs": {
+        "count": 28,
+        "mean": 4.2,
+        "p50": 3.7,
+        "p95": 6.7,
+        "max": 8.2
+      },
+      "blockSize": "64 linhas × 16 colunas"
+    }
+  },
+  "editRecalculation": {
+    "cell": "Dados!E2",
+    "engineSetInputMs": 343.7,
+    "roundTripMs": 344.2,
+    "untilGridSettledMs": 368.8,
+    "note": "IronCalc 0.9.1 re-evaluates the workbook on each input; with formulas spanning the base every edit pays for them."
+  },
+  "pivot": {
+    "firstBuild": {
+      "config": "Linhas: Região · Valores: Soma de Receita",
+      "roundTripMs": 6291,
+      "engine": {
+        "extractMs": 6199,
+        "aggregateMs": 91.19999999995343,
+        "sourceRows": 1000000,
+        "config": "{\"rows\":[\"Região\"],\"columns\":[],\"values\":[{\"field\":\"Receita\",\"aggregation\":\"sum\"}],\"filters\":[]}",
+        "current": true
+      }
+    },
+    "addColumnField": {
+      "config": "+ Colunas: Canal",
+      "roundTripMs": 1428.8,
+      "engine": {
+        "extractMs": 1239.3999999999069,
+        "aggregateMs": 188.70000000018626,
+        "sourceRows": 1000000,
+        "config": "{\"rows\":[\"Região\"],\"columns\":[\"Canal\"],\"values\":[{\"field\":\"Receita\",\"aggregation\":\"sum\"}],\"filters\":[]}",
+        "current": true
+      }
+    },
+    "afterSourceEdit": {
+      "edit": "Dados!E3 = 0",
+      "roundTripMs": 196.9,
+      "engine": {
+        "extractMs": 0.10000000009313226,
+        "aggregateMs": 196.19999999995343,
+        "sourceRows": 1000000,
+        "config": "{\"rows\":[\"Região\"],\"columns\":[\"Canal\"],\"values\":[{\"field\":\"Receita\",\"aggregation\":\"sum\"}],\"filters\":[]}",
+        "current": true
+      }
+    },
+    "totalsMatchIndependentExpectation": true,
+    "chartBars": 15,
+    "columnExtraction": [
+      {
+        "column": "Região",
+        "rows": 1000000,
+        "ms": 1593.8000000000466
+      },
+      {
+        "column": "Receita",
+        "rows": 1000000,
+        "ms": 4604.800000000047
+      },
+      {
+        "column": "Canal",
+        "rows": 1000000,
+        "ms": 1239.1999999999534
+      }
+    ]
+  },
+  "memoryAfterPivot": {
+    "wasmLinearMemoryBytes": 624033792,
+    "mainThreadJsHeapUsedBytes": 7265236,
+    "chromiumProcessesRssBytes": 1411481600
+  },
+  "file": {
+    "format": ".farcel (IronCalc Model.toBytes + JSON header + CRC32); not XLSX",
+    "bytes": 24170495,
+    "saveEngineMs": 462.7,
+    "saveRoundTripMs": 463.6,
+    "openWallMs": 973.8,
+    "openEngineMs": 915.6,
+    "evaluateOnOpenMs": 408.2,
+    "reopenedValuesMatch": true
+  },
+  "memoryAfterReopen": {
+    "wasmLinearMemoryBytes": 365625344,
+    "mainThreadJsHeapUsedBytes": 5805668,
+    "chromiumProcessesRssBytes": 1010356224
+  },
+  "pageErrors": [],
+  "limitations": [
+    "Single run on a Linux container; no Windows machine, no packaged app.",
+    "Headless Chromium; GPU and display timings of a real desktop are not represented.",
+    "WASM linear memory never shrinks: the value is the high-water mark of the worker.",
+    "Chromium RSS is the sum over all Chromium processes found by ps, including the browser process.",
+    "Five columns and three aggregate formulas; no per-row formulas (see docs/results for the Node WASM measurement of formula columns)."
+  ]
+}
