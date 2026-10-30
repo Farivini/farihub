@@ -38,9 +38,9 @@ Primeira versão funcional de **Planilhas no navegador**:
 - cálculo real no **IronCalc 0.9.1 (WASM) dentro de um Web Worker**, fonte única da verdade;
 - fórmulas em português (`=SOMA(A1:A3)`, `=SE(A1>0;"sim";"não")`, `1,5`) por uma camada de tokens;
 - tabela dinâmica com linhas, colunas, valores (soma, contagem) e filtros, e gráfico ligado ao resultado;
-- salvar e abrir **`.farcel`** (formato nativo: guarda também dinâmicas e gráficos);
+- **salvar por formato**: Ctrl+S mantém o formato do arquivo aberto (`.xlsx` continua `.xlsx`); pasta nova oferece XLSX como padrão e `.farcel` (nativo, guarda também dinâmicas, gráficos e as ressalvas de importação) como alternativa; **Salvar como…**; perdas explicadas antes, com escolha; no navegador sem acesso a arquivos, o app diz que está baixando uma cópia;
 - **abrir e exportar XLSX** com o importador/exportador do próprio IronCalc compilado para WASM: fórmulas continuam fórmulas (em português na tela, em inglês no arquivo), várias planilhas, tipos e formatação básica; o app informa o que não é mantido e pede confirmação antes de exportar com perdas;
-- **importar CSV, TSV e TXT** com prévia (codificação, separador, decimal, cabeçalho, tipo por coluna; códigos com zeros à esquerda preservados) e **exportar CSV (;) e TSV**;
+- **importar CSV, TSV e TXT** com prévia (codificação, separador, decimal, cabeçalho, tipo por coluna; códigos com zeros à esquerda preservados) e **exportar CSV (;) e TSV** “para abrir em planilhas” (texto que viraria fórmula recebe `'`) ou com os dados originais;
 - base sintética reprodutível de 1.000.000 de linhas, medida na interface.
 
 Documentos e Apresentações aparecem como espaços **em preparação** (as referências orientam o design futuro; não há editor). O assistente aparece **não conectado**: mostra o contexto limitado que receberia, sem enviar nada nem simular respostas. Não há executável Windows. Os XLSX exportados foram verificados no LibreOffice Calc (que recalculou todas as fórmulas); **não houve verificação no Microsoft Excel**, indisponível neste ambiente.
@@ -65,7 +65,7 @@ Para experimentar em **Planilhas**:
 1. Digite nas células ou na barra de fórmulas (`=SOMA(A1:A3)`, `=SE(A1>0;"sim";"não")`), ou cole dados do Excel (Ctrl+V).
 2. Formate pela barra: formato de número (R$, %), **B**, alinhamento. O botão *fx* insere funções em português.
 3. **Dinâmica** cria uma tabela dinâmica a partir de A1 da planilha atual; arraste campos para Linhas, Colunas, Valores e Filtros. O gráfico fica abaixo.
-4. No trilho à esquerda, o ícone de arquivos tem **Nova planilha**, **Abrir…** (Ctrl+O: `.farcel`, `.xlsx`, `.csv`, `.tsv`, `.txt`), **Salvar** (Ctrl+S, grava `.farcel`), **Exportar como Excel (.xlsx)**, **CSV** e **TSV**, e **Base de teste…**, que gera 1.000.000 de linhas em uma aba nova (cerca de 25 s). Um arquivo aberto entra numa aba nova quando a atual já tem conteúdo.
+4. No trilho à esquerda, o ícone de arquivos tem **Nova planilha**, **Abrir…** (Ctrl+O: `.farcel`, `.xlsx`, `.csv`, `.tsv`, `.txt`), **Salvar** (Ctrl+S, no formato do arquivo; pasta nova pergunta, com XLSX como padrão), **Salvar como…** (Ctrl+Shift+S), **Exportar planilha como CSV** e **TSV**, e **Base de teste…**, que gera 1.000.000 de linhas em uma aba nova (cerca de 25 s). Um arquivo aberto entra numa aba nova quando a atual já tem conteúdo.
 5. O ✦ no canto superior direito mostra ou recolhe o assistente (ainda não conectado).
 
 ## Testes e medições
