@@ -57,6 +57,7 @@ export const it = {
   appNewFailed: 'Creazione del documento non riuscita: {error}',
   appSaveFailed: 'Salvataggio non riuscito: {error}',
   appAutoSavedAt: 'Salvato automaticamente ({time})',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'Salvato',
   appSectionBreakInserted: 'Interruzione di sezione inserita ({type})',
   appSectionBreakPending:

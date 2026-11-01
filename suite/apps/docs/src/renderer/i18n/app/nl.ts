@@ -58,6 +58,7 @@ export const nl = {
   appNewFailed: 'Document maken mislukt: {error}',
   appSaveFailed: 'Opslaan mislukt: {error}',
   appAutoSavedAt: 'Automatisch opgeslagen ({time})',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'Opgeslagen',
   appSectionBreakInserted: 'Sectie-einde ingevoegd ({type})',
   appSectionBreakPending:

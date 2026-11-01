@@ -91,6 +91,7 @@ export const ar = {
   appStatusCutoutDone: 'تمت إزالة الخلفية (تم استبدال الصورة الأصلية بصورة PNG شفافة)',
   appStatusGrouped: 'تم التجميع',
   appStatusUngrouped: 'تم فك التجميع',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'تمت إضافة التعليق',
   appStatusKeepOneSlide: 'يتعذر الحذف؛ يجب أن تبقى شريحة واحدة على الأقل',
   appStatusSlideCopied: 'تم نسخ الشريحة — الصقها في عرض آخر',

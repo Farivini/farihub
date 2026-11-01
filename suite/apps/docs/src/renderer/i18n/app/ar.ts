@@ -55,6 +55,7 @@ export const ar = {
   appNewFailed: 'فشل إنشاء المستند: {error}',
   appSaveFailed: 'فشل الحفظ: {error}',
   appAutoSavedAt: 'تم الحفظ التلقائي ({time})',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'تم الحفظ',
   appSectionBreakInserted: 'تم إدراج فاصل مقطعي ({type})',
   appSectionBreakPending: 'تم إدراج فاصل مقطعي؛ يسري المقطع الجديد بعد الحفظ',

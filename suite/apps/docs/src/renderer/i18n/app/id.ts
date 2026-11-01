@@ -58,6 +58,7 @@ export const id = {
   appNewFailed: 'Gagal membuat dokumen: {error}',
   appSaveFailed: 'Gagal menyimpan: {error}',
   appAutoSavedAt: 'Disimpan otomatis ({time})',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'Disimpan',
   appSectionBreakInserted: 'Pemisah bagian disisipkan ({type})',
   appSectionBreakPending: 'Pemisah bagian disisipkan; bagian baru berlaku setelah disimpan',

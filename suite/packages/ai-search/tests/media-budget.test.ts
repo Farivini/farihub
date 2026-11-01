@@ -37,6 +37,8 @@ function writeSettings(mediaProvider: string): string {
     path,
     JSON.stringify({
       provider: mediaProvider,
+      // the origin's default (Fariv starts with the cloud tools off)
+      gskToolsEnabled: true,
       providers: { [mediaProvider]: { apiKey: 'k', model: 'test-model' } },
       media: {
         provider: mediaProvider,

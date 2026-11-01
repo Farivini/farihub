@@ -548,7 +548,9 @@ describe('webSearch (Keenable)', () => {
 
 describe('search-tools', () => {
   it('maps the settings block onto SearchOptions', () => {
-    const base = defaultAiSettings()
+    // Fariv starts with the Genspark cloud tools off
+    expect(searchOptionsFromSettings(defaultAiSettings())).toEqual({ useGsk: false })
+    const base = { ...defaultAiSettings(), gskToolsEnabled: true }
     expect(searchOptionsFromSettings(base)).toEqual({ useGsk: true })
     expect(searchOptionsFromSettings({ ...base, gskToolsEnabled: false })).toEqual({
       useGsk: false,

@@ -94,6 +94,7 @@ export const cs = {
   appStatusCutoutDone: 'Pozadí odstraněno (původní obrázek nahrazen průhledným PNG)',
   appStatusGrouped: 'Seskupeno',
   appStatusUngrouped: 'Skupina zrušena',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'Komentář přidán',
   appStatusKeepOneSlide: 'Nelze odstranit; musí zůstat alespoň jeden snímek',
   appStatusSlideCopied: 'Snímek zkopírován — vložte ho do libovolné otevřené prezentace',

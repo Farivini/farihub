@@ -58,6 +58,7 @@ export const ms = {
   appNewFailed: 'Gagal membuat dokumen: {error}',
   appSaveFailed: 'Gagal menyimpan: {error}',
   appAutoSavedAt: 'Disimpan secara automatik ({time})',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'Disimpan',
   appSectionBreakInserted: 'Pemisah seksyen disisipkan ({type})',
   appSectionBreakPending:

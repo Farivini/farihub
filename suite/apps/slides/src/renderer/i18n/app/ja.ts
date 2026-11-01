@@ -95,6 +95,7 @@ export const ja = {
   appStatusCutoutDone: '背景を削除しました（元の画像を透過 PNG に置き換え済み）',
   appStatusGrouped: 'グループ化しました',
   appStatusUngrouped: 'グループ解除しました',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'コメントを追加しました',
   appStatusKeepOneSlide: '少なくとも 1 枚のスライドが必要なため、削除できません',
   appStatusSlideCopied: 'スライドをコピーしました。他のファイルに貼り付けられます',

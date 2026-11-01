@@ -57,6 +57,7 @@ export const tr = {
   appNewFailed: 'Belge oluşturulamadı: {error}',
   appSaveFailed: 'Kaydetme başarısız: {error}',
   appAutoSavedAt: 'Otomatik kaydedildi ({time})',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'Kaydedildi',
   appSectionBreakInserted: 'Bölüm sonu eklendi ({type})',
   appSectionBreakPending: 'Bölüm sonu eklendi; yeni bölüm kaydettikten sonra etkinleşir',

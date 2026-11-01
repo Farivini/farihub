@@ -3,15 +3,22 @@ import {
   AiPanelSideButton,
   AiModelPicker,
   type AiModelPickerBridge,
+  AiReviewCard,
   AiSkillChips,
   AiSkillsMenu,
 } from '@genoffice/ui'
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import {
   AgentLoop,
+  acceptReview,
   composeSkills,
+  finishRun,
+  recordChanges,
+  rejectReview,
+  startReview,
   withAttachedSkills,
   IPC_STREAM_SILENCE_TIMEOUT_MS,
+  type ReviewTask,
   type AgentImage,
   type ToolDisplay,
 } from '@genoffice/agent-core'
@@ -62,6 +69,7 @@ import {
   type AiTokenUsageView,
 } from '@genoffice/ui'
 import { GensparkMark } from '../components/icons'
+import { slidesReview } from './review-store'
 import sendEnterOn from '../assets/send-enter-on.png'
 import sendEnterOff from '../assets/send-enter-off.png'
 import sendStop from '../assets/send-stop.png'
@@ -245,6 +253,8 @@ interface ChatEntry {
   deckProgress?: DeckProgressSnapshot
   /** Main-process rollback point for this turn's deck edits — rendered as an inline roll-back action */
   snapshotId?: number
+  /** Fariv review of the AI task this reply carried out (replaces the roll-back action) */
+  review?: ReviewTask<unknown>
   /** attachments consumed from the composer by this user message (read-only echo chips) */
   attachments?: AttachmentMeta[]
   /** skills the user attached to this message from the composer menu */
@@ -818,6 +828,63 @@ export function AiPanel({
     )
   }
 
+  // ---- Fariv review of the AI task (see @genoffice/agent-core review-task) ----
+
+  /** A new instruction keeps the previous task; this run is reviewed on its own. */
+  const beginReviewTask = () => {
+    const previousTask = slidesReview.get()
+    if (previousTask?.status === 'pending') slidesReview.set(acceptReview(previousTask).task)
+    slidesReview.set(startReview(crypto.randomUUID(), slidesRef.current))
+  }
+
+  /** The run (and its QC pass) ended: put the task under review, or undo a failed one. */
+  const settleReview = async (error: string | undefined) => {
+    const running = slidesReview.get()
+    if (running?.status !== 'running') return
+    const step = finishRun(running, { after: slidesRef.current, error })
+    const batch = runSnapshotIdRef.current
+    if (step.action === 'rollback' && batch != null) await rollback(batch)
+    slidesReview.set(step.task)
+    if (step.task.changes > 0) patchLastAssistant({ review: step.task })
+  }
+  const settleReviewRef = useRef(settleReview)
+  settleReviewRef.current = settleReview
+
+  // the card follows the task wherever it changes (panel, or the user's own Save in the app)
+  useEffect(
+    () =>
+      slidesReview.subscribe((task) => {
+        if (!task) return
+        setChat((prev) =>
+          prev.some((e) => e.review?.id === task.id && e.review !== task)
+            ? prev.map((e) => (e.review?.id === task.id ? { ...e, review: task } : e))
+            : prev,
+        )
+      }),
+    [],
+  )
+
+  const acceptTask = (taskId: string) => {
+    const task = slidesReview.get()
+    if (!task || task.id !== taskId) return
+    const step = acceptReview(task)
+    slidesReview.set(step.task)
+    if (step.action === 'commit') window.dispatchEvent(new Event('ai-slides-review-accepted'))
+  }
+
+  const rejectTask = (taskId: string) => {
+    const task = slidesReview.get()
+    if (!task || task.id !== taskId || busy) return
+    const snapshotId = chat.find((e) => e.review?.id === taskId)?.snapshotId
+    const step = rejectReview(task, slidesRef.current)
+    if (step.action === 'rollback' && snapshotId == null) {
+      slidesReview.set({ ...task, conflict: 'untracked' })
+      return
+    }
+    slidesReview.set(step.task)
+    if (step.action === 'rollback' && snapshotId != null) void rollback(snapshotId)
+  }
+
   const loopRef = useRef<AgentLoop | null>(null)
   if (!loopRef.current) {
     // The three slides generation steps (style/planning/per-page HTML) force the high-quality model (only with the anthropic provider;
@@ -1386,6 +1453,10 @@ export function AiPanel({
           patchLastAssistant((last) => ({ tools: [...(last.tools ?? []), activity] }))
         },
         onToolExecuted: ({ call, execution }) => {
+          if (execution.mutated) {
+            const running = slidesReview.get()
+            if (running?.status === 'running') slidesReview.set(recordChanges(running, 1))
+          }
           const activity: ToolActivity = {
             name: call.name,
             summary: execution.summary,
@@ -1455,7 +1526,9 @@ export function AiPanel({
             setBusy(false)
             // Post-generation layout QC: only after a completed run that landed generated pages
             if (cancelled) qcPagesRef.current = []
-            else if (qcPagesRef.current.length > 0) void runQcPassRef.current()
+            // the QC pass is part of the task: the review settles once it ends
+            if (!cancelled && qcPagesRef.current.length > 0) void runQcPassRef.current()
+            else void settleReviewRef.current(undefined)
             // After the batch closes, so the next queued page opens a fresh one
             const resolveQueueRun = queueRunResolverRef.current
             queueRunResolverRef.current = null
@@ -1507,6 +1580,8 @@ export function AiPanel({
             .catch(() => {})
           void finishHistoryBatch().finally(() => {
             setBusy(false)
+            // Fariv review: a failed run never leaves a partial change in the deck
+            void settleReviewRef.current(error)
             const resolveQueueRun = queueRunResolverRef.current
             queueRunResolverRef.current = null
             resolveQueueRun?.(false)
@@ -1693,6 +1768,7 @@ export function AiPanel({
     runSnapshotIdRef.current = null
     runUsageRef.current = undefined
     stickToBottomRef.current = true
+    beginReviewTask()
     // Internal orchestration prompts (like generate_deck step notes) skip the chat bubble and go only to the model
     const shown = displayText ?? instruction
     // a composer send with elements selected is scoped to them; Send now hands its frozen targets over explicitly
@@ -1792,6 +1868,7 @@ export function AiPanel({
       runSnapshotIdRef.current = null
       runUsageRef.current = undefined
       stickToBottomRef.current = true
+      beginReviewTask()
       setChat((prev) => [
         ...prev.map((e) =>
           e.role === 'assistant' && e.streaming ? { ...e, streaming: false } : e,
@@ -1885,7 +1962,10 @@ export function AiPanel({
     const pages = qcPagesRef.current
     qcPagesRef.current = []
     const access = accessRef.current
-    if (pages.length === 0 || !access || qcRunningRef.current || !isQcEnabled()) return
+    if (pages.length === 0 || !access || qcRunningRef.current || !isQcEnabled()) {
+      void settleReviewRef.current(undefined)
+      return
+    }
     qcRunningRef.current = true
     const controller = new AbortController()
     qcAbortRef.current = controller
@@ -1982,6 +2062,7 @@ export function AiPanel({
       })
       persistMessage('assistant', finalText)
       setBusy(false)
+      void settleReviewRef.current(undefined)
     }
   }
   runQcPassRef.current = runQcPass
@@ -2010,6 +2091,9 @@ export function AiPanel({
     })
 
   const newChat = () => {
+    // the review card leaves with the chat: a pending task is kept, so AutoSave resumes
+    const pendingTask = slidesReview.get()
+    if (pendingTask?.status === 'pending') slidesReview.set(acceptReview(pendingTask).task)
     msgQueue.clear()
     dismissClarify()
     qcAbortRef.current?.abort()
@@ -2298,6 +2382,14 @@ export function AiPanel({
               {entry.error && (
                 <div className="ai-msg-error">{t('aiMsgError', { error: entry.error })}</div>
               )}
+              {entry.review && (
+                <AiReviewCard
+                  task={entry.review}
+                  lang={lang}
+                  onAccept={() => acceptTask(entry.review!.id)}
+                  onReject={() => rejectTask(entry.review!.id)}
+                />
+              )}
               {entry.loginRequired && (
                 <button className="ai-login-btn" onClick={() => void window.slidesApi.aiGskLogin()}>
                   {t('aiGskLoginBtn')}
@@ -2362,7 +2454,7 @@ export function AiPanel({
                       </svg>
                     </button>
                   )}
-                  {entry.snapshotId != null && (
+                  {entry.snapshotId != null && !entry.review && (
                     <>
                       {/* hairline between reply actions (icons) and the document action (icon+label);
                           CSS shows it only when an icon button actually precedes it */}

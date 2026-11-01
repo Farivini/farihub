@@ -101,6 +101,7 @@ export const es = {
   appStatusCutoutDone: 'Fondo quitado (la imagen original se reemplazó por un PNG transparente)',
   appStatusGrouped: 'Agrupado',
   appStatusUngrouped: 'Desagrupado',
+  appAiSaveWaitsForTask: 'La IA sigue trabajando; guarda después de revisar la tarea.',
   appStatusCommentAdded: 'Comentario agregado',
   appStatusKeepOneSlide: 'No se puede eliminar; debe quedar al menos una diapositiva',
   appStatusSlideCopied: 'Diapositiva copiada: péguela en otra presentación',

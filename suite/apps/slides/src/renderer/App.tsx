@@ -116,6 +116,8 @@ import { GensparkMark, IconAiBeautify, IconAiFactCheck, IconAiImage } from './co
 import { ToastHost } from './components/toast'
 import { showToast } from './components/toast-bus'
 import { t, useI18n } from './i18n/locale'
+import { acceptOnSave, holdsSave } from '@genoffice/agent-core'
+import { slidesReview } from './ai/review-store'
 import { AiPanel } from './ai/AiPanel'
 import { ChartDataDialog } from './components/ChartDataDialog'
 import type { BrushFormat } from './format-brush'
@@ -946,10 +948,32 @@ export function App() {
   /** Set while the AI annotation popover is open (assigned below, next to askState) */
   const askOpenRef = useRef(false)
 
-  const save = useCallback(
-    (quiet = false): Promise<boolean> => fileActions.save(() => ctxRef.current, quiet),
-    [],
-  )
+  const save = useCallback((quiet = false): Promise<boolean> => {
+    // Fariv: an AI task under review keeps the file as it was; the user's own Save
+    // keeps the task (it counts as accepting it), but not while the AI is still working
+    const review = slidesReview.get()
+    if (holdsSave(review)) {
+      if (quiet) return Promise.resolve(false)
+      if (review!.status === 'running') {
+        setStatus(t('appAiSaveWaitsForTask'))
+        return Promise.resolve(false)
+      }
+      slidesReview.set(acceptOnSave(review!))
+    }
+    return fileActions.save(() => ctxRef.current, quiet)
+  }, [])
+
+  // Fariv: the user accepted an AI task — AutoSave writes it now (a deck with a file)
+  useEffect(() => {
+    const handler = () => {
+      if (!autoSave || !path) return
+      void window.slidesApi.isDirty().then((d) => {
+        if (d) void save(true)
+      })
+    }
+    window.addEventListener('ai-slides-review-accepted', handler)
+    return () => window.removeEventListener('ai-slides-review-accepted', handler)
+  }, [autoSave, path, save])
 
   // Close guard (closing tab/window) chose "Save": run the full save flow and report the result
   useEffect(() => {
@@ -1018,6 +1042,7 @@ export function App() {
     let saving = false
     const tick = () => {
       if (saving || editing || editingCell || mouseDownRef.current) return
+      if (holdsSave(slidesReview.get())) return // an AI task under review waits for the user
       void window.slidesApi.isDirty().then((d) => {
         if (!d || saving) return
         saving = true

@@ -87,6 +87,7 @@ export const he = {
   appStatusCutoutDone: 'הרקע הוסר (התמונה המקורית הוחלפה ב-PNG שקוף)',
   appStatusGrouped: 'קובץ לקבוצה',
   appStatusUngrouped: 'הקבוצה פורקה',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'ההערה נוספה',
   appStatusKeepOneSlide: 'לא ניתן למחוק; חייבת להישאר לפחות שקופית אחת',
   appStatusSlideCopied: 'השקופית הועתקה — הדבק אותה במצגת אחרת',

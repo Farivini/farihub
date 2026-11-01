@@ -92,6 +92,7 @@ export const en = {
   appStatusCutoutDone: 'Background removed (original image replaced with a transparent PNG)',
   appStatusGrouped: 'Grouped',
   appStatusUngrouped: 'Ungrouped',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'Comment added',
   appStatusKeepOneSlide: 'Cannot delete; at least one slide must remain',
   appStatusSlideCopied: 'Slide copied — paste it into any open deck',

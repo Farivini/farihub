@@ -22,7 +22,16 @@ afterEach(() => {
 // a real settings file always carries the chat provider block; without it every section resets to defaults
 function settingsFile(dir: string, settings: Record<string, unknown>): string {
   const path = join(dir, 'ai-settings.json')
-  writeFileSync(path, JSON.stringify({ provider: 'anthropic', providers: {}, ...settings }))
+  writeFileSync(
+    path,
+    JSON.stringify({
+      provider: 'anthropic',
+      providers: {},
+      // the origin's default (Fariv starts with the cloud tools off)
+      gskToolsEnabled: true,
+      ...settings,
+    }),
+  )
   return path
 }
 

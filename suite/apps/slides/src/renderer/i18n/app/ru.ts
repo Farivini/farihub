@@ -96,6 +96,7 @@ export const ru = {
   appStatusCutoutDone: 'Фон удален (исходное изображение заменено прозрачным PNG)',
   appStatusGrouped: 'Сгруппировано',
   appStatusUngrouped: 'Группировка отменена',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'Примечание добавлено',
   appStatusKeepOneSlide: 'Удаление невозможно; должен остаться хотя бы один слайд',
   appStatusSlideCopied: 'Слайд скопирован — вставьте его в другую презентацию',

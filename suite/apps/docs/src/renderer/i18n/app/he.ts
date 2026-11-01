@@ -54,6 +54,7 @@ export const he = {
   appNewFailed: 'יצירת המסמך נכשלה: {error}',
   appSaveFailed: 'השמירה נכשלה: {error}',
   appAutoSavedAt: 'נשמר אוטומטית ({time})',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'נשמר',
   appSectionBreakInserted: 'הוסף מעבר מקטע ({type})',
   appSectionBreakPending: 'הוסף מעבר מקטע; המקטע החדש ייכנס לתוקף לאחר השמירה',

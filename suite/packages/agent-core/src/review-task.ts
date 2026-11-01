@@ -142,3 +142,29 @@ export function holdsSave(task: ReviewTask<unknown> | null | undefined): boolean
 export function acceptOnSave<M>(task: ReviewTask<M>): ReviewTask<M> {
   return task.status === 'pending' ? acceptReview(task).task : task
 }
+
+/**
+ * The editor's current task, shared between the AI panel (which drives it) and the
+ * editor shell (which holds AutoSave and treats the user's Save as accepting).
+ */
+export interface ReviewStore<M> {
+  get(): ReviewTask<M> | null
+  set(task: ReviewTask<M> | null): void
+  subscribe(listener: (task: ReviewTask<M> | null) => void): () => void
+}
+
+export function createReviewStore<M>(): ReviewStore<M> {
+  let current: ReviewTask<M> | null = null
+  const listeners = new Set<(task: ReviewTask<M> | null) => void>()
+  return {
+    get: () => current,
+    set(task) {
+      current = task
+      for (const listener of [...listeners]) listener(task)
+    },
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+  }
+}

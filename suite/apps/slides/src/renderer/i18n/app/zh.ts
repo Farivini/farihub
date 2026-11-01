@@ -83,6 +83,7 @@ export const zh = {
   appStatusCutoutDone: '已去除背景（原图已替换为透明 PNG）',
   appStatusGrouped: '已组合',
   appStatusUngrouped: '已取消组合',
+  appAiSaveWaitsForTask: 'AI 仍在处理;请在审阅任务后保存。',
   appStatusCommentAdded: '已添加批注',
   appStatusKeepOneSlide: '至少保留一页，无法删除',
   appStatusSlideCopied: '已复制幻灯片，可在其他文件中粘贴',

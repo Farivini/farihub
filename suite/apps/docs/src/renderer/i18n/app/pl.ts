@@ -57,6 +57,7 @@ export const pl = {
   appNewFailed: 'Nie udało się utworzyć dokumentu: {error}',
   appSaveFailed: 'Zapisywanie nie powiodło się: {error}',
   appAutoSavedAt: 'Zapisano automatycznie ({time})',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'Zapisano',
   appSectionBreakInserted: 'Wstawiono podział sekcji ({type})',
   appSectionBreakPending: 'Wstawiono podział sekcji; nowa sekcja zacznie obowiązywać po zapisaniu',

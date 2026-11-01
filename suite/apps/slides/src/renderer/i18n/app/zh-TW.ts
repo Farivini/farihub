@@ -84,6 +84,7 @@ export const zhTW = {
   appStatusCutoutDone: '已移除背景（原圖已替換為透明 PNG）',
   appStatusGrouped: '已群組',
   appStatusUngrouped: '已取消群組',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: '已新增註解',
   appStatusKeepOneSlide: '至少保留一頁，無法刪除',
   appStatusSlideCopied: '已拷貝投影片，可在其他檔案中貼上',

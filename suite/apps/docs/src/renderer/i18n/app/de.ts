@@ -58,6 +58,7 @@ export const de = {
   appNewFailed: 'Erstellen des Dokuments fehlgeschlagen: {error}',
   appSaveFailed: 'Speichern fehlgeschlagen: {error}',
   appAutoSavedAt: 'Automatisch gespeichert ({time})',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'Gespeichert',
   appSectionBreakInserted: 'Abschnittsumbruch eingefügt ({type})',
   appSectionBreakPending:

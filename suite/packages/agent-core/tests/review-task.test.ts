@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   acceptOnSave,
   acceptReview,
+  createReviewStore,
   finishRun,
   holdsSave,
   markConflict,
@@ -103,5 +104,19 @@ describe('review of an AI task', () => {
     const pending = finishRun(recordChanges(startReview('t', 1), 1), { after: 2 }).task
     expect(recordChanges(pending, 5)).toBe(pending)
     expect(finishRun(pending, { after: 9 }).task).toBe(pending)
+  })
+})
+
+describe('createReviewStore', () => {
+  it('shares the current task and notifies until unsubscribed', () => {
+    const store = createReviewStore<number>()
+    const seen: Array<string | null> = []
+    const off = store.subscribe((task) => seen.push(task?.status ?? null))
+    store.set(startReview('a', 1))
+    expect(holdsSave(store.get())).toBe(true)
+    off()
+    store.set(null)
+    expect(seen).toEqual(['running'])
+    expect(store.get()).toBeNull()
   })
 })

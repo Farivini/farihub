@@ -102,6 +102,7 @@ export const fr = {
   appStatusCutoutDone: 'Arrière-plan supprimé (image d’origine remplacée par un PNG transparent)',
   appStatusGrouped: 'Groupé',
   appStatusUngrouped: 'Dissocié',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'Commentaire ajouté',
   appStatusKeepOneSlide: 'Suppression impossible ; au moins une diapositive doit être conservée',
   appStatusSlideCopied: 'Diapositive copiée — collez-la dans une autre présentation',

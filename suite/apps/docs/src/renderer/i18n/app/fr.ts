@@ -57,6 +57,7 @@ export const fr = {
   appNewFailed: 'Échec de la création du document : {error}',
   appSaveFailed: "Échec de l'enregistrement : {error}",
   appAutoSavedAt: 'Enregistrement automatique ({time})',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'Enregistré',
   appSectionBreakInserted: 'Saut de section inséré ({type})',
   appSectionBreakPending:

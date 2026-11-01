@@ -89,6 +89,7 @@ export const th = {
   appStatusCutoutDone: 'เอาพื้นหลังออกแล้ว (แทนที่รูปภาพเดิมด้วย PNG โปร่งใส)',
   appStatusGrouped: 'จัดกลุ่มแล้ว',
   appStatusUngrouped: 'ยกเลิกการจัดกลุ่มแล้ว',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'เพิ่มข้อคิดเห็นแล้ว',
   appStatusKeepOneSlide: 'ลบไม่ได้ ต้องมีสไลด์อย่างน้อยหนึ่งสไลด์',
   appStatusSlideCopied: 'คัดลอกสไลด์แล้ว วางในไฟล์อื่นได้',

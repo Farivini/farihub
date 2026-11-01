@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../src/gsk', () => ({
@@ -12,7 +15,10 @@ import { gskGenerateImage, gskAnalyzeMedia } from '../src/gsk'
 const gskGen = vi.mocked(gskGenerateImage)
 const gskAnalyze = vi.mocked(gskAnalyzeMedia)
 // nonexistent settings file → defaults: no BYOK media provider, cloud tools on → Genspark route
-const SETTINGS = '/nonexistent/ai-settings.json'
+// The Genspark route as the origin shipped it: a settings file with the cloud tools on
+// (Fariv starts with them off, so an absent file no longer takes this route).
+const SETTINGS = join(mkdtempSync(join(tmpdir(), 'genoffice-media-tools-')), 'ai-settings.json')
+writeFileSync(SETTINGS, JSON.stringify({ providers: {}, gskToolsEnabled: true }))
 
 beforeEach(() => {
   gskGen.mockReset()

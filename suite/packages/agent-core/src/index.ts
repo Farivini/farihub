@@ -73,6 +73,7 @@ export type { IpcStreamChunk, IpcStreamStart, IpcTransportOptions } from './elec
 export {
   acceptOnSave,
   acceptReview,
+  createReviewStore,
   finishRun,
   holdsSave,
   markConflict,
@@ -85,6 +86,7 @@ export type {
   ReviewConflict,
   ReviewStatus,
   ReviewStep,
+  ReviewStore,
   ReviewTask,
   RunEnd,
   SameMarker,

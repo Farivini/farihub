@@ -93,6 +93,7 @@ export const vi = {
   appStatusCutoutDone: 'Đã xóa nền (hình ảnh gốc được thay thế bằng tệp PNG trong suốt)',
   appStatusGrouped: 'Đã nhóm',
   appStatusUngrouped: 'Đã hủy nhóm',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'Đã thêm nhận xét',
   appStatusKeepOneSlide: 'Không thể xóa; phải giữ lại ít nhất một trang chiếu',
   appStatusSlideCopied: 'Đã sao chép trang chiếu — có thể dán vào bất kỳ bản trình bày nào đang mở',

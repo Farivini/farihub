@@ -56,6 +56,7 @@ export const vi = {
   appNewFailed: 'Tạo tài liệu thất bại: {error}',
   appSaveFailed: 'Lưu thất bại: {error}',
   appAutoSavedAt: 'Đã tự động lưu ({time})',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'Đã lưu',
   appSectionBreakInserted: 'Đã chèn dấu ngắt phần ({type})',
   appSectionBreakPending: 'Đã chèn dấu ngắt phần; phần mới sẽ có hiệu lực sau khi lưu',

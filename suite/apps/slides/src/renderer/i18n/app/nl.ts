@@ -105,6 +105,7 @@ export const nl = {
     'Achtergrond verwijderd (originele afbeelding vervangen door een transparante PNG)',
   appStatusGrouped: 'Gegroepeerd',
   appStatusUngrouped: 'Groep opgeheven',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'Opmerking toegevoegd',
   appStatusKeepOneSlide: 'Kan niet verwijderen; er moet minstens één dia overblijven',
   appStatusSlideCopied: 'Dia gekopieerd — plak deze in een andere presentatie',

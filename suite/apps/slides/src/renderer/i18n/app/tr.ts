@@ -94,6 +94,7 @@ export const tr = {
   appStatusCutoutDone: 'Arka plan kaldırıldı (özgün resim saydam PNG ile değiştirildi)',
   appStatusGrouped: 'Gruplandı',
   appStatusUngrouped: 'Grup çözüldü',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'Açıklama eklendi',
   appStatusKeepOneSlide: 'Silinemiyor; en az bir slayt kalmalı',
   appStatusSlideCopied: 'Slayt kopyalandı — açık herhangi bir sunuya yapıştırın',
