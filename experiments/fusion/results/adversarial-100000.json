@@ -1,0 +1,100 @@
+{
+  "scope": "Synthetic headless Node/Linux, no Excel real/UI/provider auth; no comparison of native vs WASM",
+  "results": [
+    {
+      "name": "100000 formulas depend on one global input",
+      "ok": true,
+      "rows": 100000,
+      "oldMs": [
+        84.3357430000001,
+        104.25585799999999,
+        113.05386799999997
+      ],
+      "gridpathMs": [
+        1028.8142599999992,
+        1168.5643420000051,
+        904.6456370000014
+      ],
+      "deltaCells": [
+        100001,
+        100001,
+        100001
+      ]
+    },
+    {
+      "name": "cross sheet dependencies and row insertion",
+      "ok": true,
+      "value": 42,
+      "formula": "=Dados!A2*2",
+      "structuralEditRequestsFullSnapshot": true
+    },
+    {
+      "name": "query sees data beyond initial sample",
+      "ok": true,
+      "ms": 72.59534700000222,
+      "response": {
+        "columns": [
+          {
+            "column": "A",
+            "header": "Regiao"
+          },
+          {
+            "column": "B",
+            "header": "Valor"
+          }
+        ],
+        "header_row": 1,
+        "matched": 1,
+        "row_range": "2-100001",
+        "rows": [
+          {
+            "cells": {
+              "A": "ALVO",
+              "B": 777
+            },
+            "row": 100001
+          }
+        ],
+        "rows_scanned": 100000,
+        "sheet": "Dados",
+        "truncated": false
+      }
+    },
+    {
+      "name": "XLSX saves recalculated formula caches",
+      "ok": true,
+      "cachedAfterReopen": {
+        "content": "=A1*2",
+        "display": "42",
+        "value": 42
+      }
+    },
+    {
+      "name": "unsupported formula with cached value is flagged",
+      "ok": true,
+      "cell": {
+        "content": "=fariv_unknown(1)",
+        "display": "99",
+        "value": 99
+      },
+      "flags": [
+        {
+          "col": 0,
+          "formula": "=fariv_unknown(1)",
+          "live": null,
+          "name": "fariv_unknown",
+          "row": 0,
+          "sheet": "Dados",
+          "shown": 99,
+          "why": "function"
+        }
+      ]
+    },
+    {
+      "name": "Excel row limit rejects five million rows",
+      "ok": true,
+      "rejected": true,
+      "message": "Invalid row"
+    }
+  ]
+}
