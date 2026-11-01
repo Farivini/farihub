@@ -106,6 +106,8 @@ export const de = {
   appStatusCutoutDone: 'Hintergrund entfernt (Originalbild durch transparentes PNG ersetzt)',
   appStatusGrouped: 'Gruppiert',
   appStatusUngrouped: 'Gruppierung aufgehoben',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'Kommentar hinzugefügt',
   appStatusKeepOneSlide: 'Löschen nicht möglich; mindestens eine Folie muss erhalten bleiben',

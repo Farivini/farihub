@@ -58,6 +58,8 @@ export const es = {
   appNewFailed: 'Error al crear el documento: {error}',
   appSaveFailed: 'Error al guardar: {error}',
   appAutoSavedAt: 'Guardado automáticamente ({time})',
+  appAiSaveWaitsForReview:
+    'Hay cambios de la IA pendientes de decisión: acéptalos o recházalos antes de guardar.',
   appAiSaveWaitsForTask: 'La IA sigue trabajando; guarda después de revisar la tarea.',
   appSaved: 'Guardado',
   appSectionBreakInserted: 'Salto de sección insertado ({type})',

@@ -105,6 +105,8 @@ export const nl = {
     'Achtergrond verwijderd (originele afbeelding vervangen door een transparante PNG)',
   appStatusGrouped: 'Gegroepeerd',
   appStatusUngrouped: 'Groep opgeheven',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'Opmerking toegevoegd',
   appStatusKeepOneSlide: 'Kan niet verwijderen; er moet minstens één dia overblijven',

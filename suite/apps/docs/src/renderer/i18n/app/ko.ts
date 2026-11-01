@@ -59,6 +59,8 @@ export const ko = {
   appNewFailed: '새로 만들기 실패: {error}',
   appSaveFailed: '저장 실패: {error}',
   appAutoSavedAt: '자동 저장됨 ({time})',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: '저장됨',
   // Section breaks

@@ -499,7 +499,7 @@ export const WORKBOOK_TOOLS: AgentToolDef[] = [
   {
     name: 'propose_operations',
     description:
-      'Submit a batch of change operations, applied to the open workbook as a draft: the file is not written until the user reviews the whole task and accepts it (Reject undoes the task). Basic operations: ' +
+      'Submit a batch of change operations, applied to the open workbook, where the user sees them; the file is not written until the user accepts or rejects the whole task. Basic operations: ' +
       '{op:"set_cell",sheetId,address,value} | {op:"set_formula",sheetId,address,formula(starts with =)} | ' +
       '{op:"clear_cell",sheetId,address} | {op:"rename_sheet",sheetId,name}. ' +
       'Field definitions for the remaining operations live in the guides — load_guide before using them: ' +
@@ -1378,7 +1378,7 @@ export function executeWorkbookTool(
           outcome.plan.formatChanges.length +
           outcome.plan.sheetRenames.length +
           outcome.plan.structuralChanges.length
-        const base = `Auto-applied ${opCount} change(s) (undo via the side panel [Undo] button or ⌘Z): ${formatPlanSummary(outcome.plan)}${warnings}`
+        const base = `Applied ${opCount} change(s) to the open workbook (the user accepts or rejects the whole task before anything is saved): ${formatPlanSummary(outcome.plan)}${warnings}`
         // Read-back after write (write → verify): formula cells fetch their
         // computed values after the async recalc, so the AI sees real results and
         // errors like #REF!/#DIV/0! instead of just what it wrote.

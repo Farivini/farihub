@@ -96,6 +96,8 @@ export const id = {
   appStatusCutoutDone: 'Latar belakang dihapus (gambar asli diganti dengan PNG transparan)',
   appStatusGrouped: 'Dikelompokkan',
   appStatusUngrouped: 'Pengelompokan dibatalkan',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'Komentar ditambahkan',
   appStatusKeepOneSlide: 'Tidak dapat menghapus; minimal harus tersisa satu slide',

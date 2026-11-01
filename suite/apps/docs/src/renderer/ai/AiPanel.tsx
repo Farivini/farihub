@@ -21,8 +21,9 @@ import {
   AgentLoop,
   acceptReview,
   composeSkills,
+  confirmRevert,
   finishRun,
-  recordChanges,
+  noteAiChange,
   rejectReview,
   startReview,
   type ReviewTask,
@@ -85,12 +86,13 @@ import { useI18n, t as tModule, aiLangDirective, type StringKey } from '../i18n/
 import { createFileNav, Markdown } from '@genoffice/ui'
 import {
   AiComposer,
+  AiOpenReviews,
   AiReviewCard,
   AiScopeQuote,
   AiTypingIndicator,
   type AiScopeQuoteData,
 } from '@genoffice/ui'
-import { docsReview } from './review-store'
+import { docsReview, sameDoc } from './review-store'
 import { GensparkMark } from '../components/icons'
 import sendEnterOn from '../assets/send-enter-on.png'
 import sendEnterOff from '../assets/send-enter-off.png'
@@ -750,6 +752,11 @@ export function AiPanel({
   /** document state before the run's first edit — attached to the turn's final
       segment at run end (mid-turn segments never show the action toolbar) */
   const runSnapshotRef = useRef<PmNode | null>(null)
+  /** Fariv review: the task of the run in flight; restore points by task id; the
+   * document when the agent's current tool started */
+  const runningTaskIdRef = useRef<string | null>(null)
+  const taskSnapshotsRef = useRef(new Map<string, PmNode>())
+  const toolStartDocRef = useRef<unknown>(null)
   /** last sent instruction, for one-click retry */
   const lastInstructionRef = useRef('')
   /** Tool activity of the whole run (with args/output, accumulated across turns) — for full
@@ -996,6 +1003,8 @@ export function AiPanel({
       events: {
         onText: (text) => patchLastAssistant({ text }),
         onToolStart: (call) => {
+          // the document as the agent found it: a user edit since its last change shows here
+          toolStartDocRef.current = editorRef.current.state.doc
           // Live "running" chip: replaced in place by onToolExecuted
           patchLastAssistant((last) => ({
             tools: [
@@ -1008,11 +1017,28 @@ export function AiPanel({
           // The run's first pre-edit state wins so one roll-back undoes the whole run
           if (snapshotBefore && !runSnapshotRef.current) runSnapshotRef.current = snapshotBefore
           if (execution.mutated) {
-            const running = docsReview.get()
-            if (running?.status === 'running') docsReview.set(recordChanges(running, 1))
             // tracking off: accept immediately (same tick, so the yellow never paints);
             // tracking on: revisions stay pending, handled in the Review tab
             if (!trackChangesRef.current) clearAiHighlights(true)
+            const id = runningTaskIdRef.current
+            const running = id ? docsReview.get(id) : undefined
+            if (running?.status === 'running') {
+              if (runSnapshotRef.current)
+                taskSnapshotsRef.current.set(running.id, runSnapshotRef.current)
+              docsReview.set(
+                noteAiChange(
+                  running,
+                  {
+                    before: toolStartDocRef.current ?? running.before,
+                    after: editorRef.current.state.doc,
+                    count: 1,
+                    // no restore point was captured: the task cannot be undone as a unit
+                    ...(runSnapshotRef.current ? {} : { untracked: true }),
+                  },
+                  sameDoc,
+                ),
+              )
+            }
           }
           // mind maps ride the UI-only display side channel onto the message
           const display = execution.display
@@ -1065,11 +1091,14 @@ export function AiPanel({
           const finalText = truncated
             ? [baseText, tModule('aiTruncatedNote')].filter(Boolean).join('\n\n')
             : baseText
-          // Fariv review: the task's changes stay in the editor; the file waits for Accept
-          const running = docsReview.get()
+          // Fariv review: the task's changes stay in the open document; the file waits
+          // for the user's decision
+          const runningId = runningTaskIdRef.current
+          runningTaskIdRef.current = null
+          const running = runningId ? docsReview.get(runningId) : undefined
           const reviewed =
             running?.status === 'running'
-              ? finishRun(running, { after: editorRef.current.state.doc }).task
+              ? finishRun(running, { after: editorRef.current.state.doc }, sameDoc).task
               : undefined
           if (reviewed) docsReview.set(reviewed)
           patchLastAssistant((last) => ({
@@ -1092,21 +1121,20 @@ export function AiPanel({
           }
         },
         onError: (error) => {
-          // Fariv review: a failed run never leaves a partial change in the document
-          const running = docsReview.get()
+          // Fariv review: a failed run is undone only when that cannot take a user edit
+          // with it, and it counts as undone only once confirmed; otherwise its partial
+          // changes stay under review and the file is not written
+          const runningId = runningTaskIdRef.current
+          runningTaskIdRef.current = null
+          const running = runningId ? docsReview.get(runningId) : undefined
           const failed =
             running?.status === 'running'
-              ? finishRun(running, { after: editorRef.current.state.doc, error })
+              ? finishRun(running, { after: editorRef.current.state.doc, error }, sameDoc)
               : undefined
           const before = runSnapshotRef.current
-          if (failed?.action === 'rollback' && before) {
-            editorRef.current
-              .chain()
-              .setMeta(TABLE_TRAILING_SKIP, true)
-              .setContent(before as never)
-              .run()
-          }
           if (failed) docsReview.set(failed.task)
+          const reviewed =
+            failed?.action === 'rollback' ? revertTaskRef.current(failed.task) : failed?.task
           setChat((prev) => {
             const next = [...prev]
             const last = next.at(-1)
@@ -1117,8 +1145,8 @@ export function AiPanel({
                 error,
                 tools: last.tools?.filter((tl) => !tl.running),
                 // rolled back: the restore point is spent
-                snapshot: failed?.action === 'rollback' ? undefined : (before ?? undefined),
-                ...(failed && failed.task.changes > 0 ? { review: failed.task } : {}),
+                snapshot: reviewed?.status === 'rolled-back' ? undefined : (before ?? undefined),
+                ...(reviewed && reviewed.changes > 0 ? { review: reviewed } : {}),
               }
             }
             return boundChatHistory(next)
@@ -1312,10 +1340,12 @@ export function AiPanel({
     runSnapshotRef.current = null
     runUsageRef.current = undefined
     stickToBottomRef.current = true
-    // Fariv review: a new instruction keeps the previous task; this run is reviewed on its own
-    const previousTask = docsReview.get()
-    if (previousTask?.status === 'pending') docsReview.set(acceptReview(previousTask).task)
-    docsReview.set(startReview(crypto.randomUUID(), editor.state.doc))
+    // Fariv review: a task still under review stays pending — a new instruction never
+    // decides it; this run is reviewed on its own
+    const task = startReview<unknown>(crypto.randomUUID(), editor.state.doc)
+    runningTaskIdRef.current = task.id
+    toolStartDocRef.current = null
+    docsReview.set(task)
     setChat((prev) =>
       boundChatHistory([
         ...prev,
@@ -1352,10 +1382,11 @@ export function AiPanel({
         // the wait ended because another document replaced this one, or the
         // user stopped / reset the chat meanwhile: nothing to run
         if (pending.aborted || currentDocGeneration() !== generation) {
-          const idle = docsReview.get()
+          const idle = docsReview.get(task.id)
           if (idle?.status === 'running') {
-            docsReview.set(finishRun(idle, { after: editorRef.current.state.doc }).task)
+            docsReview.set(finishRun(idle, { after: editorRef.current.state.doc }, sameDoc).task)
           }
+          if (runningTaskIdRef.current === task.id) runningTaskIdRef.current = null
           setChat((prev) =>
             prev.filter(
               (m, i) => !(i === prev.length - 1 && m.role === 'assistant' && m.streaming),
@@ -1446,9 +1477,8 @@ export function AiPanel({
   }
 
   const newChat = () => {
-    // the review card leaves with the chat: a pending task is kept, so AutoSave resumes
-    const pendingTask = docsReview.get()
-    if (pendingTask?.status === 'pending') docsReview.set(acceptReview(pendingTask).task)
+    // tasks under review are not decided by a new conversation: AiOpenReviews keeps
+    // listing them until the user accepts or rejects each one
     msgQueue.clear()
     if (pendingSendRef.current) {
       pendingSendRef.current.aborted = true
@@ -1539,11 +1569,12 @@ export function AiPanel({
     )
   }
 
-  // the card follows the task wherever it changes (panel, or the user's own Save in the app)
+  // the card follows the task wherever it changes; the open list survives a new chat
+  const [openReviews, setOpenReviews] = useState(() => docsReview.open())
   useEffect(
     () =>
       docsReview.subscribe((task) => {
-        if (!task) return
+        setOpenReviews(docsReview.open())
         setChat((prev) =>
           prev.some((e) => e.review?.id === task.id && e.review !== task)
             ? prev.map((e) => (e.review?.id === task.id ? { ...e, review: task } : e))
@@ -1553,27 +1584,49 @@ export function AiPanel({
     [],
   )
 
+  /**
+   * Restore the document from before the task and report the outcome: the task leaves
+   * review only when the document is confirmed equal to its pre-task state.
+   */
+  const revertTask = (reverting: ReviewTask<unknown>): ReviewTask<unknown> => {
+    const snapshot = taskSnapshotsRef.current.get(reverting.id)
+    let reverted = false
+    if (snapshot) {
+      try {
+        editorRef.current
+          .chain()
+          .setMeta(TABLE_TRAILING_SKIP, true)
+          .setContent(snapshot as never)
+          .run()
+        reverted = sameDoc(editorRef.current.state.doc, reverting.before)
+      } catch {
+        reverted = false
+      }
+    }
+    if (reverted) taskSnapshotsRef.current.delete(reverting.id)
+    const next = confirmRevert(reverting, reverted)
+    docsReview.set(next)
+    return next
+  }
+  const revertTaskRef = useRef(revertTask)
+  revertTaskRef.current = revertTask
+
   const acceptTask = (taskId: string) => {
-    const task = docsReview.get()
-    if (!task || task.id !== taskId) return
+    const task = docsReview.get(taskId)
+    if (!task) return
     const step = acceptReview(task)
     docsReview.set(step.task)
-    // the app saves it (AutoSave on, or a never-saved document's first save)
-    if (step.action === 'commit') window.dispatchEvent(new Event('ai-docs-review-accepted'))
+    taskSnapshotsRef.current.delete(taskId)
+    // the app saves it (AutoSave on, or a never-saved document's first save) once
+    // nothing else is under review
   }
 
   const rejectTask = (taskId: string) => {
-    const task = docsReview.get()
-    if (!task || task.id !== taskId || busy) return
-    const index = chat.findIndex((e) => e.review?.id === taskId)
-    const snapshot = index >= 0 ? chat[index]!.snapshot : undefined
-    const step = rejectReview(task, editor.state.doc)
-    if (step.action === 'rollback' && !snapshot) {
-      docsReview.set({ ...task, conflict: 'untracked' })
-      return
-    }
+    const task = docsReview.get(taskId)
+    if (!task || busy) return
+    const step = rejectReview(task, editor.state.doc, sameDoc)
     docsReview.set(step.task)
-    if (step.action === 'rollback' && snapshot) rollback(index, snapshot)
+    if (step.action === 'rollback') revertTask(step.task)
   }
 
   const resizeCleanupRef = useRef<(() => void) | null>(null)
@@ -1671,6 +1724,7 @@ export function AiPanel({
               onClick={newChat}
               data-tip={t('aiNewChatTitle')}
               aria-label={t('aiNewChatTitle')}
+              data-action="new-chat"
             >
               <IconNewChat size={16} />
             </button>
@@ -1904,6 +1958,12 @@ export function AiPanel({
         })}
       </div>
 
+      <AiOpenReviews
+        tasks={openReviews.filter((task) => !chat.some((e) => e.review?.id === task.id))}
+        lang={lang}
+        onAccept={acceptTask}
+        onReject={rejectTask}
+      />
       <div className="ai-composer">
         {attachNotice && <div className="ai-attach-notice">{attachNotice}</div>}
         {activePartial && (

@@ -1,25 +1,29 @@
 import { test, expect, type Page } from '@playwright/test'
-import { createServer, type IncomingMessage, type Server } from 'node:http'
-import { copyFile, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { copyFile, mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import type { AddressInfo } from 'node:net'
 import JSZip from 'jszip'
-import { defaultAiSettings, resolveCustomEndpoints } from '@genoffice/ai-provider'
 import { launchShell, closeAndSaveVideo, waitForPageWithUrl, screenshotPath } from './helpers'
+import {
+  deferred,
+  directive,
+  scriptedRun,
+  startScriptedModel,
+  useScriptedModel,
+  type ModelReply,
+} from './fariv-review-helpers'
 
 /**
- * Fariv review of an AI task in Planilhas, with a SIMULATED model (a local
- * OpenAI-compatible stub that scripts the agent's tool calls; no Codex/Claude here):
+ * Fariv review of AI tasks in Planilhas, with a SIMULATED model (no Codex/Claude).
+ * The task's changes are shown in the open workbook (a preview, not an isolated
+ * draft); the file is written only after an explicit Accept.
  *
- * - the task's changes land in the open workbook only; the file stays as it was
- *   (AutoSave on) until the user accepts;
- * - Reject undoes the whole task; Accept saves it;
- * - a run that fails after changing the workbook is rolled back;
- * - an edit by the user after the task blocks Reject (conflict).
- *
- * Each run: get_workbook_context → propose_operations(set_cell A3) → reply. An
- * instruction containing FALHA makes the stub fail (HTTP 500) after the change.
+ * Instruction directives read by the simulated model:
+ *   OPS: A3=x;B3=y|A4=z   one propose_operations per `|` group, one set_cell per `;`
+ *   FILL                  grow the sheet, then one fill_range of 104,000 cells (past the
+ *                         100,000-cell undo budget, so it leaves no undo step)
+ *   ESPERA                hold the run (after the changes) until the test releases it
+ *   FALHA                 then fail with HTTP 500
  */
 
 const XLSX_FIXTURE = resolve(
@@ -27,75 +31,6 @@ const XLSX_FIXTURE = resolve(
   '../apps/sheets/fixtures/generated/compatibility-basic.xlsx',
 )
 const POLL = { timeout: 20_000, intervals: [250, 500, 1000] }
-
-interface ChatRequest {
-  messages: Array<{ role: string; content: unknown }>
-}
-
-async function readBody(req: IncomingMessage): Promise<string> {
-  const chunks: Buffer[] = []
-  for await (const chunk of req) chunks.push(chunk as Buffer)
-  return Buffer.concat(chunks).toString('utf8')
-}
-
-function text(content: unknown): string {
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return content.map((part) => (part as { text?: string }).text ?? '').join('')
-  }
-  return ''
-}
-
-function toolCall(name: string, args: unknown) {
-  return {
-    role: 'assistant',
-    content: null,
-    tool_calls: [
-      {
-        id: `call_${name}_${Date.now()}`,
-        type: 'function',
-        function: { name, arguments: JSON.stringify(args) },
-      },
-    ],
-  }
-}
-
-function startModelStub(): Promise<Server> {
-  const server = createServer(async (req, res) => {
-    if (req.method !== 'POST') {
-      res.writeHead(404).end()
-      return
-    }
-    const body = JSON.parse(await readBody(req)) as ChatRequest
-    let lastUser = -1
-    body.messages.forEach((message, index) => {
-      if (message.role === 'user') lastUser = index
-    })
-    const instruction = text(body.messages[lastUser]?.content)
-    const tools = body.messages.slice(lastUser + 1).filter((message) => message.role === 'tool')
-    const value = /VALOR:\s*(.+?)\s*$/m.exec(instruction)?.[1] ?? 'IA'
-    let message: unknown
-    if (tools.length === 0) {
-      message = toolCall('get_workbook_context', {})
-    } else if (tools.length === 1) {
-      const sheetId = /id=([^,)\s]+)/.exec(text(tools[0]!.content))?.[1] ?? 'sheet-1'
-      message = toolCall('propose_operations', {
-        summary: `Escrever ${value} em A3`,
-        operations: [{ op: 'set_cell', sheetId, address: 'A3', value }],
-      })
-    } else if (instruction.includes('FALHA')) {
-      res.writeHead(500, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ error: { message: 'simulated failure after a change' } }))
-      return
-    } else {
-      message = { role: 'assistant', content: `Pronto: ${value} em A3.` }
-    }
-    const done = (message as { tool_calls?: unknown }).tool_calls ? 'tool_calls' : 'stop'
-    res.writeHead(200, { 'content-type': 'application/json' })
-    res.end(JSON.stringify({ choices: [{ message, finish_reason: done }] }))
-  })
-  return new Promise((done) => server.listen(0, '127.0.0.1', () => done(server)))
-}
 
 async function part(path: string, name: string): Promise<string> {
   const zip = await JSZip.loadAsync(await readFile(path))
@@ -106,36 +41,17 @@ async function savedText(path: string): Promise<string> {
   return (await part(path, 'xl/sharedStrings.xml')) + (await part(path, 'xl/worksheets/sheet1.xml'))
 }
 
-async function gridA1(page: Page): Promise<{ x: number; y: number }> {
-  await page.waitForFunction(
-    () =>
-      [...document.querySelectorAll('canvas')].some((canvas) => {
-        const rect = canvas.getBoundingClientRect()
-        return rect.width > 400 && rect.height > 300
-      }),
-    null,
-    { timeout: 30_000 },
-  )
-  await page.waitForTimeout(500)
-  const grid = await page.evaluate(() => {
-    for (const canvas of document.querySelectorAll('canvas')) {
-      const rect = canvas.getBoundingClientRect()
-      if (rect.width > 400 && rect.height > 300) return { x: rect.x, y: rect.y }
-    }
-    return null
-  })
-  if (!grid) throw new Error('worksheet canvas not found')
-  return { x: grid.x + 46 + 43, y: grid.y + 24 + 12 }
+async function goTo(page: Page, address: string): Promise<void> {
+  const nameBox = page.locator('[data-u-comp="defined-name"] input')
+  await nameBox.click()
+  await nameBox.fill(address)
+  await nameBox.press('Enter')
+  await expect(nameBox).toHaveValue(address)
 }
 
-/** the value of A3, read through the app's control hook (the grid is a canvas) */
-async function valueOfA3(page: Page): Promise<unknown> {
-  const a1 = await gridA1(page)
-  await page.mouse.click(a1.x, a1.y)
-  await expect(page.locator('[data-u-comp="defined-name"] input')).toHaveValue('A1')
-  await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('ArrowDown')
-  await expect(page.locator('[data-u-comp="defined-name"] input')).toHaveValue('A3')
+/** a cell's value, read through the app's control hook (the grid is a canvas) */
+async function cell(page: Page, address: string): Promise<unknown> {
+  await goTo(page, address)
   const selected = await page.evaluate(() => {
     const control = (
       window as unknown as {
@@ -144,8 +60,13 @@ async function valueOfA3(page: Page): Promise<unknown> {
     ).__genofficeControl
     return control({ cmd: 'selection' })
   })
-  const values = selected.result?.values
-  return values?.[0]?.[0] ?? ''
+  return selected.result?.values?.[0]?.[0] ?? ''
+}
+
+async function typeInto(page: Page, address: string, value: string): Promise<void> {
+  await goTo(page, address)
+  await page.keyboard.type(value, { delay: 20 })
+  await page.keyboard.press('Enter')
 }
 
 async function ask(page: Page, instruction: string): Promise<void> {
@@ -154,31 +75,75 @@ async function ask(page: Page, instruction: string): Promise<void> {
   await composer.press('Enter')
 }
 
-test('planilha: tarefa da IA em revisão — rejeitar, aceitar, falha e conflito', async () => {
-  test.setTimeout(240_000)
-  const server = await startModelStub()
-  const port = (server.address() as AddressInfo).port
+test('planilha: revisão da tarefa da IA — decisão explícita, nada parcial, edição manual preservada', async () => {
+  test.setTimeout(300_000)
+  let gate = { reached: deferred(), release: deferred() }
+  const { server, port } = await startScriptedModel((run): ModelReply | Promise<ModelReply> => {
+    const sheetId = (results: readonly string[]) =>
+      /id=([^,)\s]+)/.exec(results[0] ?? '')?.[1] ?? 'sheet-1'
+    const groups = directive(run.instruction, 'OPS')
+      .split('|')
+      .filter(Boolean)
+      .map((group) => group.split(';').map((pair) => pair.split('=') as [string, string]))
+    const steps = [
+      () => ({ tool: 'get_workbook_context', args: {} }),
+      ...groups.map((ops) => (results: readonly string[]) => ({
+        tool: 'propose_operations',
+        args: {
+          summary: 'Editar células',
+          operations: ops.map(([address, value]) => ({
+            op: 'set_cell',
+            sheetId: sheetId(results),
+            address,
+            value,
+          })),
+        },
+      })),
+      ...(run.instruction.includes('FILL')
+        ? [
+            // the grid has 1,000 rows: grow it (structural ops go in their own batch),
+            // then fill 4,000 × 26 = 104,000 cells — past the 100,000-cell undo budget
+            (results: readonly string[]) => ({
+              tool: 'propose_operations',
+              args: {
+                summary: 'Acrescentar linhas',
+                operations: Array.from({ length: 8 }, () => ({
+                  op: 'insert_rows',
+                  sheetId: sheetId(results),
+                  row: 1000,
+                  count: 500,
+                })),
+              },
+            }),
+            (results: readonly string[]) => ({
+              tool: 'propose_operations',
+              args: {
+                summary: 'Preencher o bloco novo',
+                operations: [
+                  {
+                    op: 'fill_range',
+                    sheetId: sheetId(results),
+                    source: 'A1',
+                    target: 'A1001:Z5000',
+                  },
+                ],
+              },
+            }),
+          ]
+        : []),
+    ]
+    return scriptedRun(run, steps, gate)
+  })
   const dir = await mkdtemp(join(tmpdir(), 'fariv-review-'))
   const workbook = join(dir, 'vendas.xlsx')
   await copyFile(XLSX_FIXTURE, workbook)
-  const original = await savedText(workbook)
   const userDataDir = await mkdtemp(join(tmpdir(), 'fariv-review-ud-'))
-  const settings = defaultAiSettings()
-  settings.provider = 'custom'
-  settings.providers.custom = {
-    apiKey: 'stub',
-    model: 'stub-model',
-    baseUrl: `http://127.0.0.1:${port}/v1`,
-  }
-  await writeFile(
-    join(userDataDir, 'ai-settings.json'),
-    JSON.stringify(resolveCustomEndpoints(settings)),
-  )
+  await useScriptedModel(userDataDir, port)
 
   const launched = await launchShell({
     userDataDir,
     onboardingSeen: true,
-    // AutoSave on: the origin would write the run to the file right away
+    // AutoSave on: the origin would write each run to the file right away
     settings: { autoSaveDefault: true, autoSaveDefaultUpdatedAt: Date.now() },
     videoDir: 'fariv-ai-review-sheets',
     openFile: workbook,
@@ -189,55 +154,127 @@ test('planilha: tarefa da IA em revisão — rejeitar, aceitar, falha e conflito
     await sheets.waitForFunction(() => document.body.textContent?.includes('Sheet1'), null, {
       timeout: 30_000,
     })
-    const before = await valueOfA3(sheets)
+    await sheets.waitForTimeout(1_000)
     const expand = sheets.locator('.copilot.collapsed .expand-copilot')
     if (await expand.isVisible()) await expand.click()
-    const cards = sheets.locator('.ai-review-card')
+    const cards = sheets.locator('.copilot .ai-review-card')
+    const lastCard = () => cards.last()
+    const original = await savedText(workbook)
 
-    // 1) the task waits for review; the file is untouched; Reject undoes it
-    await ask(sheets, 'Escreva em A3.\nVALOR: Rascunho rejeitado')
-    await expect(cards.last()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
-    await expect(cards.last()).toContainText('1 alteração em revisão')
-    await expect(cards.last().locator('.ai-review-accept')).toHaveText('Aceitar')
+    // 1) a task waits for review; the file is untouched; Reject undoes it
+    await ask(sheets, 'Escreva.\nOPS: A3=Rascunho rejeitado')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await expect(lastCard()).toContainText('1 alteração da IA no documento aberto')
     await sheets.screenshot({ path: screenshotPath('fariv-review-sheets-pending') })
-    expect(await valueOfA3(sheets)).toBe('Rascunho rejeitado')
-    // AutoSave would have written by now in the origin (it saves when the run ends)
+    expect(await cell(sheets, 'A3')).toBe('Rascunho rejeitado')
     await sheets.waitForTimeout(2_000)
     expect(await savedText(workbook)).toBe(original)
-    await cards.last().locator('.ai-review-reject').click()
-    await expect(cards.last()).toHaveAttribute('data-review', 'rejected')
-    await expect.poll(() => valueOfA3(sheets), POLL).toEqual(before)
+    await lastCard().locator('.ai-review-reject').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'rejected')
+    await expect.poll(() => cell(sheets, 'A3'), POLL).toBe('')
     expect(await savedText(workbook)).toBe(original)
 
-    // 2) Accept keeps the task and AutoSave writes it
-    await ask(sheets, 'Escreva em A3.\nVALOR: Revisado pela IA')
-    await expect(cards.last()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
-    await cards.last().locator('.ai-review-accept').click()
-    await expect(cards.last()).toHaveAttribute('data-review', 'accepted')
-    await expect.poll(() => savedText(workbook), POLL).toContain('Revisado pela IA')
-    await sheets.screenshot({ path: screenshotPath('fariv-review-sheets-accepted') })
+    // 2) a task of several operations (two batches, five cells) is accepted in one action
+    await ask(sheets, 'Escreva.\nOPS: A3=Um;B3=Dois;C3=Três|A4=Quatro;B4=Cinco')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await expect(lastCard()).toContainText('5 alterações da IA')
+    await lastCard().locator('.ai-review-accept').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'accepted')
+    for (const value of ['Um', 'Dois', 'Três', 'Quatro', 'Cinco']) {
+      await expect.poll(() => savedText(workbook), POLL).toContain(value)
+    }
+    const afterAccept = await savedText(workbook)
 
-    // 3) a run that fails after changing the workbook leaves nothing behind
-    await ask(sheets, 'Escreva em A3 e FALHA.\nVALOR: Parcial com falha')
-    await expect(cards.last()).toHaveAttribute('data-review', 'rolled-back', { timeout: 30_000 })
-    await expect(cards.last()).toContainText('alterações parciais foram desfeitas')
-    await expect.poll(() => valueOfA3(sheets), POLL).toBe('Revisado pela IA')
-    expect(await savedText(workbook)).not.toContain('Parcial com falha')
+    // 3) a task of several operations is undone in one action
+    await ask(sheets, 'Reescreva.\nOPS: A3=X1;B3=X2;C3=X3|A4=X4;B4=X5')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await expect(lastCard()).toContainText('5 alterações da IA')
+    expect(await cell(sheets, 'C3')).toBe('X3')
+    await lastCard().locator('.ai-review-reject').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'rejected')
+    for (const [address, value] of [
+      ['A3', 'Um'],
+      ['B3', 'Dois'],
+      ['C3', 'Três'],
+      ['A4', 'Quatro'],
+      ['B4', 'Cinco'],
+    ] as const) {
+      expect(await cell(sheets, address)).toBe(value)
+    }
+    expect(await savedText(workbook)).toBe(afterAccept)
 
-    // 4) an edit by the user after the task: Reject would undo it too, so it is refused
-    await ask(sheets, 'Escreva em A3.\nVALOR: Antes do conflito')
-    await expect(cards.last()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
-    const a1 = await gridA1(sheets)
-    await sheets.mouse.click(a1.x, a1.y)
-    await sheets.keyboard.type('Edição do usuário', { delay: 20 })
-    await sheets.keyboard.press('Enter')
-    await cards.last().locator('.ai-review-reject').click()
-    await expect(cards.last()).toHaveAttribute('data-review', 'conflict-edited')
-    await expect(cards.last().locator('.ai-review-reject')).toBeDisabled()
-    await sheets.screenshot({ path: screenshotPath('fariv-review-sheets-conflict') })
-    expect(await valueOfA3(sheets)).toBe('Antes do conflito')
-    // the file still has only the accepted task
-    expect(await savedText(workbook)).not.toContain('Antes do conflito')
+    // 4) the run fails after a change while the user edited by hand: the user's edit is
+    //    kept, the AI's partial change is not undone (that would take the edit too) and
+    //    waits for a decision; nothing reaches the file, not even the user's own Save
+    gate = { reached: deferred(), release: deferred() }
+    await ask(sheets, 'Escreva e falhe.\nOPS: A5=Parcial da IA\nESPERA\nFALHA')
+    await gate.reached.promise
+    await expect.poll(() => cell(sheets, 'A5'), POLL).toBe('Parcial da IA')
+    await typeInto(sheets, 'D5', 'Minha edição')
+    gate.release.resolve()
+    await expect(lastCard()).toHaveAttribute('data-review', 'conflict-edited', { timeout: 30_000 })
+    await expect(lastCard()).toContainText('não foram desfeitas automaticamente')
+    await expect(lastCard().locator('.ai-review-reject')).toBeDisabled()
+    expect(await cell(sheets, 'D5')).toBe('Minha edição')
+    expect(await cell(sheets, 'A5')).toBe('Parcial da IA')
+    await sheets.screenshot({ path: screenshotPath('fariv-review-sheets-failure-kept') })
+    await launched.app.evaluate(({ webContents }) => {
+      webContents
+        .getAllWebContents()
+        .find((w) => w.getURL().includes('://sheets/'))
+        ?.send('menu:action', 'save')
+    })
+    await sheets.waitForTimeout(2_000)
+    expect(await savedText(workbook)).toBe(afterAccept)
+    await lastCard().locator('.ai-review-accept').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'accepted')
+    await expect.poll(() => savedText(workbook), POLL).toContain('Minha edição')
+    expect(await savedText(workbook)).toContain('Parcial da IA')
+    const afterKept = await savedText(workbook)
+
+    // 5) a failed run with nothing else in the way is undone, and says so once confirmed
+    await ask(sheets, 'Escreva e falhe.\nOPS: A6=Falha limpa\nFALHA')
+    await expect(lastCard()).toHaveAttribute('data-review', 'rolled-back', { timeout: 30_000 })
+    expect(await cell(sheets, 'A6')).toBe('')
+    expect(await savedText(workbook)).toBe(afterKept)
+
+    // 6) a new request and a new conversation do not decide a pending task
+    await ask(sheets, 'Primeira.\nOPS: A7=Pendente P')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await ask(sheets, 'Segunda.\nOPS: B7=Pendente Q')
+    await expect(cards).toHaveCount(7, { timeout: 30_000 })
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await expect(cards.nth(5)).toHaveAttribute('data-review', 'pending')
+    await sheets.waitForTimeout(2_000)
+    expect(await savedText(workbook)).toBe(afterKept)
+    await sheets.locator('.copilot [data-action="new-chat"]').click()
+    const open = sheets.locator('.ai-review-open .ai-review-card')
+    await expect(open).toHaveCount(2)
+    await sheets.screenshot({ path: screenshotPath('fariv-review-sheets-open-after-new-chat') })
+    await open.first().locator('.ai-review-accept').click()
+    await expect(open).toHaveCount(1)
+    // Q is still open: the accepted P waits with it
+    await sheets.waitForTimeout(2_000)
+    expect(await savedText(workbook)).toBe(afterKept)
+    await open.first().locator('.ai-review-reject').click()
+    await expect(open).toHaveCount(0)
+    expect(await cell(sheets, 'B7')).toBe('')
+    expect(await cell(sheets, 'A7')).toBe('Pendente P')
+    await expect.poll(() => savedText(workbook), POLL).toContain('Pendente P')
+    expect(await savedText(workbook)).not.toContain('Pendente Q')
+    const afterOpen = await savedText(workbook)
+
+    // 7) a change past the undo budget leaves no history: a failure is not announced as
+    //    undone — the task stays under review, flagged, and the file is not written
+    await ask(sheets, 'Preencha e falhe.\nFILL\nFALHA')
+    const big = sheets.locator('.copilot .ai-review-card').last()
+    await expect(big).toHaveAttribute('data-review', 'conflict-untracked', { timeout: 60_000 })
+    await expect(big).toContainText('Não há histórico suficiente')
+    await expect(big).not.toContainText('as alterações dela foram desfeitas')
+    await expect(big.locator('.ai-review-reject')).toBeDisabled()
+    await sheets.screenshot({ path: screenshotPath('fariv-review-sheets-untracked') })
+    await sheets.waitForTimeout(2_000)
+    expect(await savedText(workbook)).toBe(afterOpen)
   } finally {
     await closeAndSaveVideo(launched, 'fariv-ai-review-sheets')
     server.close()

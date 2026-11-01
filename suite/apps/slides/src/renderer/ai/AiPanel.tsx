@@ -3,6 +3,7 @@ import {
   AiPanelSideButton,
   AiModelPicker,
   type AiModelPickerBridge,
+  AiOpenReviews,
   AiReviewCard,
   AiSkillChips,
   AiSkillsMenu,
@@ -12,8 +13,9 @@ import {
   AgentLoop,
   acceptReview,
   composeSkills,
+  confirmRevert,
   finishRun,
-  recordChanges,
+  noteAiChange,
   rejectReview,
   startReview,
   withAttachedSkills,
@@ -829,32 +831,94 @@ export function AiPanel({
   }
 
   // ---- Fariv review of the AI task (see @genoffice/agent-core review-task) ----
+  //
+  // Marker: the deck's content fingerprint, read from the main process (the renderer's
+  // slide list follows it asynchronously). Every read goes through one promise chain,
+  // so the agent's changes are recorded in order.
 
-  /** A new instruction keeps the previous task; this run is reviewed on its own. */
-  const beginReviewTask = () => {
-    const previousTask = slidesReview.get()
-    if (previousTask?.status === 'pending') slidesReview.set(acceptReview(previousTask).task)
-    slidesReview.set(startReview(crypto.randomUUID(), slidesRef.current))
+  const deckFingerprint = (): Promise<string | null> =>
+    window.slidesApi.deckFingerprint().catch(() => null)
+  /** the task of the run in flight; history batch (restore point) by task id */
+  const runningTaskIdRef = useRef<string | null>(null)
+  const taskBatchRef = useRef(new Map<string, number>())
+  const reviewChainRef = useRef<Promise<void>>(Promise.resolve())
+  const toolBeforeRef = useRef<Promise<string | null> | null>(null)
+
+  /** Record a change of the agent with the markers around it (in order). */
+  const noteDeckChange = (
+    before: Promise<string | null>,
+    after: Promise<string | null>,
+    count: number,
+  ) => {
+    const id = runningTaskIdRef.current
+    reviewChainRef.current = reviewChainRef.current.then(async () => {
+      const [b, a] = await Promise.all([before, after])
+      const task = id ? slidesReview.get(id) : undefined
+      if (task?.status !== 'running') return
+      slidesReview.set(noteAiChange(task, { before: b, after: a, count }))
+    })
   }
 
-  /** The run (and its QC pass) ended: put the task under review, or undo a failed one. */
+  /** A task still under review stays pending: a new instruction never decides it. */
+  const beginReviewTask = () => {
+    const task = startReview<unknown>(crypto.randomUUID(), null)
+    runningTaskIdRef.current = task.id
+    toolBeforeRef.current = null
+    slidesReview.set(task)
+  }
+
+  /** The deck as the run finds it (after pending notes are flushed), just before it starts. */
+  const baselineReviewTask = async () => {
+    const id = runningTaskIdRef.current
+    const before = await deckFingerprint()
+    const task = id ? slidesReview.get(id) : undefined
+    if (task?.status === 'running' && task.changes === 0) slidesReview.set({ ...task, before })
+  }
+
+  /** Restore the deck from before the task; the task leaves review only when the deck
+   * is confirmed equal to its pre-task state. */
+  const revertTask = async (reverting: ReviewTask<unknown>): Promise<ReviewTask<unknown>> => {
+    const batch = taskBatchRef.current.get(reverting.id)
+    const restored = batch != null ? await window.slidesApi.aiSnapshotRestore(batch) : null
+    if (restored && batch != null) {
+      applyDeckRef.current(restored, Math.min(currentRef.current, restored.length - 1))
+      setChat((prev) =>
+        prev.map((e) =>
+          e.snapshotId != null && e.snapshotId >= batch ? { ...e, snapshotId: undefined } : e,
+        ),
+      )
+    }
+    const reverted = restored != null && (await deckFingerprint()) === reverting.before
+    if (reverted) taskBatchRef.current.delete(reverting.id)
+    const next = confirmRevert(reverting, reverted)
+    slidesReview.set(next)
+    return next
+  }
+
+  /** The run (and its QC pass) ended: put the task under review, or undo a failed one
+   * when that cannot take a user edit with it. */
   const settleReview = async (error: string | undefined) => {
-    const running = slidesReview.get()
+    await reviewChainRef.current
+    const id = runningTaskIdRef.current
+    runningTaskIdRef.current = null
+    const running = id ? slidesReview.get(id) : undefined
     if (running?.status !== 'running') return
-    const step = finishRun(running, { after: slidesRef.current, error })
     const batch = runSnapshotIdRef.current
-    if (step.action === 'rollback' && batch != null) await rollback(batch)
+    if (batch != null) taskBatchRef.current.set(running.id, batch)
+    const step = finishRun(running, { after: await deckFingerprint(), error })
     slidesReview.set(step.task)
-    if (step.task.changes > 0) patchLastAssistant({ review: step.task })
+    const final = step.action === 'rollback' ? await revertTask(step.task) : step.task
+    if (final.changes > 0) patchLastAssistant({ review: final })
   }
   const settleReviewRef = useRef(settleReview)
   settleReviewRef.current = settleReview
 
-  // the card follows the task wherever it changes (panel, or the user's own Save in the app)
+  // the card follows the task wherever it changes; the open list survives a new chat
+  const [openReviews, setOpenReviews] = useState(() => slidesReview.open())
   useEffect(
     () =>
       slidesReview.subscribe((task) => {
-        if (!task) return
+        setOpenReviews(slidesReview.open())
         setChat((prev) =>
           prev.some((e) => e.review?.id === task.id && e.review !== task)
             ? prev.map((e) => (e.review?.id === task.id ? { ...e, review: task } : e))
@@ -865,24 +929,24 @@ export function AiPanel({
   )
 
   const acceptTask = (taskId: string) => {
-    const task = slidesReview.get()
-    if (!task || task.id !== taskId) return
+    const task = slidesReview.get(taskId)
+    if (!task) return
     const step = acceptReview(task)
     slidesReview.set(step.task)
-    if (step.action === 'commit') window.dispatchEvent(new Event('ai-slides-review-accepted'))
+    taskBatchRef.current.delete(taskId)
+    // the app saves it (AutoSave on) once nothing else is under review
   }
 
   const rejectTask = (taskId: string) => {
-    const task = slidesReview.get()
-    if (!task || task.id !== taskId || busy) return
-    const snapshotId = chat.find((e) => e.review?.id === taskId)?.snapshotId
-    const step = rejectReview(task, slidesRef.current)
-    if (step.action === 'rollback' && snapshotId == null) {
-      slidesReview.set({ ...task, conflict: 'untracked' })
-      return
-    }
-    slidesReview.set(step.task)
-    if (step.action === 'rollback' && snapshotId != null) void rollback(snapshotId)
+    const task = slidesReview.get(taskId)
+    if (!task || busy) return
+    void deckFingerprint().then((current) => {
+      const latest = slidesReview.get(taskId)
+      if (!latest) return
+      const step = rejectReview(latest, current)
+      slidesReview.set(step.task)
+      if (step.action === 'rollback') void revertTask(step.task)
+    })
   }
 
   const loopRef = useRef<AgentLoop | null>(null)
@@ -1444,6 +1508,8 @@ export function AiPanel({
           patchLastAssistant({ text })
         },
         onToolStart: (call) => {
+          // the deck as the agent found it: a user edit since its last change shows here
+          toolBeforeRef.current = deckFingerprint()
           // Live "running" chip: replaced in place by onToolExecuted
           const activity: ToolActivity = {
             name: call.name,
@@ -1454,8 +1520,7 @@ export function AiPanel({
         },
         onToolExecuted: ({ call, execution }) => {
           if (execution.mutated) {
-            const running = slidesReview.get()
-            if (running?.status === 'running') slidesReview.set(recordChanges(running, 1))
+            noteDeckChange(toolBeforeRef.current ?? deckFingerprint(), deckFingerprint(), 1)
           }
           const activity: ToolActivity = {
             name: call.name,
@@ -1817,6 +1882,7 @@ export function AiPanel({
         runStartingRef.current = false
         await onBeforeRunRef.current?.()
         if (await window.slidesApi.beginHistoryBatch()) historyBatchActiveRef.current = true
+        await baselineReviewTask()
         loop.run(modelInstruction, images)
       })
       .catch(() => {
@@ -1880,8 +1946,9 @@ export function AiPanel({
       queueRunResolverRef.current = resolve
       void Promise.resolve(onBeforeRunRef.current?.())
         .then(() => window.slidesApi.beginHistoryBatch())
-        .then((ok) => {
+        .then(async (ok) => {
           if (ok) historyBatchActiveRef.current = true
+          await baselineReviewTask()
           runStartingRef.current = false
           loop.run(instruction)
         })
@@ -2000,6 +2067,7 @@ export function AiPanel({
           if (slidesRef.current[page]) lines.push(tGlobal('aiQcPageSkipped', { n: page + 1 }))
           continue
         }
+        const qcBefore = deckFingerprint()
         const batchOpened = await window.slidesApi.beginHistoryBatch()
         let result = await qcSlidePage({
           access,
@@ -2045,6 +2113,8 @@ export function AiPanel({
         } else {
           lines.push(tGlobal('aiQcPageOk', { n: page + 1 }))
         }
+        // the QC pass is part of the task: its page edits are the agent's changes
+        noteDeckChange(qcBefore, deckFingerprint(), result.edited ? 1 : 0)
         patchLastAssistant({ text: renderEntry() })
       }
       if (pages.length > capped.length) {
@@ -2091,9 +2161,8 @@ export function AiPanel({
     })
 
   const newChat = () => {
-    // the review card leaves with the chat: a pending task is kept, so AutoSave resumes
-    const pendingTask = slidesReview.get()
-    if (pendingTask?.status === 'pending') slidesReview.set(acceptReview(pendingTask).task)
+    // tasks under review are not decided by a new conversation: AiOpenReviews keeps
+    // listing them until the user accepts or rejects each one
     msgQueue.clear()
     dismissClarify()
     qcAbortRef.current?.abort()
@@ -2260,6 +2329,7 @@ export function AiPanel({
               onClick={newChat}
               data-tip={t('aiNewChat')}
               aria-label={t('aiNewChat')}
+              data-action="new-chat"
             >
               <IconNewChat size={15} />
             </button>
@@ -2492,6 +2562,12 @@ export function AiPanel({
         )}
       </div>
 
+      <AiOpenReviews
+        tasks={openReviews.filter((task) => !chat.some((e) => e.review?.id === task.id))}
+        lang={lang}
+        onAccept={acceptTask}
+        onReject={rejectTask}
+      />
       {activeClarify ? (
         /* Docked in the composer slot with the composer's own outer spacing */
         <div className="ai-composer">

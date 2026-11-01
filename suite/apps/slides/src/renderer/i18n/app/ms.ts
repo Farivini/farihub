@@ -100,6 +100,8 @@ export const ms = {
   appStatusCutoutDone: 'Latar belakang dialih keluar (imej asal digantikan dengan PNG lut sinar)',
   appStatusGrouped: 'Dikumpulkan',
   appStatusUngrouped: 'Kumpulan dileraikan',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'Komen ditambah',
   appStatusKeepOneSlide: 'Tidak dapat memadam; sekurang-kurangnya satu slaid mesti dikekalkan',

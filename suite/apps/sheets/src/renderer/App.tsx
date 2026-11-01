@@ -70,7 +70,18 @@ import {
   workbookFontFamilies,
 } from './cell-font-fallback'
 import { isNumericIdentifierText } from './cell-warning'
-import { consumePendingUndoCarry, undoStackDepth } from './undo-carry'
+import { consumePendingUndoCarry, undoStackDepth, undoStackTopTag } from './undo-carry'
+import { sheetsReview } from './ai/review-store'
+
+/** Cheap content fingerprint (FNV-1a) for the in-memory workbook's review marker. */
+function fingerprint(text: string): string {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return (hash >>> 0).toString(36)
+}
 import { createSaveGate, shouldRunSaveTick } from './save-scheduler'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
@@ -144,13 +155,12 @@ import {
 import {
   AgentLoop,
   COMPLETED_VIA_TOOLS_TEXT,
-  acceptOnSave,
   acceptReview,
   composeSkills,
+  confirmRevert,
   finishRun,
   holdsSave,
-  markConflict,
-  recordChanges,
+  noteAiChange,
   rejectReview,
   startReview,
   withAttachedSkills,
@@ -746,7 +756,7 @@ export function App({
     if (!autoSave) return
     const tick = () => {
       // Fariv: an AI task under review keeps the file as it was until the user decides
-      if (holdsSave(aiReviewRef.current)) return
+      if (holdsSave(sheetsReview.list())) return
       const state = lazyWorkbookRef.current
       // Never while the in-cell editor is open (saving reloads the workbook
       // and would wipe the edit), never for converted .xls imports whose
@@ -1506,9 +1516,36 @@ export function App({
   /** Fariv review of the AI task in flight or awaiting a decision: the agent's
    * changes stay in the workbook buffer, saving waits for Accept, Reject undoes
    * the whole task (see `@genoffice/agent-core` review-task). */
-  const aiReviewRef = useRef<ReviewTask<string> | null>(null)
+  /** the task of the run in flight (the store keeps every task until decided) */
+  const runningTaskIdRef = useRef<string | null>(null)
   /** undo steps each task left on the stack, by task id (Reject / rollback) */
   const aiTaskUndoRef = useRef(new Map<string, number>())
+  /** tasks still waiting for a decision, for the panel (survive a new conversation) */
+  const [openReviews, setOpenReviews] = useState<readonly ReviewTask<string>[]>(() =>
+    sheetsReview.open(),
+  )
+  /** an accepted task waits for the last open one before it is saved */
+  const acceptedUnsavedRef = useRef(false)
+  const saveAcceptedRef = useRef<() => Promise<void>>(async () => {})
+  useEffect(
+    () =>
+      sheetsReview.subscribe((task) => {
+        setOpenReviews(sheetsReview.open())
+        if (task.status === 'accepted' && task.changes > 0) acceptedUnsavedRef.current = true
+        if (acceptedUnsavedRef.current && !holdsSave(sheetsReview.list())) {
+          acceptedUnsavedRef.current = false
+          void saveAcceptedRef.current()
+        }
+        setChat((previous) =>
+          previous.some((entry) => entry.review?.id === task.id && entry.review !== task)
+            ? previous.map((entry) =>
+                entry.review?.id === task.id ? { ...entry, review: task } : entry,
+              )
+            : previous,
+        )
+      }),
+    [],
+  )
   /** Last non-empty streamed text of the run: a final empty turn falls back to
    * it instead of wiping the model's own summary from the tool-call turn. */
   const runLastTextRef = useRef('')
@@ -1775,12 +1812,11 @@ export function App({
     runMutatedRef.current = false
     setAiBusy(true)
     setMessage(t('appAiThinking'))
-    // A new instruction keeps the previous task (it is saved with this one, or by
-    // AutoSave once nothing is under review); this run is reviewed on its own.
-    const previousTask = aiReviewRef.current
-    if (previousTask?.status === 'pending') updateReview(acceptReview(previousTask).task)
+    // A task still under review stays pending: a new instruction never decides it.
+    // This run is reviewed on its own.
     const task = startReview(crypto.randomUUID(), reviewMarker())
-    aiReviewRef.current = task
+    runningTaskIdRef.current = task.id
+    sheetsReview.set(task)
     appendChat({ role: 'assistant', text: '', tools: [], streaming: true, review: task })
     void collectImageAttachments(sentAttachments)
       .then(async (images) => {
@@ -1843,9 +1879,8 @@ export function App({
   }
 
   function handleNewChat(): void {
-    // the review card leaves with the chat: a pending task is kept, so AutoSave resumes
-    const pendingTask = aiReviewRef.current
-    if (pendingTask?.status === 'pending') updateReview(acceptReview(pendingTask).task)
+    // Tasks under review are not decided by a new conversation: the panel keeps
+    // listing them (AiOpenReviews) until the user accepts or rejects each one.
     agentLoopRef.current?.reset()
     setAiRunScope(undefined)
     setAiBusy(false)
@@ -3990,97 +4025,115 @@ export function App({
   /** Default worksheet names carry no content signal, so they never name the file. */
   const DEFAULT_SHEET_NAME_RE = /^(sheet|工作表|ワークシート|シート)\s*\d*$/i
 
-  /** Document marker for the review's conflict check: undo depth and journal size
-   * on a file-backed workbook, adapter revision on the in-memory one. */
+  /** Document marker for the review: the position in the undo history (depth and
+   * identity of the top entry) on a file-backed workbook; on the in-memory one, a
+   * fingerprint of its content plus the grid's history position. */
   function reviewMarker(): string {
-    const depth = undoStackDepth(univerRef.current)
-    const state = lazyWorkbookRef.current
-    return state
-      ? `u${depth}:j${journalSize(state.editJournal)}`
-      : `r${adapterRef.current.getSnapshot().revision}:u${depth}`
+    const runtime = univerRef.current
+    const position = `u${undoStackDepth(runtime)}:${undoStackTopTag(runtime)}`
+    if (lazyWorkbookRef.current) return position
+    const { revision: _revision, ...content } = adapterRef.current.getSnapshot()
+    return `m${fingerprint(JSON.stringify(content))}:${position}`
   }
 
-  /** A plan of the running task reached the buffer: count it for the review and
-   * remember its undo steps for Reject / rollback. */
-  function noteAiTaskApplied(opCount: number, undoSteps: number): void {
-    const task = aiReviewRef.current
+  /** A plan of the running task reached the open workbook: record it with the
+   * markers around it (a user edit in between is detected) and its undo steps. */
+  function noteAiTaskApplied(
+    opCount: number,
+    undoSteps: number,
+    markerBefore: string,
+    markerAfter: string,
+  ): void {
+    const id = runningTaskIdRef.current
+    const task = id ? sheetsReview.get(id) : undefined
     if (!task || task.status !== 'running') return
     const undo = aiTaskUndoRef.current
     undo.set(task.id, (undo.get(task.id) ?? 0) + undoSteps)
-    // a batch past the undo budget leaves no step: the task can no longer be undone as a unit
-    if (undoSteps < 1) undo.set(task.id, Number.NEGATIVE_INFINITY)
-    updateReview(recordChanges(task, opCount))
-  }
-
-  /** Store a task transition and show it on the reply that carries the task. */
-  function updateReview(task: ReviewTask<string>): void {
-    aiReviewRef.current = task
-    setChat((previous) =>
-      previous.map((entry) => (entry.review?.id === task.id ? { ...entry, review: task } : entry)),
+    sheetsReview.set(
+      noteAiChange(task, {
+        before: markerBefore,
+        after: markerAfter,
+        count: opCount,
+        // a batch past the undo budget leaves no step: the task cannot be undone as a unit
+        ...(undoSteps < 1 ? { untracked: true } : {}),
+      }),
     )
   }
 
-  /** Undo a task's own steps as one unit (Reject, or the rollback of a failed run). */
-  async function undoAiTask(taskId: string): Promise<void> {
-    const steps = aiTaskUndoRef.current.get(taskId) ?? 0
-    aiTaskUndoRef.current.delete(taskId)
-    if (steps < 1) return
-    if (lazyWorkbookRef.current || univerHist.canUndo) {
-      const api = univerRef.current?.univerAPI
-      if (!api) return
-      for (let step = 0; step < steps; step += 1) await api.undo()
-      patchLastAssistant(({ autoApplied: _autoApplied, ...entry }) => entry)
-      return
+  /** Undo a task's own steps as one unit (Reject, or the rollback of a failed run).
+   * Resolves true only when the workbook is back where it was before the task. */
+  async function undoAiTask(task: ReviewTask<string>): Promise<boolean> {
+    const steps = aiTaskUndoRef.current.get(task.id) ?? 0
+    if (steps < 1) return false
+    try {
+      if (lazyWorkbookRef.current || univerHist.canUndo) {
+        const api = univerRef.current?.univerAPI
+        if (!api) return false
+        for (let step = 0; step < steps; step += 1) await api.undo()
+        patchLastAssistant(({ autoApplied: _autoApplied, ...entry }) => entry)
+      } else {
+        handleUndo(steps)
+      }
+    } catch {
+      return false
     }
-    handleUndo(steps)
+    const reverted = reviewMarker() === task.before
+    if (reverted) aiTaskUndoRef.current.delete(task.id)
+    return reverted
+  }
+
+  /** Undo a task and report the outcome; the task leaves review only when confirmed. */
+  async function revertAiTask(reverting: ReviewTask<string>): Promise<boolean> {
+    const reverted = await undoAiTask(reverting)
+    sheetsReview.set(confirmRevert(reverting, reverted))
+    return reverted
   }
 
   /** The run ended (`null`: completed; `undefined`: stopped by the user; a string:
    * it failed). Waits for every plan the run submitted, then puts the task under
-   * review — or, for a failed run, undoes its partial changes. Nothing is saved here. */
+   * review — or, for a failed run, undoes it when that is safe. Nothing is saved here. */
   async function finishAiTask(error: string | null | undefined): Promise<void> {
     const applies = aiApplyPromisesRef.current
     aiApplyPromisesRef.current = []
     await Promise.all(applies)
-    const task = aiReviewRef.current
+    const id = runningTaskIdRef.current
+    runningTaskIdRef.current = null
+    const task = id ? sheetsReview.get(id) : undefined
     if (!task || task.status !== 'running') return
     const step = finishRun(task, { after: reviewMarker(), error: error ?? undefined })
+    sheetsReview.set(step.task)
     if (step.action === 'rollback') {
-      await undoAiTask(task.id)
-      setMessage(t('appAiChangesRolledBack'))
+      const reverted = await revertAiTask(step.task)
+      setMessage(reverted ? t('appAiChangesRolledBack') : t('appAiRevertNotConfirmed'))
     } else if (step.task.status === 'pending') {
-      setMessage(t('appAiChangesInReview'))
+      setMessage(step.task.failure !== undefined ? t('appAiFailedKept') : t('appAiChangesInReview'))
     }
-    updateReview(step.task)
   }
 
   function handleReviewAccept(taskId: string): void {
-    const task = aiReviewRef.current
-    if (!task || task.id !== taskId) return
+    const task = sheetsReview.get(taskId)
+    if (!task) return
     const step = acceptReview(task)
-    updateReview(step.task)
+    sheetsReview.set(step.task)
     aiTaskUndoRef.current.delete(taskId)
-    if (step.action === 'commit') void saveAcceptedAiTask()
+    // the store subscription saves it once nothing else is under review
   }
 
   function handleReviewReject(taskId: string): void {
-    const task = aiReviewRef.current
-    if (!task || task.id !== taskId || aiBusy) return
-    // a batch past the undo budget kept no stack entry: it cannot be undone as a unit
-    if ((aiTaskUndoRef.current.get(taskId) ?? 0) < 1) {
-      updateReview(markConflict(task, 'untracked'))
-      return
-    }
+    const task = sheetsReview.get(taskId)
+    if (!task || aiBusy) return
     const step = rejectReview(task, reviewMarker())
-    updateReview(step.task)
-    if (step.action === 'rollback') {
-      void undoAiTask(taskId).then(() => setMessage(t('appAiTaskRejected')))
-    }
+    sheetsReview.set(step.task)
+    if (step.action !== 'rollback') return
+    void revertAiTask(step.task).then((reverted) =>
+      setMessage(reverted ? t('appAiTaskRejected') : t('appAiRevertNotConfirmed')),
+    )
   }
 
-  /** The user accepted the task: persist it the way the origin persisted a run —
-   * one save when AutoSave is on; otherwise the edits stay pending like manual
-   * edits (Undo / ⌘Z keeps working). */
+  saveAcceptedRef.current = saveAcceptedAiTask
+  /** Accepted tasks, once nothing is under review: persist them the way the origin
+   * persisted a run — one save when AutoSave is on; otherwise the edits stay pending
+   * like manual edits (Undo / ⌘Z keeps working). */
   async function saveAcceptedAiTask(): Promise<void> {
     const state = lazyWorkbookRef.current
     if (!state || journalSize(state.editJournal) === 0) return
@@ -4136,12 +4189,13 @@ export function App({
     const state = lazyWorkbookRef.current
     if (state) {
       const undoDepthBefore = undoStackDepth(univerRef.current)
+      const markerBefore = reviewMarker()
       // Lazy path reads lazyPreviewRef (a ref, already set by the caller) —
       // safe to invoke synchronously right after propose.
       const apply = handleLazyApply(state).then((outcome) => {
         if (outcome.ok) {
           const undoSteps = Math.max(0, undoStackDepth(univerRef.current) - undoDepthBefore)
-          noteAiTaskApplied(opCount, undoSteps)
+          noteAiTaskApplied(opCount, undoSteps, markerBefore, reviewMarker())
           // Patch last assistant message with inline undo button.
           patchLastAssistant((entry) => ({
             ...entry,
@@ -4163,6 +4217,7 @@ export function App({
     }
     // Non-lazy path: apply the passed plan directly (setPreview is async, so we
     // cannot rely on the preview state within the same tick).
+    const markerBeforeApply = reviewMarker()
     try {
       const receipt = adapterRef.current.apply(plan)
       const prunedRevision = pruneEmptyDefaultSheet(plan)
@@ -4222,7 +4277,7 @@ export function App({
       setRevision(revision)
       setPreview(null)
       setMessage(t('appAppliedRevision', { revision }))
-      noteAiTaskApplied(opCount, 1)
+      noteAiTaskApplied(opCount, 1, markerBeforeApply, reviewMarker())
       // Patch last assistant message to show inline undo button.
       patchLastAssistant((entry) => ({
         ...entry,
@@ -5280,17 +5335,15 @@ export function App({
     // written beside a real save would outlive it as a phantom Restore prompt.
     const gate = saveGateRef.current
     if (mode === 'recovery' && gate.busy) return { ok: false }
-    const review = aiReviewRef.current
-    if (mode !== 'recovery' && review && holdsSave(review)) {
-      // Fariv: an automatic or agent-driven save never writes a task under review;
-      // the user's own Save keeps the task (it counts as accepting it).
-      if (quiet) return { ok: false }
-      if (review.status === 'running') {
-        setMessage(t('appAiSaveWaitsForTask'))
-        return { ok: false }
+    if (mode !== 'recovery' && holdsSave(sheetsReview.list())) {
+      // Fariv: nothing writes the file while an AI task is running, under review or
+      // being undone — not AutoSave, not the agent, not the user's own Save (which
+      // would put undecided changes in the file). The recovery copy still runs.
+      if (!quiet) {
+        const running = sheetsReview.open().some((task) => task.status === 'running')
+        setMessage(running ? t('appAiSaveWaitsForTask') : t('appAiSaveWaitsForReview'))
       }
-      updateReview(acceptOnSave(review))
-      aiTaskUndoRef.current.delete(review.id)
+      return { ok: false }
     }
     return gate.run(async () => {
       if (!(await commitActiveEditor())) return { ok: false }
@@ -5855,6 +5908,7 @@ export function App({
         onUndo={handleUndo}
         onReviewAccept={handleReviewAccept}
         onReviewReject={handleReviewReject}
+        openReviews={openReviews}
         aiScopeRange={aiScopeChip.range}
         aiScopeColumns={aiScopeChip.columns ?? null}
         aiScopeLocked={aiScopeChip.locked}

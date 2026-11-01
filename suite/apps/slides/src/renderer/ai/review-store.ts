@@ -1,9 +1,9 @@
 import { createReviewStore } from '@genoffice/agent-core'
 
 /**
- * The Fariv review of the current AI task in this deck window: the AI panel drives
- * it, the app holds AutoSave while it is open and treats the user's own Save as
- * accepting it. The marker is the rendered slide list (a new array on every deck
- * change), so a conflict is any change after the task.
+ * The Fariv reviews of the AI tasks in this deck window: the AI panel drives them,
+ * the app holds every save (AutoSave and the user's own) while any is open — each
+ * task is decided explicitly. The marker is a fingerprint of the deck's content read from the
+ * main process (equal content, equal fingerprint).
  */
 export const slidesReview = createReviewStore<unknown>()

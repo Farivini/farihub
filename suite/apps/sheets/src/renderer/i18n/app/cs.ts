@@ -627,6 +627,12 @@ export const cs = {
   appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
   appAiTaskRejected: 'AI task undone.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
+  appAiFailedKept:
+    "The AI task failed. Your edits were kept; the AI's partial changes wait for your decision and the file was not changed.",
+  appAiRevertNotConfirmed:
+    'Undoing the AI task could not be confirmed. It stays under review and the file was not saved.',
   appAiChangesNotSaved:
     'Změny AI použity (neuloženo). Zpět pomocí Cmd+Z; uložit do souboru pomocí Cmd+S.',
   appChartUpdated: 'Graf aktualizován.',

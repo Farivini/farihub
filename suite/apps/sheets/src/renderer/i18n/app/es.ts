@@ -667,6 +667,12 @@ export const es = {
   appAiChangesRolledBack: 'La tarea de la IA falló; se deshicieron los cambios parciales.',
   appAiTaskRejected: 'Tarea de la IA deshecha.',
   appAiSaveWaitsForTask: 'La IA sigue trabajando; guarda después de revisar la tarea.',
+  appAiSaveWaitsForReview:
+    'Hay cambios de la IA pendientes de decisión: acéptalos o recházalos antes de guardar.',
+  appAiFailedKept:
+    'La tarea de la IA falló. Tus ediciones se conservaron; los cambios parciales de la IA esperan tu decisión y el archivo no se modificó.',
+  appAiRevertNotConfirmed:
+    'No se pudo confirmar que la tarea de la IA se deshiciera. Sigue en revisión y el archivo no se guardó.',
   appAiChangesNotSaved: 'Cambios de IA aplicados (sin guardar). Deshaga con ⌘Z; guarde con ⌘S.',
   appChartUpdated: 'Gráfico actualizado.',
   appChartNotEditable: 'Este gráfico no es editable.',

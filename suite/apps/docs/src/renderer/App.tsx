@@ -393,7 +393,7 @@ import { stepHangingIndent, stepParagraphIndent } from './editor/indent'
 import { PasswordDialog } from './components/PasswordDialog'
 import { ProtectDialog, type ProtectDialogResult } from './components/ProtectDialog'
 import { t, useI18n } from './i18n/locale'
-import { acceptOnSave, holdsSave } from '@genoffice/agent-core'
+import { holdsSave } from '@genoffice/agent-core'
 import { docsReview } from './ai/review-store'
 import {
   getActiveSubEditor,
@@ -2496,16 +2496,15 @@ export function App() {
   }
 
   const save = useCallback((saveAs: boolean, auto = false): Promise<boolean> => {
-    // Fariv: an AI task under review keeps the file as it was; the user's own Save
-    // keeps the task (it counts as accepting it), but not while the AI is still working
-    const review = docsReview.get()
-    if (holdsSave(review)) {
-      if (auto) return Promise.resolve(false)
-      if (review!.status === 'running') {
-        setStatus(t('appAiSaveWaitsForTask'))
-        return Promise.resolve(false)
+    // Fariv: nothing writes the file while an AI task is running, under review or
+    // being undone — not AutoSave, not the user's own Save (which would put undecided
+    // changes in the file): each task is decided explicitly first
+    if (holdsSave(docsReview.list())) {
+      if (!auto) {
+        const running = docsReview.open().some((task) => task.status === 'running')
+        setStatus(running ? t('appAiSaveWaitsForTask') : t('appAiSaveWaitsForReview'))
       }
-      docsReview.set(acceptOnSave(review!))
+      return Promise.resolve(false)
     }
     return saveImpl(fileCtxRef.current, saveAs, auto)
   }, [])
@@ -5837,7 +5836,7 @@ export function App() {
     if (tornDown || !autoSave || !doc || !doc.filePath) return
     const tick = () => {
       if (!isDocDirty(fileCtxRef.current)) return
-      if (holdsSave(docsReview.get())) return // an AI task under review waits for the user
+      if (holdsSave(docsReview.list())) return // an AI task under review waits for the user
       if (editor?.view.composing) return // don't interrupt IME input
       const active = document.activeElement as HTMLElement | null
       if (active?.closest('td[contenteditable], .doc-textbox')) return // mid in-place edit
@@ -5861,7 +5860,7 @@ export function App() {
       if (!cur.doc || cur.doc.filePath || !anyDirtyRef.current) return
       if (editor?.view.composing) return
       // Fariv: a run with changes is under review — its first save waits for Accept
-      if (holdsSave(docsReview.get())) return
+      if (holdsSave(docsReview.list())) return
       void save(false, true)
     }
     window.addEventListener('ai-docs-run-done', handler)
@@ -5871,16 +5870,23 @@ export function App() {
   // Fariv: the user accepted an AI task — save it like the origin saved a finished run:
   // a never-saved document gets its first (named) save; a saved one is written when
   // AutoSave is on (otherwise it stays pending like any manual edit)
-  useEffect(() => {
-    const handler = () => {
-      const cur = fileCtxRef.current
-      if (!cur.doc || !isDocDirty(cur)) return
-      if (cur.doc.filePath && !autoSave) return
-      void save(false, true)
-    }
-    window.addEventListener('ai-docs-review-accepted', handler)
-    return () => window.removeEventListener('ai-docs-review-accepted', handler)
-  }, [save, autoSave])
+  // (once no other task is under review: an accepted task waits for the last decision)
+  const autoSaveRef = useRef(autoSave)
+  autoSaveRef.current = autoSave
+  const acceptedUnsavedRef = useRef(false)
+  useEffect(
+    () =>
+      docsReview.subscribe((task) => {
+        if (task.status === 'accepted' && task.changes > 0) acceptedUnsavedRef.current = true
+        if (!acceptedUnsavedRef.current || holdsSave(docsReview.list())) return
+        acceptedUnsavedRef.current = false
+        const cur = fileCtxRef.current
+        if (!cur.doc || !isDocDirty(cur)) return
+        if (cur.doc.filePath && !autoSaveRef.current) return
+        void save(false, true)
+      }),
+    [save],
+  )
 
   useEffect(() => {
     // editing shortcuts only fire when focus is in an editor surface (main

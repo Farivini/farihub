@@ -60,3 +60,23 @@
   opacity: 0.5;
   cursor: default;
 }
+
+.ai-review-failed-kept {
+  flex-basis: 100%;
+  color: var(--danger);
+}
+
+/* tasks whose reply left the conversation (new chat): kept until decided */
+.ai-review-open {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0 12px;
+}
+
+.ai-review-open-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}

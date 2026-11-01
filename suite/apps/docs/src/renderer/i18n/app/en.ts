@@ -57,6 +57,8 @@ export const en = {
   appNewFailed: 'Failed to create document: {error}',
   appSaveFailed: 'Save failed: {error}',
   appAutoSavedAt: 'AutoSaved ({time})',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'Saved',
   appSectionBreakInserted: 'Section break inserted ({type})',

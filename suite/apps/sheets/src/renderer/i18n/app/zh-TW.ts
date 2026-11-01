@@ -548,6 +548,12 @@ export const zhTW = {
   appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
   appAiTaskRejected: 'AI task undone.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
+  appAiFailedKept:
+    "The AI task failed. Your edits were kept; the AI's partial changes wait for your decision and the file was not changed.",
+  appAiRevertNotConfirmed:
+    'Undoing the AI task could not be confirmed. It stays under review and the file was not saved.',
   appAiChangesNotSaved: '已套用 AI 變更(未儲存)。可用 ⌘Z 復原;用 ⌘S 儲存到檔案。',
   appChartUpdated: '圖表已更新。',
   appChartNotEditable: '該圖表無法編輯。',

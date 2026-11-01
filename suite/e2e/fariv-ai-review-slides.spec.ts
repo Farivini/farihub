@@ -1,22 +1,28 @@
 import { test, expect, type Page } from '@playwright/test'
-import { createServer, type IncomingMessage, type Server } from 'node:http'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AddressInfo } from 'node:net'
 import JSZip from 'jszip'
-import { defaultAiSettings, resolveCustomEndpoints } from '@genoffice/ai-provider'
 import { launchShell, closeAndSaveVideo, waitForPageWithUrl, screenshotPath } from './helpers'
+import {
+  deferred,
+  directive,
+  scriptedRun,
+  startScriptedModel,
+  useScriptedModel,
+} from './fariv-review-helpers'
 
 /**
- * Fariv review of an AI task in Apresentações, with a SIMULATED model (local
- * OpenAI-compatible stub; no Codex/Claude): the AI's text change stays in the open deck
- * until Accept; Reject restores the deck through the main-process snapshot of the
- * task; a run that fails after the change is rolled back; a user edit after the task
- * blocks Reject.
+ * Fariv review of AI tasks in Apresentações, with a SIMULATED model (no Codex/Claude).
+ * The task's changes are shown in the open deck (a preview, not an isolated draft);
+ * the file is written only after an explicit Accept. Reject restores the task's
+ * main-process history batch, confirmed against the deck's fingerprint.
  *
- * Each run: read_slide(0) → apply_ops(setText on the title box) → reply. FALHA in
- * the instruction makes the stub answer HTTP 500 after the change.
+ * Instruction directives read by the simulated model (after a read_slide):
+ *   TITLE: texto   one apply_ops setText on the title box
+ *   NOTES: texto   one apply_ops setNotes on slide 1
+ *   ESPERA         hold the run (after the changes) until the test releases it
+ *   FALHA          then fail with HTTP 500
  */
 
 const POLL = { timeout: 20_000, intervals: [250, 500, 1000] }
@@ -64,76 +70,11 @@ async function buildDeck(path: string): Promise<void> {
   await writeFile(path, await zip.generateAsync({ type: 'nodebuffer' }))
 }
 
-async function readBody(req: IncomingMessage): Promise<string> {
-  const chunks: Buffer[] = []
-  for await (const chunk of req) chunks.push(chunk as Buffer)
-  return Buffer.concat(chunks).toString('utf8')
-}
-
-function text(content: unknown): string {
-  if (typeof content === 'string') return content
-  if (Array.isArray(content))
-    return content.map((p) => (p as { text?: string }).text ?? '').join('')
-  return ''
-}
-
-function call(name: string, args: unknown) {
-  return {
-    role: 'assistant',
-    content: null,
-    tool_calls: [
-      {
-        id: `call_${name}_${Date.now()}`,
-        type: 'function',
-        function: { name, arguments: JSON.stringify(args) },
-      },
-    ],
-  }
-}
-
-function startModelStub(): Promise<Server> {
-  const server = createServer(async (req, res) => {
-    if (req.method !== 'POST') {
-      res.writeHead(404).end()
-      return
-    }
-    const body = JSON.parse(await readBody(req)) as {
-      messages: Array<{ role: string; content: unknown }>
-    }
-    let lastUser = -1
-    body.messages.forEach((m, i) => {
-      if (m.role === 'user') lastUser = i
-    })
-    const instruction = text(body.messages[lastUser]?.content)
-    const tools = body.messages.slice(lastUser + 1).filter((m) => m.role === 'tool')
-    const value = /VALOR:\s*(.+?)\s*$/m.exec(instruction)?.[1] ?? 'IA'
-    let message: unknown
-    if (tools.length === 0) {
-      message = call('read_slide', { slideIndex: 0 })
-    } else if (tools.length === 1) {
-      const el = /\b(e_[A-Za-z0-9_-]+)/.exec(text(tools[0]!.content))?.[1]
-      message = call('apply_ops', {
-        ops: [
-          { op: 'setText', target: { slide: 0, el }, paragraphs: [{ runs: [{ text: value }] }] },
-        ],
-      })
-    } else if (instruction.includes('FALHA')) {
-      res.writeHead(500, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ error: { message: 'simulated failure after a change' } }))
-      return
-    } else {
-      message = { role: 'assistant', content: `Pronto: título "${value}".` }
-    }
-    const done = (message as { tool_calls?: unknown }).tool_calls ? 'tool_calls' : 'stop'
-    res.writeHead(200, { 'content-type': 'application/json' })
-    res.end(JSON.stringify({ choices: [{ message, finish_reason: done }] }))
-  })
-  return new Promise((done) => server.listen(0, '127.0.0.1', () => done(server)))
-}
-
-async function slideXml(path: string): Promise<string> {
+/** every XML part of the saved deck (slide, notes) */
+async function savedXml(path: string): Promise<string> {
   const zip = await JSZip.loadAsync(await readFile(path))
-  return (await zip.file('ppt/slides/slide1.xml')?.async('string')) ?? ''
+  const parts = Object.values(zip.files).filter((f) => !f.dir && f.name.endsWith('.xml'))
+  return (await Promise.all(parts.map((f) => f.async('string')))).join('\n')
 }
 
 /** the deck's text as the renderer holds it (the session lives in the main process) */
@@ -163,26 +104,48 @@ async function ask(page: Page, instruction: string): Promise<void> {
   await composer.press('Enter')
 }
 
-test('apresentação: tarefa da IA em revisão — rejeitar, aceitar, falha e conflito', async () => {
+test('apresentação: revisão da tarefa da IA — decisão explícita, nada parcial, edição manual preservada', async () => {
   test.setTimeout(240_000)
-  const server = await startModelStub()
-  const port = (server.address() as AddressInfo).port
+  let gate = { reached: deferred(), release: deferred() }
+  const { server, port } = await startScriptedModel((run) => {
+    const title = directive(run.instruction, 'TITLE')
+    const notes = directive(run.instruction, 'NOTES')
+    const el = (results: readonly string[]) => /\b(e_[A-Za-z0-9_-]+)/.exec(results[0] ?? '')?.[1]
+    const steps = [
+      () => ({ tool: 'read_slide', args: { slideIndex: 0 } }),
+      ...(title
+        ? [
+            (results: readonly string[]) => ({
+              tool: 'apply_ops',
+              args: {
+                ops: [
+                  {
+                    op: 'setText',
+                    target: { slide: 0, el: el(results) },
+                    paragraphs: [{ runs: [{ text: title }] }],
+                  },
+                ],
+              },
+            }),
+          ]
+        : []),
+      ...(notes
+        ? [
+            () => ({
+              tool: 'apply_ops',
+              args: { ops: [{ op: 'setNotes', target: { slide: 0 }, text: notes }] },
+            }),
+          ]
+        : []),
+    ]
+    return scriptedRun(run, steps, gate)
+  })
   const dir = await mkdtemp(join(tmpdir(), 'fariv-review-pptx-'))
   const deck = join(dir, 'apresentacao.pptx')
   await buildDeck(deck)
-  const original = await slideXml(deck)
+  const original = await savedXml(deck)
   const userDataDir = await mkdtemp(join(tmpdir(), 'fariv-review-pptx-ud-'))
-  const settings = defaultAiSettings()
-  settings.provider = 'custom'
-  settings.providers.custom = {
-    apiKey: 'stub',
-    model: 'stub-model',
-    baseUrl: `http://127.0.0.1:${port}/v1`,
-  }
-  await writeFile(
-    join(userDataDir, 'ai-settings.json'),
-    JSON.stringify(resolveCustomEndpoints(settings)),
-  )
+  await useScriptedModel(userDataDir, port)
 
   const launched = await launchShell({
     userDataDir,
@@ -198,48 +161,97 @@ test('apresentação: tarefa da IA em revisão — rejeitar, aceitar, falha e co
     await slides.waitForTimeout(1_000)
     const rail = slides.locator('.ai-rail')
     if (await rail.isVisible()) await rail.click()
-    const cards = slides.locator('.ai-review-card')
+    const cards = slides.locator('.ai-panel .ai-review-card')
+    const lastCard = () => cards.last()
 
     // 1) pending → the file is untouched → Reject restores the deck
-    await ask(slides, 'Troque o título.\nVALOR: Título rejeitado')
-    await expect(cards.last()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
-    await expect(cards.last()).toContainText('1 alteração em revisão')
+    await ask(slides, 'Troque.\nTITLE: Título rejeitado')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await expect(lastCard()).toContainText('1 alteração da IA no documento aberto')
     expect(await deckText(slides)).toContain('Título rejeitado')
     await slides.screenshot({ path: screenshotPath('fariv-review-slides-pending') })
     await slides.waitForTimeout(2_000)
-    expect(await slideXml(deck)).toBe(original)
-    await cards.last().locator('.ai-review-reject').click()
-    await expect(cards.last()).toHaveAttribute('data-review', 'rejected')
+    expect(await savedXml(deck)).toBe(original)
+    await lastCard().locator('.ai-review-reject').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'rejected')
     await expect.poll(() => deckText(slides), POLL).not.toContain('Título rejeitado')
     expect(await deckText(slides)).toContain('Resultados')
-    expect(await slideXml(deck)).toBe(original)
+    expect(await savedXml(deck)).toBe(original)
 
-    // 2) Accept → AutoSave writes the deck
-    await ask(slides, 'Troque o título.\nVALOR: Título aceito')
-    await expect(cards.last()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
-    await cards.last().locator('.ai-review-accept').click()
-    await expect(cards.last()).toHaveAttribute('data-review', 'accepted')
-    await expect.poll(() => slideXml(deck), POLL).toContain('Título aceito')
+    // 2) a task of several operations (title and speaker notes) is accepted in one action
+    await ask(slides, 'Troque.\nTITLE: Título aceito\nNOTES: Notas aceitas')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await expect(lastCard()).toContainText('2 alterações da IA')
+    await lastCard().locator('.ai-review-accept').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'accepted')
+    await expect.poll(() => savedXml(deck), POLL).toContain('Título aceito')
+    expect(await savedXml(deck)).toContain('Notas aceitas')
+    const afterAccept = await savedXml(deck)
 
-    // 3) failure after the change → rolled back
-    await ask(slides, 'Troque o título e FALHA.\nVALOR: Título parcial')
-    await expect(cards.last()).toHaveAttribute('data-review', 'rolled-back', { timeout: 30_000 })
-    await expect.poll(() => deckText(slides), POLL).not.toContain('Título parcial')
-    expect(await deckText(slides)).toContain('Título aceito')
+    // 3) a task of several operations is undone in one action
+    await ask(slides, 'Troque.\nTITLE: Título desfeito\nNOTES: Notas desfeitas')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await expect(lastCard()).toContainText('2 alterações da IA')
+    await lastCard().locator('.ai-review-reject').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'rejected')
+    await expect.poll(() => deckText(slides), POLL).toContain('Título aceito')
+    expect(await deckText(slides)).not.toContain('Título desfeito')
+    expect(await savedXml(deck)).toBe(afterAccept)
 
-    // 4) the user edits after the task → Reject refused
-    await ask(slides, 'Troque o título.\nVALOR: Título antes do conflito')
-    await expect(cards.last()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    // 4) the run fails after a change while the user edited the title by hand: the
+    //    user's edit is kept, the AI's notes are not undone and wait for a decision
+    gate = { reached: deferred(), release: deferred() }
+    await ask(slides, 'Anote e falhe.\nNOTES: Notas parciais da IA\nESPERA\nFALHA')
+    await gate.reached.promise
     await slides.locator('.stage-wrap').first().dblclick()
     await slides.keyboard.press('ControlOrMeta+a')
-    await slides.keyboard.type('Edição do usuário', { delay: 20 })
+    await slides.keyboard.type('Minha edição', { delay: 20 })
     await slides.keyboard.press('Escape')
-    await expect.poll(() => deckText(slides), POLL).toContain('Edição do usuário')
-    await cards.last().locator('.ai-review-reject').click()
-    await expect(cards.last()).toHaveAttribute('data-review', 'conflict-edited')
-    await expect(cards.last().locator('.ai-review-reject')).toBeDisabled()
-    await slides.screenshot({ path: screenshotPath('fariv-review-slides-conflict') })
-    expect(await slideXml(deck)).not.toContain('Título antes do conflito')
+    await expect.poll(() => deckText(slides), POLL).toContain('Minha edição')
+    gate.release.resolve()
+    await expect(lastCard()).toHaveAttribute('data-review', 'conflict-edited', { timeout: 30_000 })
+    await expect(lastCard()).toContainText('não foram desfeitas automaticamente')
+    await expect(lastCard().locator('.ai-review-reject')).toBeDisabled()
+    expect(await deckText(slides)).toContain('Minha edição')
+    await slides.screenshot({ path: screenshotPath('fariv-review-slides-failure-kept') })
+    await slides.waitForTimeout(2_000)
+    expect(await savedXml(deck)).toBe(afterAccept)
+    await lastCard().locator('.ai-review-accept').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'accepted')
+    await expect.poll(() => savedXml(deck), POLL).toContain('Minha edição')
+    expect(await savedXml(deck)).toContain('Notas parciais da IA')
+    const afterKept = await savedXml(deck)
+
+    // 5) a failed run with nothing else in the way is undone, confirmed
+    await ask(slides, 'Troque e falhe.\nTITLE: Título com falha\nFALHA')
+    await expect(lastCard()).toHaveAttribute('data-review', 'rolled-back', { timeout: 30_000 })
+    await expect.poll(() => deckText(slides), POLL).toContain('Minha edição')
+    expect(await deckText(slides)).not.toContain('Título com falha')
+    expect(await savedXml(deck)).toBe(afterKept)
+
+    // 6) a new request and a new conversation do not decide a pending task
+    await ask(slides, 'Primeira.\nNOTES: Pendente P')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    const pendingCount = await cards.count()
+    await ask(slides, 'Segunda.\nTITLE: Pendente Q')
+    await expect(cards).toHaveCount(pendingCount + 1, { timeout: 30_000 })
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await expect(cards.nth(pendingCount - 1)).toHaveAttribute('data-review', 'pending')
+    await slides.waitForTimeout(2_000)
+    expect(await savedXml(deck)).toBe(afterKept)
+    await slides.locator('.ai-panel [data-action="new-chat"]').click()
+    const open = slides.locator('.ai-review-open .ai-review-card')
+    await expect(open).toHaveCount(2)
+    await slides.screenshot({ path: screenshotPath('fariv-review-slides-open-after-new-chat') })
+    await open.first().locator('.ai-review-accept').click()
+    await expect(open).toHaveCount(1)
+    await slides.waitForTimeout(2_000)
+    expect(await savedXml(deck)).toBe(afterKept)
+    await open.first().locator('.ai-review-reject').click()
+    await expect(open).toHaveCount(0)
+    await expect.poll(() => deckText(slides), POLL).not.toContain('Pendente Q')
+    await expect.poll(() => savedXml(deck), POLL).toContain('Pendente P')
+    expect(await savedXml(deck)).not.toContain('Pendente Q')
   } finally {
     await closeAndSaveVideo(launched, 'fariv-ai-review-slides')
     server.close()

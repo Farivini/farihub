@@ -71,13 +71,14 @@ export { streamText } from './stream-text'
 export type { StreamTextOptions, StreamTextOutcome } from './stream-text'
 export type { IpcStreamChunk, IpcStreamStart, IpcTransportOptions } from './electron-transport'
 export {
-  acceptOnSave,
   acceptReview,
+  confirmRevert,
   createReviewStore,
   finishRun,
   holdsSave,
+  isOpenReview,
   markConflict,
-  recordChanges,
+  noteAiChange,
   rejectReview,
   startReview,
 } from './review-task'
@@ -88,6 +89,7 @@ export type {
   ReviewStep,
   ReviewStore,
   ReviewTask,
+  AiChange,
   RunEnd,
   SameMarker,
 } from './review-task'

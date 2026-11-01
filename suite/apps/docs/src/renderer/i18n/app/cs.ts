@@ -57,6 +57,8 @@ export const cs = {
   appNewFailed: 'Dokument se nepodařilo vytvořit: {error}',
   appSaveFailed: 'Uložení se nezdařilo: {error}',
   appAutoSavedAt: 'Automaticky uloženo ({time})',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'Uloženo',
   appSectionBreakInserted: 'Konec oddílu vložen ({type})',

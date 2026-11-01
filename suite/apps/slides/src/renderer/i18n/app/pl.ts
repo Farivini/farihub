@@ -100,6 +100,8 @@ export const pl = {
   appStatusCutoutDone: 'Usunięto tło (oryginalny obraz zastąpiono przezroczystym plikiem PNG)',
   appStatusGrouped: 'Zgrupowano',
   appStatusUngrouped: 'Rozgrupowano',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'Dodano komentarz',
   appStatusKeepOneSlide: 'Nie można usunąć; musi pozostać co najmniej jeden slajd',

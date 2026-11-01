@@ -57,6 +57,8 @@ export const pt = {
   appNewFailed: 'Falha ao criar o documento: {error}',
   appSaveFailed: 'Falha ao salvar: {error}',
   appAutoSavedAt: 'Salvo automaticamente ({time})',
+  appAiSaveWaitsForReview:
+    'Há alterações da IA aguardando decisão: aceite ou rejeite antes de salvar.',
   appAiSaveWaitsForTask: 'A IA ainda está trabalhando; salve depois de revisar a tarefa.',
   appSaved: 'Salvo',
   appSectionBreakInserted: 'Quebra de seção inserida ({type})',

@@ -104,6 +104,8 @@ export const it = {
   appStatusCutoutDone: 'Sfondo rimosso (immagine originale sostituita con un PNG trasparente)',
   appStatusGrouped: 'Raggruppato',
   appStatusUngrouped: 'Separato',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'Commento aggiunto',
   appStatusKeepOneSlide: 'Impossibile eliminare; deve rimanere almeno una diapositiva',

@@ -555,6 +555,9 @@ export const zh = {
   appAiChangesRolledBack: 'AI 任务失败,已撤销其部分更改。',
   appAiTaskRejected: '已撤销 AI 任务。',
   appAiSaveWaitsForTask: 'AI 仍在处理;请在审阅任务后保存。',
+  appAiSaveWaitsForReview: '有 AI 更改等待决定:请在保存前接受或拒绝。',
+  appAiFailedKept: 'AI 任务失败。你的编辑已保留;AI 的部分更改等待你决定,文件未更改。',
+  appAiRevertNotConfirmed: '无法确认 AI 任务已撤销。它仍在审阅中,文件未保存。',
   appAiChangesNotSaved: '已应用 AI 更改(未保存)。可用 ⌘Z 撤销;用 ⌘S 保存到文件。',
   // Floating objects / chart editing
   appChartUpdated: '图表已更新。',

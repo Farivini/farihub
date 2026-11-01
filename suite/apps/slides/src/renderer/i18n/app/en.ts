@@ -92,6 +92,8 @@ export const en = {
   appStatusCutoutDone: 'Background removed (original image replaced with a transparent PNG)',
   appStatusGrouped: 'Grouped',
   appStatusUngrouped: 'Ungrouped',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'Comment added',
   appStatusKeepOneSlide: 'Cannot delete; at least one slide must remain',

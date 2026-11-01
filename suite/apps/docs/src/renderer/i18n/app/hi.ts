@@ -57,6 +57,8 @@ export const hi = {
   appNewFailed: 'दस्तावेज़ बनाने में विफल: {error}',
   appSaveFailed: 'सहेजने में विफल: {error}',
   appAutoSavedAt: 'स्वतः सहेजा गया ({time})',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'सहेजा गया',
   appSectionBreakInserted: 'अनुभाग विराम सम्मिलित किया गया ({type})',

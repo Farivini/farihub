@@ -116,7 +116,7 @@ import { GensparkMark, IconAiBeautify, IconAiFactCheck, IconAiImage } from './co
 import { ToastHost } from './components/toast'
 import { showToast } from './components/toast-bus'
 import { t, useI18n } from './i18n/locale'
-import { acceptOnSave, holdsSave } from '@genoffice/agent-core'
+import { holdsSave } from '@genoffice/agent-core'
 import { slidesReview } from './ai/review-store'
 import { AiPanel } from './ai/AiPanel'
 import { ChartDataDialog } from './components/ChartDataDialog'
@@ -949,31 +949,39 @@ export function App() {
   const askOpenRef = useRef(false)
 
   const save = useCallback((quiet = false): Promise<boolean> => {
-    // Fariv: an AI task under review keeps the file as it was; the user's own Save
-    // keeps the task (it counts as accepting it), but not while the AI is still working
-    const review = slidesReview.get()
-    if (holdsSave(review)) {
-      if (quiet) return Promise.resolve(false)
-      if (review!.status === 'running') {
-        setStatus(t('appAiSaveWaitsForTask'))
-        return Promise.resolve(false)
+    // Fariv: nothing writes the file while an AI task is running, under review or
+    // being undone — not AutoSave, not the user's own Save (which would put undecided
+    // changes in the file): each task is decided explicitly first
+    if (holdsSave(slidesReview.list())) {
+      if (!quiet) {
+        const running = slidesReview.open().some((task) => task.status === 'running')
+        setStatus(running ? t('appAiSaveWaitsForTask') : t('appAiSaveWaitsForReview'))
       }
-      slidesReview.set(acceptOnSave(review!))
+      return Promise.resolve(false)
     }
     return fileActions.save(() => ctxRef.current, quiet)
   }, [])
 
-  // Fariv: the user accepted an AI task — AutoSave writes it now (a deck with a file)
-  useEffect(() => {
-    const handler = () => {
-      if (!autoSave || !path) return
-      void window.slidesApi.isDirty().then((d) => {
-        if (d) void save(true)
-      })
-    }
-    window.addEventListener('ai-slides-review-accepted', handler)
-    return () => window.removeEventListener('ai-slides-review-accepted', handler)
-  }, [autoSave, path, save])
+  // Fariv: accepted AI tasks are written by AutoSave (a deck with a file) once no
+  // other task is under review — an accepted task waits for the last decision
+  const autoSaveRef = useRef(autoSave)
+  autoSaveRef.current = autoSave
+  const pathRef = useRef(path)
+  pathRef.current = path
+  const acceptedUnsavedRef = useRef(false)
+  useEffect(
+    () =>
+      slidesReview.subscribe((task) => {
+        if (task.status === 'accepted' && task.changes > 0) acceptedUnsavedRef.current = true
+        if (!acceptedUnsavedRef.current || holdsSave(slidesReview.list())) return
+        acceptedUnsavedRef.current = false
+        if (!autoSaveRef.current || !pathRef.current) return
+        void window.slidesApi.isDirty().then((d) => {
+          if (d) void save(true)
+        })
+      }),
+    [save],
+  )
 
   // Close guard (closing tab/window) chose "Save": run the full save flow and report the result
   useEffect(() => {
@@ -1042,7 +1050,7 @@ export function App() {
     let saving = false
     const tick = () => {
       if (saving || editing || editingCell || mouseDownRef.current) return
-      if (holdsSave(slidesReview.get())) return // an AI task under review waits for the user
+      if (holdsSave(slidesReview.list())) return // an AI task under review waits for the user
       void window.slidesApi.isDirty().then((d) => {
         if (!d || saving) return
         saving = true

@@ -1,122 +1,191 @@
 import { describe, expect, it } from 'vitest'
 import {
-  acceptOnSave,
   acceptReview,
+  confirmRevert,
   createReviewStore,
   finishRun,
   holdsSave,
   markConflict,
-  recordChanges,
+  noteAiChange,
   rejectReview,
   startReview,
+  type ReviewTask,
 } from '../src/review-task'
 
-describe('review of an AI task', () => {
-  it('goes from running to pending with the changes applied into the buffer', () => {
-    let task = startReview('t1', 10)
+/** A task whose agent made `steps` changes, each moving the marker by one, from `from`. */
+function ranTask(steps: number[], from = 0): ReviewTask<number> {
+  let task = startReview('t', from)
+  let marker = from
+  for (const count of steps) {
+    task = noteAiChange(task, { before: marker, after: marker + 1, count })
+    marker += 1
+  }
+  return task
+}
+
+describe('a run', () => {
+  it('goes from running to pending; saving is held all along', () => {
+    const task = ranTask([3, 2])
     expect(holdsSave(task)).toBe(true)
-    task = recordChanges(task, 3)
-    task = recordChanges(task, 2)
-    const end = finishRun(task, { after: 15 })
+    const end = finishRun(task, { after: 2 })
     expect(end.action).toBe('none')
-    expect(end.task).toMatchObject({ status: 'pending', changes: 5, before: 10, after: 15 })
+    expect(end.task).toMatchObject({ status: 'pending', changes: 5, before: 0, after: 2 })
+    expect(end.task.conflict).toBeUndefined()
     expect(holdsSave(end.task)).toBe(true)
   })
 
-  it('needs no review when the run changed nothing', () => {
+  it('needs no review when the agent changed nothing', () => {
     const end = finishRun(startReview('t', 0), { after: 0 })
     expect(end.task.status).toBe('accepted')
-    expect(end.action).toBe('none')
     expect(holdsSave(end.task)).toBe(false)
   })
 
-  it('rolls a failed run back instead of leaving a partial change', () => {
-    const task = recordChanges(startReview('t', 'a'), 4)
-    const end = finishRun(task, { after: 'b', error: 'transport closed' })
+  it('a run with no change of its own, where the user edited, needs no review either', () => {
+    const end = finishRun(startReview('t', 0), { after: 7, error: 'boom' })
+    expect(end).toMatchObject({ action: 'none', task: { status: 'accepted' } })
+  })
+})
+
+describe('a failed run', () => {
+  it('is undone, and saving waits until the editor confirms it', () => {
+    const end = finishRun(ranTask([4]), { after: 1, error: 'transport closed' })
     expect(end.action).toBe('rollback')
-    expect(end.task).toMatchObject({ status: 'rolled-back', failure: 'transport closed' })
-    expect(holdsSave(end.task)).toBe(false)
+    expect(end.task).toMatchObject({ status: 'reverting', failure: 'transport closed' })
+    expect(holdsSave(end.task)).toBe(true)
+    const done = confirmRevert(end.task, true)
+    expect(done.status).toBe('rolled-back')
+    expect(holdsSave(done)).toBe(false)
   })
 
-  it('a failed run without changes has nothing to roll back', () => {
-    const end = finishRun(startReview('t', 'a'), { after: 'a', error: 'boom' })
+  it('is not announced as undone when the editor could not confirm it', () => {
+    const end = finishRun(ranTask([4]), { after: 1, error: 'boom' })
+    const back = confirmRevert(end.task, false)
+    expect(back).toMatchObject({ status: 'pending', conflict: 'untracked', failure: 'boom' })
+    expect(holdsSave(back)).toBe(true)
+    // and it cannot be rejected either: the undo is not available
+    expect(rejectReview(back, 1).action).toBe('none')
+  })
+
+  it('keeps the user edit made during the run: no undo, the partial changes stay under review', () => {
+    let task = startReview('t', 0)
+    task = noteAiChange(task, { before: 0, after: 1, count: 2 })
+    // the user typed: 1 → 2; then the agent changed again: 2 → 3
+    task = noteAiChange(task, { before: 2, after: 3, count: 1 })
+    expect(task.interleaved).toBe(true)
+    const end = finishRun(task, { after: 3, error: 'boom' })
     expect(end.action).toBe('none')
+    expect(end.task).toMatchObject({
+      status: 'pending',
+      conflict: 'edited',
+      failure: 'boom',
+      changes: 3,
+    })
+    expect(holdsSave(end.task)).toBe(true)
+    expect(rejectReview(end.task, 3).action).toBe('none')
+    // the user decides: keeping it is allowed
+    expect(acceptReview(end.task)).toMatchObject({ action: 'commit', task: { status: 'accepted' } })
   })
 
-  it('accepting commits; the task no longer holds the save', () => {
-    const pending = finishRun(recordChanges(startReview('t', 1), 1), { after: 2 }).task
-    const step = acceptReview(pending)
-    expect(step.action).toBe('commit')
-    expect(step.task.status).toBe('accepted')
+  it("also keeps a user edit made after the agent's last change", () => {
+    const end = finishRun(ranTask([1]), { after: 5, error: 'boom' })
+    expect(end).toMatchObject({ action: 'none', task: { status: 'pending', conflict: 'edited' } })
+  })
+
+  it("detects a user edit before the agent's first change", () => {
+    const task = noteAiChange(startReview('t', 0), { before: 9, after: 10, count: 1 })
+    expect(task.interleaved).toBe(true)
+  })
+
+  it('does not attempt an undo the editor has no record of', () => {
+    let task = startReview('t', 0)
+    task = noteAiChange(task, { before: 0, after: 0, count: 200_000, untracked: true })
+    const end = finishRun(task, { after: 0, error: 'boom' })
+    expect(end).toMatchObject({
+      action: 'none',
+      task: { status: 'pending', conflict: 'untracked' },
+    })
+    expect(holdsSave(end.task)).toBe(true)
+  })
+})
+
+describe('the decision', () => {
+  const pending = (): ReviewTask<number> => finishRun(ranTask([2, 3, 1]), { after: 3 }).task
+
+  it('Accept keeps a task of several changes in one action', () => {
+    const step = acceptReview(pending())
+    expect(step).toMatchObject({ action: 'commit', task: { status: 'accepted', changes: 6 } })
     expect(holdsSave(step.task)).toBe(false)
-    // accepting twice is a no-op
     expect(acceptReview(step.task).action).toBe('none')
   })
 
-  it('rejecting undoes the whole task while the document is what the task left', () => {
-    const pending = finishRun(recordChanges(startReview('t', 1), 7), { after: 2 }).task
-    const step = rejectReview(pending, 2)
-    expect(step.action).toBe('rollback')
-    expect(step.task.status).toBe('rejected')
+  it('Reject undoes a task of several changes in one action, confirmed by the editor', () => {
+    const step = rejectReview(pending(), 3)
+    expect(step).toMatchObject({ action: 'rollback', task: { status: 'reverting', changes: 6 } })
+    expect(holdsSave(step.task)).toBe(true)
+    expect(confirmRevert(step.task, true).status).toBe('rejected')
   })
 
-  it('refuses to reject after the document changed, and flags the conflict', () => {
-    const pending = finishRun(recordChanges(startReview('t', 1), 1), { after: 2 }).task
-    const step = rejectReview(pending, 3)
-    expect(step.action).toBe('none')
-    expect(step.task).toMatchObject({ status: 'pending', conflict: 'edited' })
-    // still refused even if the marker comes back (e.g. undo + a different edit)
-    expect(rejectReview(step.task, 2).action).toBe('none')
-    // the user can still keep the task
-    expect(acceptReview(step.task)).toMatchObject({
-      action: 'commit',
-      task: { status: 'accepted' },
+  it('a Reject that could not be confirmed returns to review, flagged', () => {
+    const step = rejectReview(pending(), 3)
+    expect(confirmRevert(step.task, false)).toMatchObject({
+      status: 'pending',
+      conflict: 'untracked',
     })
+  })
+
+  it('Reject is refused after the document changed, and the conflict sticks', () => {
+    const step = rejectReview(pending(), 4)
+    expect(step).toMatchObject({ action: 'none', task: { status: 'pending', conflict: 'edited' } })
+    expect(rejectReview(step.task, 3).action).toBe('none')
     expect(acceptReview(step.task).task.conflict).toBeUndefined()
   })
 
   it('compares markers with the editor-supplied equality', () => {
-    const pending = finishRun(recordChanges(startReview('t', { d: 1 }), 1), {
-      after: { d: 2 },
-    }).task
+    let task = startReview<{ d: number }>('t', { d: 0 })
+    task = noteAiChange(
+      task,
+      { before: { d: 0 }, after: { d: 1 }, count: 1 },
+      (a, b) => a.d === b.d,
+    )
+    expect(task.interleaved).toBeUndefined()
     const same = (a: { d: number }, b: { d: number }) => a.d === b.d
-    expect(rejectReview(pending, { d: 2 }).action).toBe('none') // different objects, Object.is
-    expect(rejectReview(pending, { d: 2 }, same).action).toBe('rollback')
+    const end = finishRun(task, { after: { d: 1 } }, same).task
+    expect(rejectReview(end, { d: 1 }).action).toBe('none') // Object.is on different objects
+    expect(rejectReview(end, { d: 1 }, same).action).toBe('rollback')
   })
 
   it('a change on disk is a conflict too', () => {
-    const pending = finishRun(recordChanges(startReview('t', 1), 1), { after: 2 }).task
-    const flagged = markConflict(pending, 'disk')
+    const flagged = markConflict(pending(), 'disk')
     expect(flagged.conflict).toBe('disk')
-    expect(rejectReview(flagged, 2).action).toBe('none')
-    // only pending tasks are flagged
-    expect(markConflict(acceptReview(pending).task, 'disk').conflict).toBeUndefined()
+    expect(rejectReview(flagged, 3).action).toBe('none')
   })
 
-  it('an explicit save keeps a pending task', () => {
-    const pending = finishRun(recordChanges(startReview('t', 1), 1), { after: 2 }).task
-    expect(acceptOnSave(pending).status).toBe('accepted')
-    const running = startReview('r', 1)
-    expect(acceptOnSave(running)).toBe(running)
-  })
-
-  it('ignores changes reported after the run ended', () => {
-    const pending = finishRun(recordChanges(startReview('t', 1), 1), { after: 2 }).task
-    expect(recordChanges(pending, 5)).toBe(pending)
-    expect(finishRun(pending, { after: 9 }).task).toBe(pending)
+  it('ignores changes and run ends reported after the run ended', () => {
+    const task = pending()
+    expect(noteAiChange(task, { before: 3, after: 4, count: 5 })).toBe(task)
+    expect(finishRun(task, { after: 9 }).task).toBe(task)
+    expect(confirmRevert(task, true)).toBe(task)
   })
 })
 
 describe('createReviewStore', () => {
-  it('shares the current task and notifies until unsubscribed', () => {
+  it('keeps every task until decided; saving waits while any is open', () => {
     const store = createReviewStore<number>()
-    const seen: Array<string | null> = []
-    const off = store.subscribe((task) => seen.push(task?.status ?? null))
-    store.set(startReview('a', 1))
-    expect(holdsSave(store.get())).toBe(true)
+    const seen: string[] = []
+    const off = store.subscribe((task) => seen.push(`${task.id}:${task.status}`))
+    const a = finishRun({ ...ranTask([1]), id: 'a' }, { after: 1 }).task
+    store.set(a)
+    // a new request does not touch the pending task
+    store.set(startReview('b', 1))
+    expect(store.open().map((t) => t.id)).toEqual(['a', 'b'])
+    expect(holdsSave(store.list())).toBe(true)
+    store.set(finishRun(store.get('b')!, { after: 1 }).task) // b changed nothing
+    expect(store.open().map((t) => t.id)).toEqual(['a'])
+    expect(holdsSave(store.list())).toBe(true)
+    store.set(acceptReview(store.get('a')!).task)
+    expect(holdsSave(store.list())).toBe(false)
     off()
-    store.set(null)
-    expect(seen).toEqual(['running'])
-    expect(store.get()).toBeNull()
+    store.set(startReview('c', 1))
+    expect(seen).toEqual(['a:pending', 'b:running', 'b:accepted', 'a:accepted'])
   })
 })

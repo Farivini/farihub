@@ -18,7 +18,7 @@ As etapas seguem a ordem do pedido; cada uma é uma PR.
 | --- | --- | --- |
 | 1 | Branch de integração, importação com proveniência, os três editores no mesmo app, dev com recarga, build Windows no CI | **Esta PR** |
 | 2 | Identidade Fariv: nome, ícones, tema, seletor central Planilhas · Documentos · Apresentações, barra enxuta com ações por contexto; retirar a marca e os convites do produto de origem | **Feita** (ver abaixo) |
-| 3 | Assistente ligado aos arquivos abertos com as ferramentas existentes, pelo Codex local (app-server); alterações em rascunho com prévia, aceitar/rejeitar, desfazer a tarefa, conflito e nada parcial no original | **Feita** (ver abaixo); conexão real com o Codex a validar no Windows |
+| 3 | Assistente ligado aos arquivos abertos com as ferramentas existentes, pelo Codex local (app-server); prévia no documento aberto, aceitar/rejeitar, desfazer a tarefa, conflito e nada parcial no original | **Feita** (ver abaixo; prévia no próprio documento, rascunho isolado ainda não); conexão real com o Codex a validar no Windows |
 | 4 | Claude local no mesmo contrato de ferramentas (transporte extraído do Nimbalyst) | Planejada |
 | 5 | Tarefas recorrentes: scheduler do Nimbalyst ligado ao mesmo executor | Planejada |
 | 6 | Portar do Farihub o que a base não tem: agregação para bases grandes, fórmulas e importação pt-BR, salvamento | Planejada (diferenças já registradas abaixo) |
@@ -65,30 +65,41 @@ Nomes técnicos ficaram como estão de propósito: pacotes `@genoffice/*`, vari�
 
 **O agente não escreve fora do fluxo.** O Codex roda numa thread efêmera com `approvalPolicy: never` e permissão só de leitura (perfil `genoffice`: leitura mínima + pasta temporária; se o Codex instalado não aceitar o perfil, cai para o sandbox `read-only`), e as instruções base o proíbem de usar o shell ou arquivos. Ele só devolve chamadas de ferramenta, e quem as executa é o editor, no documento aberto. O servidor MCP para agentes externos vem **desligado** (só liga nas Configurações) e, com uma tarefa em revisão, a planilha recusa os salvamentos silenciosos dele (ver pendências).
 
-**Revisão da tarefa.** Um modelo único para os três editores (`packages/agent-core/src/review-task.ts`) e um cartão comum (`packages/ui/src/AiReviewCard.tsx`, pt/en/es):
+**Revisão da tarefa — prévia no documento aberto, ainda não um rascunho isolado.** As alterações da IA são aplicadas **no próprio documento aberto no editor**: é ali que a pessoa as vê. Não existe (ainda) uma cópia separada onde a IA trabalha. O que o fluxo garante é que **o arquivo em disco não recebe nada** até a pessoa decidir, e que desfazer a tarefa nunca leva junto uma edição dela. Isolar a tarefa num rascunho de verdade (cópia do documento, com mescla na aceitação) fica como evolução; ver pendências.
+
+Um modelo único para os três editores (`packages/agent-core/src/review-task.ts`) e um cartão comum (`packages/ui/src/AiReviewCard.tsx`, pt/en/es):
 
 | Situação | O que acontece |
 | --- | --- |
-| A IA trabalha | As alterações entram no documento aberto (é a prévia, no lugar). O arquivo em disco não muda: o salvamento automático e os salvamentos automáticos do agente esperam. |
-| A tarefa termina com alterações | Cartão "N alterações em revisão — o arquivo ainda não foi alterado", com **Aceitar** e **Rejeitar**. |
-| Aceitar | Mantém tudo. Com o salvamento automático ligado, grava na hora; desligado, fica pendente como uma edição manual. Salvar com Ctrl+S também conta como aceitar. |
-| Rejeitar | Desfaz a tarefa inteira de uma vez: planilha pelos passos de desfazer da tarefa, documento pelo snapshot de antes da tarefa, apresentação pelo snapshot do lote no processo principal (inclui a passada de QC de layout). |
-| Falha no meio | O que a tarefa já mudou é desfeito na hora ("A tarefa falhou; as alterações parciais foram desfeitas"). Nada parcial chega ao arquivo. Parar a tarefa pelo botão não é falha: o que foi feito fica em revisão. |
-| O documento mudou depois da tarefa | Rejeitar é recusado (cartão em vermelho, botão desabilitado), porque desfaria também a edição do usuário. Aceitar continua possível, e o Desfazer passo a passo também. Marcadores: planilha = profundidade da pilha de desfazer + tamanho do diário; documento = o nó do documento ProseMirror (imutável); apresentação = a lista de slides renderizada. |
-| Tarefa grande demais para a pilha de desfazer (planilha) | Rejeitar é recusado com explicação ("feche sem salvar para descartar"). |
-| Nova instrução ou "Nova conversa" com uma tarefa pendente | A anterior é mantida (aceita sem salvar); o salvamento automático volta. |
+| A IA trabalha | Cada mudança da IA é registrada com o marcador do documento **antes e depois** dela. O arquivo em disco não muda: nada salva enquanto a tarefa roda. |
+| A tarefa termina com alterações | Cartão "N alterações da IA no documento aberto — o arquivo ainda não foi alterado", com **Aceitar** e **Rejeitar**. |
+| Aceitar | Mantém a tarefa inteira (todas as operações) numa ação. Com o salvamento automático ligado, grava assim que **nenhuma outra tarefa** estiver aberta; desligado, fica pendente como uma edição manual. |
+| Rejeitar | Desfaz a tarefa inteira numa ação: planilha pelos passos de desfazer da tarefa, documento pelo snapshot de antes da tarefa, apresentação pelo snapshot do lote no processo principal (inclui a passada de QC). O cartão mostra "Desfazendo…" e **o salvamento só é liberado depois que o editor confirma** que o documento voltou ao estado de antes da tarefa. Planilha: posição do histórico igual à inicial. Documento: igualdade estrutural com o documento inicial. Apresentação: impressão digital do deck no processo principal igual à inicial. |
+| Falha no meio, sem interferência | A tarefa é desfeita e só então o cartão diz "as alterações dela foram desfeitas". |
+| Falha no meio **com edição manual durante a tarefa** | A edição da pessoa fica; a tarefa **não** é desfeita (desfazer em bloco levaria a edição junto). As alterações parciais da IA ficam no cartão, sinalizadas ("não foram desfeitas automaticamente"), Rejeitar fica indisponível e o arquivo não é salvo até a pessoa decidir. |
+| Histórico insuficiente para desfazer | Por exemplo, um lote da planilha acima de 100 mil células, que não deixa passo de desfazer, ou um snapshot da apresentação que já saiu do anel de 20. A falha **não** é anunciada como desfeita: a tarefa fica em revisão, sinalizada ("Não há histórico suficiente…"), e o arquivo não é salvo. O mesmo vale quando uma reversão termina sem confirmação. |
+| O documento mudou depois da tarefa | Rejeitar é recusado (cartão em vermelho), porque desfaria também a edição da pessoa. Aceitar continua possível, e o Desfazer passo a passo também. |
+| Nova instrução, "Nova conversa", Salvar | **Nenhum deles decide uma tarefa pendente.** Ela continua aberta até Aceitar ou Rejeitar explícitos. Depois de uma nova conversa, as pendentes aparecem em "Alterações da IA aguardando decisão", acima do campo de mensagem. Com qualquer tarefa aberta, o salvamento automático **e o salvamento manual** esperam, com o aviso "Há alterações da IA aguardando decisão". A cópia de recuperação da planilha continua sendo gravada. |
 
-Reaproveitado da base, sem reescrever: o loop de agente (`AgentLoop`), as ferramentas de cada editor, o planner de operações da planilha, o snapshot por execução do documento, o lote de histórico/snapshot da apresentação e o desfazer do Univer. A descrição da ferramenta `propose_operations` agora diz ao modelo que as alterações são rascunho até o usuário aceitar.
+Marcadores: planilha = profundidade e identidade do topo da pilha de desfazer (no livro em memória, também uma impressão digital do conteúdo); documento = o nó do documento ProseMirror, comparado estruturalmente; apresentação = impressão digital SHA-1 do deck, lida do processo principal (`slides:deck-fingerprint`).
 
-**Testes simulados (sem Codex/Claude).** Um modelo falso local, compatível com OpenAI, dita as chamadas de ferramenta. Rodam no CI e em `npm run suite:e2e`:
+**Limitação conhecida:** uma edição manual feita **exatamente enquanto** uma ferramenta da IA está sendo aplicada (uma janela de milissegundos, entre o início e o fim da mesma ferramenta) é atribuída à IA. Fora dessa janela, a edição é detectada.
 
-| e2e | Cobre |
-| --- | --- |
-| `fariv-ai-review-sheets.spec.ts` | `.xlsx` aberto com salvamento automático ligado: tarefa em revisão sem tocar o arquivo; rejeitar volta A3; aceitar grava no `.xlsx`; falha depois de alterar é desfeita; edição do usuário bloqueia rejeitar |
-| `fariv-ai-review-docs.spec.ts` | o mesmo num `.docx` (parágrafo inserido; arquivo comparado byte a byte no `document.xml`) |
-| `fariv-ai-review-slides.spec.ts` | o mesmo num `.pptx` (texto do título por `apply_ops`; `slide1.xml` comparado) |
+Reaproveitado da base, sem reescrever: o loop de agente (`AgentLoop`), as ferramentas de cada editor, o planner de operações da planilha, o snapshot por execução do documento, o lote de histórico/snapshot da apresentação e o desfazer do Univer. As descrições e mensagens das ferramentas da planilha dizem ao modelo que as alterações ficam no documento aberto até a pessoa aceitar ou rejeitar a tarefa inteira.
 
-Unitários: `packages/agent-core/tests/review-task.test.ts` (transições, conflito, falha, salvamento), `packages/ui/tests/ai-review-card.test.ts`, provedores e seletor de modelo atualizados para o Codex como padrão.
+**Testes simulados (sem Codex/Claude).** Um modelo falso local, compatível com OpenAI (`suite/e2e/fariv-review-helpers.ts`), dita as chamadas de ferramenta e pode **segurar a execução** enquanto o teste edita o documento à mão. Rodam no CI e em `npm run suite:e2e`, com o salvamento automático ligado, e comparam o arquivo salvo, não só a tela:
+
+| Cenário | Planilha | Documento | Apresentação |
+| --- | --- | --- | --- |
+| Tarefa pendente não toca o arquivo; Rejeitar desfaz | ✓ | ✓ | ✓ |
+| Tarefa com várias operações **aceita numa ação** e gravada | 5 células em 2 lotes | 3 parágrafos | título + notas |
+| Tarefa com várias operações **desfeita numa ação** | ✓ (valores anteriores voltam) | ✓ | ✓ |
+| Falha com **edição manual durante a tarefa**: edição preservada, nada desfeito, Rejeitar indisponível, arquivo intacto (inclusive com Ctrl+S); Aceitar grava tudo | ✓ | ✓ | ✓ |
+| Falha sem interferência: desfeita e confirmada | ✓ | ✓ | ✓ |
+| **Nova instrução e nova conversa** não decidem a pendente; aceitar uma enquanto outra está aberta não salva; ao rejeitar a outra, só a aceita é gravada | ✓ | ✓ | ✓ |
+| **Histórico insuficiente** (lote de 104 mil células): falha não anunciada como desfeita, tarefa sinalizada, arquivo intacto | ✓ | — | — |
+
+Unitários: `packages/agent-core/tests/review-task.test.ts` (17 casos: edição intercalada, reversão não confirmada, histórico insuficiente, várias tarefas abertas, decisão em uma ação), `packages/ui/tests/ai-review-card.test.ts` (estados do cartão, lista de pendentes), provedores e seletor de modelo com o Codex como padrão.
 
 **Validação real com o Codex no seu Windows** (não feita aqui: o contêiner não tem login do Codex, e nenhum token foi extraído):
 
@@ -96,7 +107,7 @@ Unitários: `packages/agent-core/tests/review-task.test.ts` (transições, confl
 2. Abra o Fariv (`npm run suite:start` ou o instalador do CI). Em Configurações › Modelo de IA, o provedor deve ser **Codex CLI**. Se o executável não estiver no PATH, informe o caminho do `codex.exe`.
 3. Abra uma planilha `.xlsx` sua (cópia), ligue o salvamento automático e peça: "some a coluna B na última linha". Confira que o cartão aparece em revisão e que a data de modificação do arquivo no Explorer **não muda**. Clique em **Rejeitar**: a planilha volta. Repita e clique em **Aceitar**: o arquivo é gravado.
 4. Faça o mesmo num `.docx` ("resuma o documento num parágrafo no início") e num `.pptx` ("troque o título do slide 1").
-5. Falha: durante uma tarefa, desconecte a rede. O cartão deve dizer que as alterações parciais foram desfeitas.
+5. Falha: durante uma tarefa, desconecte a rede. Sem edição sua no meio, o cartão diz que as alterações foram desfeitas; se você editou enquanto a IA trabalhava, sua edição fica e o cartão pede a decisão.
 6. Anote a versão do Codex e o resultado de cada passo na PR.
 
 ## Como rodar no Windows
@@ -148,6 +159,7 @@ Registradas antes de qualquer porte. Nada do Farihub foi removido; a base é usa
 - Conexão real com o Codex: validar no Windows com a conta do usuário (passos na etapa 3). Os testes daqui usam um modelo simulado.
 - Servidor MCP para agentes externos (desligado por padrão): com ele ligado, as ferramentas `apply_*` editam o documento aberto sem passar pelo cartão de revisão; só o salvamento silencioso deles é bloqueado durante uma revisão na planilha. Levar as escritas do MCP para o mesmo fluxo de tarefa antes de habilitá-lo por padrão.
 - Documento: com "Controlar alterações" ligado, a tarefa também fica como revisões pendentes na guia Revisão; o cartão aceita ou rejeita a tarefa inteira, e a guia continua aceitando ou rejeitando revisão por revisão.
+- Rascunho isolado: hoje a prévia é o próprio documento aberto. Uma cópia separada para a IA, com mescla ao aceitar, eliminaria a janela de atribuição durante a aplicação de uma ferramenta e permitiria editar livremente enquanto a IA trabalha.
 - Conflito por mudança no disco (`disk`) está no modelo, mas ainda não ligado à observação de arquivo de cada editor.
 - Validação no Windows real (instalar, abrir, salvar): o CI produz o instalador; falta rodá-lo numa máquina Windows.
 - Inventário de assets e licenças do instalador final.

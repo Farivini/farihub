@@ -57,6 +57,8 @@ export const ru = {
   appNewFailed: 'Не удалось создать документ: {error}',
   appSaveFailed: 'Не удалось сохранить: {error}',
   appAutoSavedAt: 'Автосохранение ({time})',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'Сохранено',
   appSectionBreakInserted: 'Вставлен разрыв раздела ({type})',

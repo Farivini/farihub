@@ -632,6 +632,12 @@ export const ko = {
   appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
   appAiTaskRejected: 'AI task undone.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
+  appAiFailedKept:
+    "The AI task failed. Your edits were kept; the AI's partial changes wait for your decision and the file was not changed.",
+  appAiRevertNotConfirmed:
+    'Undoing the AI task could not be confirmed. It stays under review and the file was not saved.',
   appAiChangesNotSaved:
     'AI 변경 사항이 적용되었습니다(저장 안 됨). ⌘Z로 실행 취소, ⌘S로 파일에 저장하세요.',
   // Floating objects / chart editing

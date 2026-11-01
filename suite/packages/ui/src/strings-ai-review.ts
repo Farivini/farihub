@@ -2,7 +2,7 @@ import type { Lang } from '@genoffice/i18n'
 
 /** Labels of the Fariv review card under an AI task (all three editors). */
 export interface AiReviewLabels {
-  /** pending: `{count}` changes wait for a decision; the file is untouched */
+  /** pending: `{count}` changes shown in the open document; the file is untouched */
   pending: string
   /** pending with a single change */
   pendingOne: string
@@ -12,73 +12,87 @@ export interface AiReviewLabels {
   rejectTitle: string
   accepted: string
   rejected: string
-  /** a failed run whose partial changes were undone */
+  /** a failed run whose changes were undone (confirmed) */
   rolledBack: string
-  /** the document changed after the task: rejecting would undo those changes too */
+  /** the task is being undone; saving waits for the confirmation */
+  reverting: string
+  /** the run failed; its partial changes were kept under review instead of undone */
+  failedKept: string
+  /** the document changed during or after the task: rejecting would undo those changes too */
   conflictEdited: string
   /** the file changed on disk after the task */
   conflictDisk: string
-  /** the editor kept no undo record of the task */
+  /** the editor kept no undo record of the task, or undoing it could not be confirmed */
   conflictUntracked: string
-  /** the task is still running: changes go to the draft only */
-  running: string
+  /** heading of the tasks still waiting for a decision (shown after a new conversation) */
+  openTitle: string
 }
 
 const pt: AiReviewLabels = {
-  pending: '{count} alterações em revisão — o arquivo ainda não foi alterado',
-  pendingOne: '1 alteração em revisão — o arquivo ainda não foi alterado',
+  pending: '{count} alterações da IA no documento aberto — o arquivo ainda não foi alterado',
+  pendingOne: '1 alteração da IA no documento aberto — o arquivo ainda não foi alterado',
   accept: 'Aceitar',
   reject: 'Rejeitar',
   acceptTitle: 'Manter as alterações da IA (e salvar, com o salvamento automático ligado)',
   rejectTitle: 'Desfazer a tarefa inteira da IA',
   accepted: 'Alterações aceitas',
   rejected: 'Tarefa desfeita',
-  rolledBack: 'A tarefa falhou; as alterações parciais foram desfeitas',
+  rolledBack: 'A tarefa falhou; as alterações dela foram desfeitas',
+  reverting: 'Desfazendo a tarefa… o arquivo só é salvo depois de confirmado',
+  failedKept:
+    'A tarefa falhou. As alterações parciais não foram desfeitas automaticamente; ficam aqui para você decidir.',
   conflictEdited:
-    'O documento mudou depois da tarefa. Rejeitar desfaria também essas mudanças; aceite ou use Desfazer (Ctrl+Z) passo a passo.',
+    'O documento recebeu edições suas durante ou depois da tarefa. Rejeitar desfaria também essas edições, então não está disponível; aceite ou use Desfazer (Ctrl+Z) passo a passo.',
   conflictDisk:
     'O arquivo mudou no disco depois da tarefa. Rejeitar não é seguro; aceite ou reabra o arquivo.',
   conflictUntracked:
-    'Esta tarefa é grande demais para desfazer de uma vez. Aceite, ou feche o arquivo sem salvar para descartá-la.',
-  running: 'A IA está trabalhando no rascunho',
+    'Não há histórico suficiente para desfazer esta tarefa de uma vez. Aceite, ou feche o arquivo sem salvar para descartá-la.',
+  openTitle: 'Alterações da IA aguardando decisão',
 }
 
 const en: AiReviewLabels = {
-  pending: '{count} changes to review — the file has not been changed yet',
-  pendingOne: '1 change to review — the file has not been changed yet',
+  pending: '{count} AI changes in the open document — the file has not been changed yet',
+  pendingOne: '1 AI change in the open document — the file has not been changed yet',
   accept: 'Accept',
   reject: 'Reject',
   acceptTitle: "Keep the AI's changes (and save them when AutoSave is on)",
   rejectTitle: "Undo the AI's whole task",
   accepted: 'Changes accepted',
   rejected: 'Task undone',
-  rolledBack: 'The task failed; its partial changes were undone',
+  rolledBack: 'The task failed; its changes were undone',
+  reverting: 'Undoing the task… the file is saved only once that is confirmed',
+  failedKept:
+    'The task failed. Its partial changes were not undone automatically; they stay here for you to decide.',
   conflictEdited:
-    'The document changed after the task. Rejecting would undo those changes too; accept, or use Undo (Ctrl+Z) step by step.',
+    'You edited the document during or after the task. Rejecting would undo those edits too, so it is not available; accept, or use Undo (Ctrl+Z) step by step.',
   conflictDisk:
     'The file changed on disk after the task. Rejecting is not safe; accept or reopen the file.',
   conflictUntracked:
-    'This task is too large to undo in one step. Accept it, or close the file without saving to discard it.',
-  running: 'The AI is working on the draft',
+    'There is not enough history to undo this task in one step. Accept it, or close the file without saving to discard it.',
+  openTitle: 'AI changes waiting for a decision',
 }
 
 const es: AiReviewLabels = {
-  pending: '{count} cambios en revisión — el archivo todavía no se ha modificado',
-  pendingOne: '1 cambio en revisión — el archivo todavía no se ha modificado',
+  pending:
+    '{count} cambios de la IA en el documento abierto — el archivo todavía no se ha modificado',
+  pendingOne: '1 cambio de la IA en el documento abierto — el archivo todavía no se ha modificado',
   accept: 'Aceptar',
   reject: 'Rechazar',
   acceptTitle: 'Conservar los cambios de la IA (y guardarlos con el guardado automático activado)',
   rejectTitle: 'Deshacer toda la tarea de la IA',
   accepted: 'Cambios aceptados',
   rejected: 'Tarea deshecha',
-  rolledBack: 'La tarea falló; se deshicieron sus cambios parciales',
+  rolledBack: 'La tarea falló; sus cambios se deshicieron',
+  reverting: 'Deshaciendo la tarea… el archivo solo se guarda una vez confirmado',
+  failedKept:
+    'La tarea falló. Sus cambios parciales no se deshicieron automáticamente; quedan aquí para que decidas.',
   conflictEdited:
-    'El documento cambió después de la tarea. Rechazar también desharía esos cambios; acepta o usa Deshacer (Ctrl+Z) paso a paso.',
+    'Editaste el documento durante o después de la tarea. Rechazar desharía también esas ediciones, así que no está disponible; acepta o usa Deshacer (Ctrl+Z) paso a paso.',
   conflictDisk:
     'El archivo cambió en el disco después de la tarea. Rechazar no es seguro; acepta o vuelve a abrir el archivo.',
   conflictUntracked:
-    'Esta tarea es demasiado grande para deshacerla de una vez. Acéptala, o cierra el archivo sin guardar para descartarla.',
-  running: 'La IA está trabajando en el borrador',
+    'No hay historial suficiente para deshacer esta tarea de una vez. Acéptala, o cierra el archivo sin guardar para descartarla.',
+  openTitle: 'Cambios de la IA pendientes de decisión',
 }
 
 /** Portuguese and Spanish for the Fariv audience; every other interface language reads English. */

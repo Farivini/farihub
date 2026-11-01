@@ -1,63 +1,72 @@
 /**
  * Fariv review of an AI task — one shared model for the three editors.
  *
- * The origin applies the agent's changes straight into the document and saves them
- * with AutoSave. Fariv keeps applying them into the editor's buffer (that is the
- * draft the user previews, in place), but nothing reaches the file until the user
- * accepts the task:
+ * Preview, not an isolated draft: the agent's changes are applied to the document
+ * that is open in the editor (that is the preview the user sees), and the file on
+ * disk is not written until the user decides. What this model guarantees:
  *
- * - `running`: the agent is working; its changes land in the buffer only.
- * - `pending`: the run ended with changes; the file on disk is untouched and saving
- *   is held until the user decides.
- * - `accepted`: the user kept the task (or saved explicitly); the editor may save.
- * - `rejected`: the user discarded the task; the editor restored the state from
- *   before it, as one step.
- * - `rolled-back`: the run failed after changing the buffer; the editor restored the
- *   state from before it, so a failure never leaves a partial change behind.
+ * - `running`: the agent is working; its changes land in the open document only.
+ * - `pending`: the run ended with changes; nothing is saved until the user decides.
+ *   A pending task stays pending — a new request, a new conversation or the user's
+ *   own Save never accept it implicitly.
+ * - `reverting`: the editor is undoing the task (Reject, or a failed run). Saving
+ *   stays held until the editor confirms the document is back to its state from
+ *   before the task (`confirmRevert`); an unconfirmed revert returns to `pending`.
+ * - `accepted` / `rejected` / `rolled-back`: final.
  *
- * Conflict: rejecting must only remove the task's own changes. Each editor gives a
- * marker of its document state (sheets: undo depth and journal size; docs: the
- * document JSON; slides: the deck revision); when the marker no longer matches the
- * one taken when the task ended, the document changed afterwards (the user edited,
- * or the file changed on disk) and a one-step undo would take those changes too.
- * The task is then flagged and rejecting is refused — the user can still accept.
+ * The user's edits are never undone with the task. Each change of the agent is
+ * recorded with the editor's document marker before and after it; when the
+ * document changed between two changes of the agent, or after its last one, the
+ * user edited it meanwhile (`interleaved`). Undoing the task as a unit would then
+ * take the user's edit too, so the editor does not: a failed run keeps the partial
+ * changes under review (flagged), and Reject is refused (Accept stays possible).
+ * The same holds when the editor kept no undo record of a change (`untracked`).
  *
- * Pure state: the editors own the buffer, the undo, the snapshot and the save. The
- * agent never writes through any other path: Codex runs read-only and only returns
- * tool calls, which the editor executes into the buffer.
+ * Pure state: the editors own the document, the undo, the snapshot and the save.
  */
 
-export type ReviewStatus = 'running' | 'pending' | 'accepted' | 'rejected' | 'rolled-back'
+export type ReviewStatus =
+  'running' | 'pending' | 'reverting' | 'accepted' | 'rejected' | 'rolled-back'
+
+/**
+ * Why the task cannot be undone as a unit:
+ * `edited`: the user changed the document during or after the task;
+ * `disk`: the file changed on disk after the task;
+ * `untracked`: the editor kept no undo record of a change (e.g. a batch past its
+ * undo budget), or undoing it could not be confirmed.
+ */
+export type ReviewConflict = 'edited' | 'disk' | 'untracked'
 
 export interface ReviewTask<M> {
   readonly id: string
   readonly status: ReviewStatus
-  /** operations the agent applied into the buffer during the run */
+  /** operations the agent applied to the open document during the run */
   readonly changes: number
   /** document marker when the run started */
   readonly before: M
+  /** document marker right after the agent's latest change */
+  readonly last?: M
   /** document marker when the run ended (pending onwards) */
   readonly after?: M
-  /** why the document no longer matches `after` (conflict) */
+  /** the user changed the document between the agent's changes */
+  readonly interleaved?: boolean
+  /** a change of the agent left no undo record */
+  readonly untracked?: boolean
+  /** why the task cannot be undone as a unit */
   readonly conflict?: ReviewConflict
-  /** the run's failure message, when it was rolled back */
+  /** the run's failure message, when it failed */
   readonly failure?: string
+  /** what the pending revert is for */
+  readonly reverting?: 'reject' | 'failure'
 }
-
-/**
- * `edited`: the user changed the document after the task; `disk`: the file changed
- * on disk; `untracked`: the editor kept no undo record of the task (e.g. a batch past
- * its undo budget), so it cannot be removed as one unit.
- */
-export type ReviewConflict = 'edited' | 'disk' | 'untracked'
 
 /** What the editor has to do after a transition. */
 export type ReviewAction =
   /** nothing to do */
   | 'none'
-  /** restore the state from before the task (undo it as one unit) */
+  /** undo the task as a unit, then call confirmRevert with the outcome */
   | 'rollback'
-  /** the task is kept: AutoSave may write it now */
+  /** the task is kept: AutoSave may write it once nothing else is under review */
   | 'commit'
 
 export interface ReviewStep<M> {
@@ -73,10 +82,36 @@ export function startReview<M>(id: string, before: M): ReviewTask<M> {
   return { id, status: 'running', changes: 0, before }
 }
 
-/** The agent applied `count` more operations into the buffer. */
-export function recordChanges<M>(task: ReviewTask<M>, count: number): ReviewTask<M> {
-  if (task.status !== 'running' || !(count > 0)) return task
-  return { ...task, changes: task.changes + count }
+export interface AiChange<M> {
+  /** document marker right before the agent's change */
+  readonly before: M
+  /** document marker right after it */
+  readonly after: M
+  /** operations in the change */
+  readonly count: number
+  /** the editor kept no undo record of this change */
+  readonly untracked?: boolean
+}
+
+/**
+ * The agent changed the open document. When the document no longer is what the
+ * agent left it (or what it was at the start), the user edited in between.
+ */
+export function noteAiChange<M>(
+  task: ReviewTask<M>,
+  change: AiChange<M>,
+  same: SameMarker<M> = defaultSame,
+): ReviewTask<M> {
+  if (task.status !== 'running') return task
+  const expected = task.last ?? task.before
+  const interleaved = task.interleaved || !same(expected, change.before)
+  return {
+    ...task,
+    changes: task.changes + Math.max(0, change.count),
+    last: change.after,
+    ...(interleaved ? { interleaved: true } : {}),
+    ...(task.untracked || change.untracked ? { untracked: true } : {}),
+  }
 }
 
 export interface RunEnd<M> {
@@ -87,23 +122,38 @@ export interface RunEnd<M> {
 }
 
 /**
- * The run ended. A run without changes needs no review (it is `accepted` with no
- * action); a failed run with changes is rolled back; anything else goes to review.
+ * The run ended. Without changes there is nothing to review. A failed run is undone
+ * — unless the user edited meanwhile or a change left no undo record: then its
+ * partial changes stay under review, flagged, and the user decides.
  */
-export function finishRun<M>(task: ReviewTask<M>, end: RunEnd<M>): ReviewStep<M> {
+export function finishRun<M>(
+  task: ReviewTask<M>,
+  end: RunEnd<M>,
+  same: SameMarker<M> = defaultSame,
+): ReviewStep<M> {
   if (task.status !== 'running') return { task, action: 'none' }
-  if (task.changes === 0)
-    return { task: { ...task, status: 'accepted', after: end.after }, action: 'none' }
-  if (end.error !== undefined) {
-    return {
-      task: { ...task, status: 'rolled-back', after: end.after, failure: end.error },
-      action: 'rollback',
-    }
+  const interleaved =
+    task.interleaved || (task.changes > 0 && !same(task.last ?? task.before, end.after))
+  const base: ReviewTask<M> = {
+    ...task,
+    after: end.after,
+    ...(interleaved ? { interleaved: true } : {}),
+    ...(end.error !== undefined ? { failure: end.error } : {}),
   }
-  return { task: { ...task, status: 'pending', after: end.after }, action: 'none' }
+  if (task.changes === 0) return { task: { ...base, status: 'accepted' }, action: 'none' }
+  const conflict: ReviewConflict | undefined = interleaved
+    ? 'edited'
+    : task.untracked
+      ? 'untracked'
+      : undefined
+  if (conflict) return { task: { ...base, status: 'pending', conflict }, action: 'none' }
+  if (end.error !== undefined) {
+    return { task: { ...base, status: 'reverting', reverting: 'failure' }, action: 'rollback' }
+  }
+  return { task: { ...base, status: 'pending' }, action: 'none' }
 }
 
-/** Accepting keeps the changes; the editor may save them now. */
+/** Accepting keeps the changes; the editor may save them once nothing else is open. */
 export function acceptReview<M>(task: ReviewTask<M>): ReviewStep<M> {
   if (task.status !== 'pending') return { task, action: 'none' }
   const { conflict: _conflict, ...rest } = task
@@ -111,8 +161,8 @@ export function acceptReview<M>(task: ReviewTask<M>): ReviewStep<M> {
 }
 
 /**
- * Rejecting removes the task as one unit — only while the document still is what the
- * task left. Otherwise the task is flagged with the conflict and stays pending.
+ * Rejecting undoes the task as a unit — only while the document still is what the
+ * task left and the task can be undone. Otherwise the task is flagged and stays pending.
  */
 export function rejectReview<M>(
   task: ReviewTask<M>,
@@ -121,45 +171,69 @@ export function rejectReview<M>(
 ): ReviewStep<M> {
   if (task.status !== 'pending') return { task, action: 'none' }
   if (task.conflict) return { task, action: 'none' }
+  if (task.untracked) return { task: { ...task, conflict: 'untracked' }, action: 'none' }
   if (task.after === undefined || !same(task.after, current)) {
     return { task: { ...task, conflict: 'edited' }, action: 'none' }
   }
-  return { task: { ...task, status: 'rejected' }, action: 'rollback' }
+  return { task: { ...task, status: 'reverting', reverting: 'reject' }, action: 'rollback' }
 }
 
-/** The editor noticed a change that a one-step undo of the task would also revert. */
+/**
+ * The editor finished undoing the task. Only a confirmed revert (the document is
+ * back to its state from before the task) ends it; otherwise the task returns to
+ * review, flagged `untracked`, and saving stays held.
+ */
+export function confirmRevert<M>(task: ReviewTask<M>, reverted: boolean): ReviewTask<M> {
+  if (task.status !== 'reverting') return task
+  const { reverting, ...rest } = task
+  if (!reverted) return { ...rest, status: 'pending', conflict: 'untracked' }
+  return { ...rest, status: reverting === 'failure' ? 'rolled-back' : 'rejected' }
+}
+
+/** The editor noticed a change that undoing the task would also revert. */
 export function markConflict<M>(task: ReviewTask<M>, reason: ReviewConflict): ReviewTask<M> {
   if (task.status !== 'pending' || task.conflict) return task
   return { ...task, conflict: reason }
 }
 
-/** AutoSave (and any implicit save) waits while a task is running or under review. */
-export function holdsSave(task: ReviewTask<unknown> | null | undefined): boolean {
-  return task?.status === 'running' || task?.status === 'pending'
+/** The task still keeps the file from being written. */
+export function isOpenReview(task: ReviewTask<unknown> | null | undefined): boolean {
+  return task?.status === 'running' || task?.status === 'pending' || task?.status === 'reverting'
 }
 
-/** An explicit save by the user while a task is pending keeps the task: it counts as accepting. */
-export function acceptOnSave<M>(task: ReviewTask<M>): ReviewTask<M> {
-  return task.status === 'pending' ? acceptReview(task).task : task
+/** Saving waits while any task is running, under review or being undone. */
+export function holdsSave(
+  tasks: ReviewTask<unknown> | readonly ReviewTask<unknown>[] | null | undefined,
+): boolean {
+  if (!tasks) return false
+  return Array.isArray(tasks)
+    ? tasks.some(isOpenReview)
+    : isOpenReview(tasks as ReviewTask<unknown>)
 }
 
 /**
- * The editor's current task, shared between the AI panel (which drives it) and the
- * editor shell (which holds AutoSave and treats the user's Save as accepting).
+ * The tasks of one editor window, shared between the AI panel (which drives them)
+ * and the editor shell (which holds saving while any is open). Tasks stay until
+ * decided: nothing here accepts one implicitly.
  */
 export interface ReviewStore<M> {
-  get(): ReviewTask<M> | null
-  set(task: ReviewTask<M> | null): void
-  subscribe(listener: (task: ReviewTask<M> | null) => void): () => void
+  get(id: string): ReviewTask<M> | undefined
+  list(): readonly ReviewTask<M>[]
+  /** the open tasks (running, pending or being undone), oldest first */
+  open(): readonly ReviewTask<M>[]
+  set(task: ReviewTask<M>): void
+  subscribe(listener: (task: ReviewTask<M>) => void): () => void
 }
 
 export function createReviewStore<M>(): ReviewStore<M> {
-  let current: ReviewTask<M> | null = null
-  const listeners = new Set<(task: ReviewTask<M> | null) => void>()
+  const tasks = new Map<string, ReviewTask<M>>()
+  const listeners = new Set<(task: ReviewTask<M>) => void>()
   return {
-    get: () => current,
+    get: (id) => tasks.get(id),
+    list: () => [...tasks.values()],
+    open: () => [...tasks.values()].filter(isOpenReview),
     set(task) {
-      current = task
+      tasks.set(task.id, task)
       for (const listener of [...listeners]) listener(task)
     },
     subscribe(listener) {

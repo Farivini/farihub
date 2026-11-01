@@ -57,6 +57,8 @@ export const ja = {
   appNewFailed: '新規作成に失敗しました: {error}',
   appSaveFailed: '保存に失敗しました: {error}',
   appAutoSavedAt: '自動保存しました ({time})',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: '保存しました',
   // Section breaks

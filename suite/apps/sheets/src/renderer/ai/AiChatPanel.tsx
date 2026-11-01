@@ -2,6 +2,7 @@ import type { ReviewTask } from '@genoffice/agent-core'
 import {
   aiPanelWidthAtPointer,
   AiPanelSideButton,
+  AiOpenReviews,
   AiReviewCard,
   AiModelPicker,
   type AiModelPickerBridge,
@@ -265,6 +266,7 @@ export function AiChatPanel({
   onUndo,
   onReviewAccept,
   onReviewReject,
+  openReviews = [],
   scopeRange,
   scopeColumns,
   scopeLocked,
@@ -315,6 +317,8 @@ export function AiChatPanel({
   /** Fariv review card: keep / undo the whole AI task with this id */
   readonly onReviewAccept?: (taskId: string) => void
   readonly onReviewReject?: (taskId: string) => void
+  /** tasks still waiting for a decision; those whose reply left the chat are listed above the composer */
+  readonly openReviews?: readonly ReviewTask<string>[]
   /** A1 notation of the range this run is scoped to, or null when there is no
    *  scope — a resting single-cell selection carries no intent worth showing,
    *  and dismissing the chip clears it until the next selection change */
@@ -605,6 +609,7 @@ export function AiChatPanel({
               }}
               data-tip={t('aiNewChat')}
               aria-label={t('aiNewChat')}
+              data-action="new-chat"
             >
               <IconNewChat size={15} />
             </button>
@@ -791,6 +796,12 @@ export function AiChatPanel({
         )}
       </div>
 
+      <AiOpenReviews
+        tasks={openReviews.filter((task) => !chat.some((entry) => entry.review?.id === task.id))}
+        lang={lang}
+        onAccept={(id) => onReviewAccept?.(id)}
+        onReject={(id) => onReviewReject?.(id)}
+      />
       <div className="ai-composer">
         {attachNotice && <div className="ai-attach-notice">{attachNotice}</div>}
         <AiComposer

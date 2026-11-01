@@ -665,6 +665,12 @@ export const pt = {
   appAiChangesRolledBack: 'A tarefa da IA falhou; as alterações parciais foram desfeitas.',
   appAiTaskRejected: 'Tarefa da IA desfeita.',
   appAiSaveWaitsForTask: 'A IA ainda está trabalhando; salve depois de revisar a tarefa.',
+  appAiSaveWaitsForReview:
+    'Há alterações da IA aguardando decisão: aceite ou rejeite antes de salvar.',
+  appAiFailedKept:
+    'A tarefa da IA falhou. Suas edições foram mantidas; as alterações parciais da IA aguardam sua decisão e o arquivo não foi alterado.',
+  appAiRevertNotConfirmed:
+    'Não foi possível confirmar que a tarefa da IA foi desfeita. Ela continua em revisão e o arquivo não foi salvo.',
   appAiChangesNotSaved: 'Alterações de IA aplicadas (não salvas). Desfaça com ⌘Z; salve com ⌘S.',
   appChartUpdated: 'Gráfico atualizado.',
   appChartNotEditable: 'Este gráfico não é editável.',

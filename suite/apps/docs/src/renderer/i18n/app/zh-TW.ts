@@ -54,6 +54,8 @@ export const zhTW = {
   appNewFailed: '建立失敗: {error}',
   appSaveFailed: '儲存失敗: {error}',
   appAutoSavedAt: '已自動儲存 ({time})',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: '已儲存',
   appSectionBreakInserted: '已插入分節符號({type})',

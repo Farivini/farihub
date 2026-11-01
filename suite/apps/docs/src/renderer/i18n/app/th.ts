@@ -55,6 +55,8 @@ export const th = {
   appNewFailed: 'สร้างเอกสารไม่สำเร็จ: {error}',
   appSaveFailed: 'บันทึกไม่สำเร็จ: {error}',
   appAutoSavedAt: 'บันทึกอัตโนมัติแล้ว ({time})',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appSaved: 'บันทึกแล้ว',
   appSectionBreakInserted: 'แทรกตัวแบ่งส่วนแล้ว ({type})',

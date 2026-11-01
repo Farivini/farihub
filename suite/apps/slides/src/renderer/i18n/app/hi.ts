@@ -100,6 +100,8 @@ export const hi = {
   appStatusCutoutDone: 'पृष्ठभूमि हटाई गई (मूल छवि को पारदर्शी PNG से बदल दिया गया)',
   appStatusGrouped: 'समूहित किया गया',
   appStatusUngrouped: 'समूह हटाया गया',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'टिप्पणी जोड़ी गई',
   appStatusKeepOneSlide: 'हटाया नहीं जा सकता; कम से कम एक स्लाइड रहनी चाहिए',

@@ -101,6 +101,8 @@ export const pt = {
   appStatusCutoutDone: 'Fundo removido (imagem original substituída por um PNG transparente)',
   appStatusGrouped: 'Agrupado',
   appStatusUngrouped: 'Desagrupado',
+  appAiSaveWaitsForReview:
+    'Há alterações da IA aguardando decisão: aceite ou rejeite antes de salvar.',
   appAiSaveWaitsForTask: 'A IA ainda está trabalhando; salve depois de revisar a tarefa.',
   appStatusCommentAdded: 'Comentário adicionado',
   appStatusKeepOneSlide: 'Não é possível excluir; pelo menos um slide deve permanecer',

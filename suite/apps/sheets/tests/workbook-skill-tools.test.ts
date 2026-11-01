@@ -840,7 +840,7 @@ describe('executeWorkbookTool: propose_operations', () => {
     )
   })
 
-  it('forwards validated operations and reports auto-applied success', () => {
+  it('forwards validated operations and reports the change applied to the open workbook, pending review', () => {
     const proposeOperations = vi.fn().mockReturnValue({ ok: true, plan: EMPTY_PLAN })
     const result = execSync(
       call('propose_operations', {
@@ -856,8 +856,8 @@ describe('executeWorkbookTool: propose_operations', () => {
     expect(result.mutated).toBe(true)
     expect(result.isError).toBeFalsy()
     expect(result.output).toContain('old → new')
-    expect(result.output).toContain('Auto-applied')
-    expect(result.output).toContain('Undo')
+    expect(result.output).toContain('to the open workbook')
+    expect(result.output).toContain('accepts or rejects the whole task')
   })
 
   it('surfaces apply-time notices from the applied outcome', async () => {
@@ -988,7 +988,7 @@ describe('executeWorkbookTool: propose_operations', () => {
     )
     expect(result.isError).toBeFalsy()
     expect(result.mutated).toBe(true)
-    expect(result.output).toContain('Auto-applied')
+    expect(result.output).toContain('to the open workbook')
   })
 
   it('returns an error (not success) when the async apply fails', async () => {

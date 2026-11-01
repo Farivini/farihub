@@ -94,6 +94,8 @@ export const cs = {
   appStatusCutoutDone: 'Pozadí odstraněno (původní obrázek nahrazen průhledným PNG)',
   appStatusGrouped: 'Seskupeno',
   appStatusUngrouped: 'Skupina zrušena',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: 'Komentář přidán',
   appStatusKeepOneSlide: 'Nelze odstranit; musí zůstat alespoň jeden snímek',

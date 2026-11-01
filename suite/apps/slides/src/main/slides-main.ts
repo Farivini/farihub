@@ -4580,6 +4580,19 @@ export function registerSlidesIpc(): void {
     return before ? registerAiSnapshot(session, before) : null
   })
 
+  // Fariv review marker: what the deck holds now, independent of render timing in the
+  // renderer — equal fingerprints mean equal content (an undone task must match the
+  // state from before it; a user edit between the agent's changes changes it)
+  ipcMain.handle('slides:deck-fingerprint', (e) => {
+    const session = sessions.get(e.sender.id)
+    if (!session) return null
+    const content = JSON.stringify({
+      size: session.opened.deck.size,
+      slides: buildAllRenderSlides(session.opened, session.fitWidthPx),
+    })
+    return createHash('sha1').update(content).digest('hex')
+  })
+
   ipcMain.handle('slides:ai-snapshot-restore', (e, id: number) => {
     const session = sessions.get(e.sender.id)
     if (!session || session.masterEdit || session.historyBatch) return null

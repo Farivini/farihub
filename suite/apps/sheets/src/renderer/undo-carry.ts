@@ -151,6 +151,31 @@ export function undoStackDepth(runtime: UniverRuntime | null): number {
   }
 }
 
+const undoItemTags = new WeakMap<object, number>()
+let nextUndoItemTag = 1
+
+/// Identity of the top of the active unit's undo stack ("0" when empty): with the
+/// depth it tells whether the workbook is still in the same history position (an
+/// edit, an undo + a different edit, or a save all change it).
+export function undoStackTopTag(runtime: UniverRuntime | null): string {
+  if (!runtime) return '0'
+  try {
+    const unitId = runtime.univerAPI.getActiveWorkbook()?.getId()
+    if (!unitId) return '0'
+    const stack = undoRedoService(runtime)._undoStacks?.get(unitId)
+    const top = stack?.[stack.length - 1] as object | undefined
+    if (!top) return '0'
+    let tag = undoItemTags.get(top)
+    if (tag === undefined) {
+      tag = nextUndoItemTag++
+      undoItemTags.set(top, tag)
+    }
+    return `${unitId}#${tag}`
+  } catch {
+    return '0'
+  }
+}
+
 /// Snapshot the active unit's undo stack, rewritten against the saved file's
 /// unitId. Must run while the pre-save unit is still alive (style pool).
 /// Returns null when there is nothing carriable; never throws.

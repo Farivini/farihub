@@ -91,6 +91,8 @@ export const ko = {
   appStatusCutoutDone: '배경을 제거했습니다(원본 이미지를 투명 PNG로 교체함)',
   appStatusGrouped: '그룹화했습니다',
   appStatusUngrouped: '그룹을 해제했습니다',
+  appAiSaveWaitsForReview:
+    'AI changes are waiting for a decision: accept or reject them before saving.',
   appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appStatusCommentAdded: '메모를 추가했습니다',
   appStatusKeepOneSlide: '슬라이드는 최소 한 장 있어야 하므로 삭제할 수 없습니다',

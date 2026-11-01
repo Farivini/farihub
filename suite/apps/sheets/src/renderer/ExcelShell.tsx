@@ -1,3 +1,4 @@
+import type { ReviewTask } from '@genoffice/agent-core'
 import type { IFunctionInfo } from '@univerjs/engine-formula'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { platformShortcuts } from '@genoffice/i18n'
@@ -273,6 +274,8 @@ interface ExcelShellProps {
   /** Fariv review card of an AI task: keep / undo the whole task */
   readonly onReviewAccept: (taskId: string) => void
   readonly onReviewReject: (taskId: string) => void
+  /** tasks still waiting for a decision (listed even after a new conversation) */
+  readonly openReviews: readonly ReviewTask<string>[]
   /// A1 notation of the multi-cell selection the AI composer offers as this
   /// run's scope, or null when the resting single-cell selection carries none.
   readonly aiScopeRange: string | null
@@ -535,6 +538,7 @@ export function ExcelShell({
   onUndo,
   onReviewAccept,
   onReviewReject,
+  openReviews,
   aiScopeRange,
   aiScopeColumns,
   aiScopeLocked,
@@ -1040,6 +1044,7 @@ export function ExcelShell({
           onUndo={onUndo}
           onReviewAccept={onReviewAccept}
           onReviewReject={onReviewReject}
+          openReviews={openReviews}
           scopeRange={aiScopeRange}
           scopeColumns={aiScopeColumns}
           scopeLocked={aiScopeLocked}
