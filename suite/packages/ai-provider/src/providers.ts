@@ -495,6 +495,14 @@ export const AI_PROVIDERS: AiProviderMeta[] = [
  * preconfigured Anthropic key). Callers own that policy; this package
  * has no hardcoded keys.
  */
+/**
+ * Fariv: the assistant starts on the local Codex CLI (`codex app-server`), signed in
+ * with the user's own account, instead of the origin's Genspark cloud. It is also the
+ * fallback for an unusable selection: the CLI auto-discovers its executable, so the
+ * fallback never needs a key. Genspark stays selectable, but its cloud tools start off.
+ */
+export const DEFAULT_AI_PROVIDER: AiProviderId = 'codex'
+
 export function defaultAiSettings(
   defaultApiKeys?: Partial<Record<AiProviderId, string>>,
 ): AiSettings {
@@ -508,9 +516,9 @@ export function defaultAiSettings(
     }
   }
   return {
-    provider: 'genspark',
+    provider: DEFAULT_AI_PROVIDER,
     providers,
-    gskToolsEnabled: true,
+    gskToolsEnabled: false,
     media: defaultAiMediaSettings(),
     search: defaultAiSearchSettings(),
   }
@@ -526,26 +534,26 @@ export function cloudToolsEnabled(settings: Pick<AiSettings, 'gskToolsEnabled'>)
  * (api-key providers need a key and a model id; custom also needs a base URL).
  * Codex can auto-discover its executable. Anything else — including unknown
  * ids from a hand-edited
- * settings file — falls back to genspark, so a half-filled setup degrades
- * to the signed-in default instead of silently disabling AI.
+ * settings file — falls back to DEFAULT_AI_PROVIDER (Fariv: the local Codex CLI),
+ * so a half-filled setup degrades to the default instead of silently disabling AI.
  */
 export function activeProvider(settings: AiSettings): AiProviderId {
   const provider = settings.provider
   if (provider === 'genspark') return 'genspark'
   const meta = AI_PROVIDERS.find((m) => m.id === provider)
   const config = settings.providers?.[provider]
-  if (!meta || !config) return 'genspark'
+  if (!meta || !config) return DEFAULT_AI_PROVIDER
   if (meta.needsCliPath) return provider
   // Trim-aware: in-memory settings bypass the trimConfigs applied to
   // persisted files, and a whitespace-only key/URL/model is a 401, not a config.
-  if (!config.model?.trim()) return 'genspark'
+  if (!config.model?.trim()) return DEFAULT_AI_PROVIDER
   if (meta.needsBaseUrl) {
     // Custom OpenAI-compatible endpoints (Ollama, LM Studio, vLLM) accept
     // anonymous requests: base URL + model suffice, the key stays optional.
-    if (!config.baseUrl?.trim()) return 'genspark'
+    if (!config.baseUrl?.trim()) return DEFAULT_AI_PROVIDER
     return provider
   }
-  if (!config.apiKey?.trim()) return 'genspark'
+  if (!config.apiKey?.trim()) return DEFAULT_AI_PROVIDER
   return provider
 }
 

@@ -166,7 +166,9 @@ describe('media settings', () => {
   })
 
   it('gates the tools on gsk login + toggle without BYOK, and on the BYOK model with it', () => {
-    const genspark = defaultAiSettings()
+    // Fariv starts with the cloud tools off: a gsk login alone does not turn them on
+    expect(imageGenerationAvailable(defaultAiSettings(), true)).toBe(false)
+    const genspark = { ...defaultAiSettings(), gskToolsEnabled: true }
     expect(imageGenerationAvailable(genspark, true)).toBe(true)
     expect(imageGenerationAvailable(genspark, false)).toBe(false)
     expect(imageGenerationAvailable({ ...genspark, gskToolsEnabled: false }, true)).toBe(false)

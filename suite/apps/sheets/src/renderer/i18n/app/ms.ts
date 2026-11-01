@@ -622,6 +622,11 @@ export const ms = {
   appShowCommentsTitle: 'Semat/nyahsemat belon komen sel yang dipilih',
   appStructuralShiftBlocked:
     'Carta atau jadual pada helaian ini berlabuh pada baris/lajur terjejas, jadi tidak boleh dianjak; perubahan struktur tidak disimpan. Buat asal (⌘Z) dan simpan semula.',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved:
     'Perubahan AI digunakan (belum disimpan). Buat asal dengan ⌘Z; simpan dengan ⌘S.',
   appChartUpdated: 'Carta dikemas kini.',

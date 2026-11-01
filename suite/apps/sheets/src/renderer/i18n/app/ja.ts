@@ -655,6 +655,11 @@ export const ja = {
   appShowCommentsTitle: '選択セルのコメント吹き出しを固定/固定解除',
   appStructuralShiftBlocked:
     'このシートのグラフやテーブルが対象の行/列に固定されているため移動できず、構造変更は保存されませんでした。元に戻して(⌘Z)から再度保存してください。',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved:
     'AI の変更を適用しました(未保存)。⌘Z で元に戻せます。⌘S でファイルに保存します。',
   // Floating objects / chart editing

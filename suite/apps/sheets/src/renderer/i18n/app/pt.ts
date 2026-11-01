@@ -660,6 +660,11 @@ export const pt = {
   appShowCommentsTitle: 'Fixar/desafixar o balão de comentário da célula selecionada',
   appStructuralShiftBlocked:
     'Um gráfico ou tabela nesta planilha está ancorado às linhas/colunas afetadas; não é possível deslocá-las e a alteração estrutural não foi salva. Desfaça (⌘Z) e salve novamente.',
+  appAiChangesInReview:
+    'Alterações da IA prontas para revisão: aceite ou rejeite no painel. O arquivo não foi alterado.',
+  appAiChangesRolledBack: 'A tarefa da IA falhou; as alterações parciais foram desfeitas.',
+  appAiTaskRejected: 'Tarefa da IA desfeita.',
+  appAiSaveWaitsForTask: 'A IA ainda está trabalhando; salve depois de revisar a tarefa.',
   appAiChangesNotSaved: 'Alterações de IA aplicadas (não salvas). Desfaça com ⌘Z; salve com ⌘S.',
   appChartUpdated: 'Gráfico atualizado.',
   appChartNotEditable: 'Este gráfico não é editável.',

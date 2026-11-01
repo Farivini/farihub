@@ -37,7 +37,7 @@ export interface NamingProvider {
 export function resolveNamingProvider(stored: unknown, gskKey: string): NamingProvider | null {
   const settings = resolveAiSettings(stored, defaultAiSettings())
   // a stored BYOK provider is honored when usable; a half-filled one falls back
-  // to genspark rather than silently disabling AI
+  // to the default (Fariv: the local Codex) rather than silently disabling AI
   settings.provider = activeProvider(settings)
   const provider = settings.provider
   const storedConfig = settings.providers?.[provider]

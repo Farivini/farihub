@@ -543,6 +543,11 @@ export const zhTW = {
   appShowCommentsTitle: '固定/取消固定所選儲存格的註解氣泡',
   appStructuralShiftBlocked:
     '此工作表上有圖表或表格錨定在受影響的列/欄上,無法平移,結構變更沒有儲存。請復原該變更(⌘Z)後重新儲存。',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved: '已套用 AI 變更(未儲存)。可用 ⌘Z 復原;用 ⌘S 儲存到檔案。',
   appChartUpdated: '圖表已更新。',
   appChartNotEditable: '該圖表無法編輯。',

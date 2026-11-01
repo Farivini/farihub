@@ -645,6 +645,11 @@ export const pl = {
   appShowCommentsTitle: 'Przypnij/odepnij dymek komentarza zaznaczonej komórki',
   appStructuralShiftBlocked:
     'Wykres lub tabela w tym arkuszu jest zakotwiczona w zmienianych wierszach/kolumnach; nie można ich przesunąć, zmiana strukturalna nie została zapisana. Cofnij ją (⌘Z) i zapisz ponownie.',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved:
     'Zmiany AI zastosowane (niezapisane). Cofnij za pomocą ⌘Z; zapisz plikiem ⌘S.',
   appChartUpdated: 'Zaktualizowano wykres.',

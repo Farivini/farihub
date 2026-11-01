@@ -627,6 +627,11 @@ export const ko = {
   appShowCommentsTitle: '선택한 셀의 메모 풍선 고정/고정 해제',
   appStructuralShiftBlocked:
     '이 시트의 차트나 표가 해당 행/열에 고정되어 있어 이동할 수 없으며, 구조 변경은 저장되지 않았습니다. 실행 취소(⌘Z) 후 다시 저장하세요.',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved:
     'AI 변경 사항이 적용되었습니다(저장 안 됨). ⌘Z로 실행 취소, ⌘S로 파일에 저장하세요.',
   // Floating objects / chart editing

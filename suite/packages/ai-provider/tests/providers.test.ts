@@ -16,7 +16,8 @@ import type { AiProviderId } from '../src/types'
 describe('defaultAiSettings', () => {
   it('gives every provider its default model and an empty key by default', () => {
     const settings = defaultAiSettings()
-    expect(settings.provider).toBe('genspark')
+    // Fariv: the local Codex CLI is the default, not the origin's Genspark cloud
+    expect(settings.provider).toBe('codex')
     for (const meta of AI_PROVIDERS) {
       expect(settings.providers[meta.id].apiKey).toBe('')
       expect(settings.providers[meta.id].model).toBe(meta.defaultModel)
@@ -172,7 +173,7 @@ describe('resolveAiSettings', () => {
         defaults,
       )
       expect(resolved.providers.anthropic).toEqual(defaults.providers.anthropic)
-      expect(activeProvider(resolved)).toBe('genspark')
+      expect(activeProvider(resolved)).toBe('codex')
     }
   })
 
@@ -376,12 +377,12 @@ describe('clampMaxOutputTokens', () => {
 })
 
 describe('activeProvider', () => {
-  it('honors a configured BYOK provider and falls back to genspark otherwise', () => {
+  it('honors a configured BYOK provider and falls back to the local Codex otherwise', () => {
     const settings = defaultAiSettings()
-    expect(activeProvider(settings)).toBe('genspark')
+    expect(activeProvider(settings)).toBe('codex')
 
     settings.provider = 'kimi'
-    expect(activeProvider(settings)).toBe('genspark') // no key yet
+    expect(activeProvider(settings)).toBe('codex') // no key yet
     settings.providers.kimi.apiKey = 'sk-user'
     expect(activeProvider(settings)).toBe('kimi')
   })
@@ -390,9 +391,9 @@ describe('activeProvider', () => {
     const settings = defaultAiSettings()
     settings.provider = 'custom'
     settings.providers.custom.apiKey = 'k'
-    expect(activeProvider(settings)).toBe('genspark')
+    expect(activeProvider(settings)).toBe('codex')
     settings.providers.custom.baseUrl = 'http://localhost:1234/v1'
-    expect(activeProvider(settings)).toBe('genspark') // custom's default model is empty
+    expect(activeProvider(settings)).toBe('codex') // custom's default model is empty
     settings.providers.custom.model = 'my-model'
     expect(activeProvider(settings)).toBe('custom')
   })
@@ -425,10 +426,10 @@ describe('activeProvider', () => {
     const settings = defaultAiSettings()
     settings.provider = 'kimi'
     settings.providers.kimi.apiKey = '   '
-    expect(activeProvider(settings)).toBe('genspark')
+    expect(activeProvider(settings)).toBe('codex')
     settings.providers.kimi.apiKey = 'sk-user'
     settings.providers.kimi.model = '  '
-    expect(activeProvider(settings)).toBe('genspark')
+    expect(activeProvider(settings)).toBe('codex')
     settings.providers.kimi.model = 'kimi-k2'
     expect(activeProvider(settings)).toBe('kimi')
 
@@ -436,13 +437,13 @@ describe('activeProvider', () => {
     custom.provider = 'custom'
     custom.providers.custom.baseUrl = '   '
     custom.providers.custom.model = 'my-model'
-    expect(activeProvider(custom)).toBe('genspark')
+    expect(activeProvider(custom)).toBe('codex')
   })
 
-  it('falls back to genspark for unknown ids from a hand-edited settings file', () => {
+  it('falls back to the local Codex for unknown ids from a hand-edited settings file', () => {
     const settings = defaultAiSettings()
     settings.provider = 'nonsense' as AiProviderId
-    expect(activeProvider(settings)).toBe('genspark')
+    expect(activeProvider(settings)).toBe('codex')
   })
 
   it('genspark never requires a key (injected from the gsk login at request time)', () => {
@@ -453,11 +454,18 @@ describe('activeProvider', () => {
 })
 
 describe('gskToolsEnabled', () => {
-  it('defaults on, survives resolveAiSettings, and only an explicit false turns it off', () => {
-    expect(cloudToolsEnabled(defaultAiSettings())).toBe(true)
-    // pre-toggle settings file (field absent) stays on
+  it('defaults off in Fariv, survives resolveAiSettings, and an explicit choice wins', () => {
+    expect(cloudToolsEnabled(defaultAiSettings())).toBe(false)
+    // a settings file without the field takes the (off) default
     const legacy = resolveAiSettings({ providers: {} as never }, defaultAiSettings())
-    expect(cloudToolsEnabled(legacy)).toBe(true)
+    expect(cloudToolsEnabled(legacy)).toBe(false)
+    const on = resolveAiSettings(
+      { providers: {} as never, gskToolsEnabled: true },
+      defaultAiSettings(),
+    )
+    expect(cloudToolsEnabled(on)).toBe(true)
+    // a settings object built without defaults (field absent) keeps the origin's reading
+    expect(cloudToolsEnabled({})).toBe(true)
     const off = resolveAiSettings(
       { providers: {} as never, gskToolsEnabled: false },
       defaultAiSettings(),

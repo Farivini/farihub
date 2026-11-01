@@ -13,18 +13,20 @@ import { resolveNamingProvider } from '../src/main/ai-naming-provider'
  */
 
 describe('resolveNamingProvider', () => {
+  it('uses the default local Codex when nothing is configured (Fariv)', () => {
+    expect(resolveNamingProvider({}, '')?.provider).toBe('codex')
+    // an unreadable settings file degrades to the same default
+    expect(resolveNamingProvider(null, '')?.provider).toBe('codex')
+  })
+
   it('takes the Genspark key from the login state, not from the settings file', () => {
-    const resolved = resolveNamingProvider({}, 'gsk-live-key')
+    const resolved = resolveNamingProvider({ provider: 'genspark', providers: {} }, 'gsk-live-key')
     expect(resolved?.provider).toBe('genspark')
     expect(resolved?.config.apiKey).toBe('gsk-live-key')
   })
 
   it('declines when Genspark is selected and nobody is signed in', () => {
-    expect(resolveNamingProvider({}, '')).toBeNull()
-  })
-
-  it('declines when the settings file could not be read at all', () => {
-    expect(resolveNamingProvider(null, '')).toBeNull()
+    expect(resolveNamingProvider({ provider: 'genspark', providers: {} }, '')).toBeNull()
   })
 
   it('honors a configured provider', () => {
@@ -40,7 +42,7 @@ describe('resolveNamingProvider', () => {
     expect(resolved?.config.model).toBe('claude-sonnet-4-6')
   })
 
-  it('falls back to Genspark when the configured provider is half-filled', () => {
+  it('falls back to the local Codex when the configured provider is half-filled', () => {
     const resolved = resolveNamingProvider(
       {
         provider: 'anthropic',
@@ -48,16 +50,16 @@ describe('resolveNamingProvider', () => {
       },
       'gsk-live-key',
     )
-    expect(resolved?.provider).toBe('genspark')
-    expect(resolved?.config.apiKey).toBe('gsk-live-key')
+    expect(resolved?.provider).toBe('codex')
+    expect(resolved?.config.apiKey).toBe('')
   })
 
-  it('falls back to Genspark for a provider this build does not have', () => {
+  it('falls back to the local Codex for a provider this build does not have', () => {
     const resolved = resolveNamingProvider(
       { provider: 'not-a-provider', providers: {} },
       'gsk-live-key',
     )
-    expect(resolved?.provider).toBe('genspark')
+    expect(resolved?.provider).toBe('codex')
   })
 
   it('does not need a key for codex', () => {

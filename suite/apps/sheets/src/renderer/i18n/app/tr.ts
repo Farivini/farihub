@@ -649,6 +649,11 @@ export const tr = {
   appShowCommentsTitle: 'Seçili hücrenin açıklama balonunu sabitle/çöz',
   appStructuralShiftBlocked:
     'Bu sayfadaki bir grafik veya tablo etkilenen satırlara/sütunlara bağlı olduğundan kaydırılamazlar; yapısal değişiklik kaydedilmedi. Geri alıp (Cmd+Z) yeniden kaydedin.',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved:
     'AI değişiklikleri uygulandı (kaydedilmedi). Cmd+Z ile geri alın; Cmd+S ile dosyaya kaydedin.',
   appChartUpdated: 'Grafik güncellendi.',

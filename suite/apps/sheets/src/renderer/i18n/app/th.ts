@@ -591,6 +591,11 @@ export const th = {
   appShowCommentsTitle: 'ปักหมุด/เลิกปักหมุดบอลลูนข้อคิดเห็นของเซลล์ที่เลือก',
   appStructuralShiftBlocked:
     'แผนภูมิหรือตารางในชีตนี้ยึดกับแถว/คอลัมน์ที่ได้รับผลกระทบ จึงเลื่อนไม่ได้ และการเปลี่ยนโครงสร้างไม่ถูกบันทึก โปรดเลิกทำ (⌘Z) แล้วบันทึกอีกครั้ง',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved:
     'ปรับใช้การเปลี่ยนแปลงของ AI แล้ว (ยังไม่บันทึก) เลิกทำด้วย ⌘Z บันทึกลงไฟล์ด้วย ⌘S',
   appChartUpdated: 'อัปเดตแผนภูมิแล้ว',

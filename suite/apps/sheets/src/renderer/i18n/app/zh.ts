@@ -551,6 +551,10 @@ export const zh = {
   appShowCommentsTitle: '固定/取消固定所选单元格的批注气泡',
   appStructuralShiftBlocked:
     '此工作表上有图表或表格锚定在受影响的行/列上,无法平移,结构改动没有保存。请撤销该改动(⌘Z)后重新保存。',
+  appAiChangesInReview: 'AI 更改待审阅:请在面板中接受或拒绝。文件尚未更改。',
+  appAiChangesRolledBack: 'AI 任务失败,已撤销其部分更改。',
+  appAiTaskRejected: '已撤销 AI 任务。',
+  appAiSaveWaitsForTask: 'AI 仍在处理;请在审阅任务后保存。',
   appAiChangesNotSaved: '已应用 AI 更改(未保存)。可用 ⌘Z 撤销;用 ⌘S 保存到文件。',
   // Floating objects / chart editing
   appChartUpdated: '图表已更新。',

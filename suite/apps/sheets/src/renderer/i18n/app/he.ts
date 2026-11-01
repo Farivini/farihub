@@ -570,6 +570,11 @@ export const he = {
   appShowCommentsTitle: 'הצמדה/ביטול הצמדה של בועת ההערה בתא שנבחר',
   appStructuralShiftBlocked:
     'תרשים או טבלה בגיליון זה מעוגנים לשורות/עמודות המושפעות ולכן אי אפשר להזיזן; השינוי המבני לא נשמר. בטלו אותו (⌘Z) ושמרו שוב.',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved: 'שינויי ה-AI הוחלו (לא נשמרו). בטלו עם ⌘Z; שמרו לקובץ עם ⌘S.',
   appChartUpdated: 'התרשים עודכן.',
   appChartNotEditable: 'תרשים זה אינו ניתן לעריכה.',

@@ -591,6 +591,11 @@ export const ar = {
   appShowCommentsTitle: 'تثبيت/إلغاء تثبيت فقاعة تعليق الخلية المحددة',
   appStructuralShiftBlocked:
     'يوجد مخطط أو جدول في هذه الورقة مثبت على الصفوف/الأعمدة المتأثرة، فلا يمكن إزاحتها ولم يُحفظ التغيير الهيكلي. تراجع عنه (⌘Z) ثم احفظ مجددًا.',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved: 'تم تطبيق تغييرات الذكاء الاصطناعي (غير محفوظة). تراجع بـ ⌘Z؛ احفظ بـ ⌘S.',
   appChartUpdated: 'حُدّث المخطط.',
   appChartNotEditable: 'هذا المخطط غير قابل للتحرير.',

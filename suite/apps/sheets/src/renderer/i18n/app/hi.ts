@@ -621,6 +621,11 @@ export const hi = {
   appShowCommentsTitle: 'चयनित सेल की टिप्पणी बबल को पिन/अनपिन करें',
   appStructuralShiftBlocked:
     'इस शीट का कोई चार्ट या तालिका प्रभावित पंक्तियों/स्तंभों से जुड़ी है, इसलिए वे खिसक नहीं सकते; संरचनात्मक बदलाव सहेजा नहीं गया। उसे पूर्ववत करें (⌘Z) और फिर सहेजें।',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved:
     'AI बदलाव लागू किए गए (सहेजे नहीं गए)। ⌘Z से पूर्ववत करें; ⌘S से फ़ाइल में सहेजें।',
   appChartUpdated: 'चार्ट अद्यतन किया गया।',

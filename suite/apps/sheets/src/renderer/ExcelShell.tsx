@@ -270,6 +270,9 @@ interface ExcelShellProps {
   readonly onStop: () => void
   readonly onNewChat: () => void
   readonly onUndo: (steps?: number) => void
+  /** Fariv review card of an AI task: keep / undo the whole task */
+  readonly onReviewAccept: (taskId: string) => void
+  readonly onReviewReject: (taskId: string) => void
   /// A1 notation of the multi-cell selection the AI composer offers as this
   /// run's scope, or null when the resting single-cell selection carries none.
   readonly aiScopeRange: string | null
@@ -530,6 +533,8 @@ export function ExcelShell({
   onStop,
   onNewChat,
   onUndo,
+  onReviewAccept,
+  onReviewReject,
   aiScopeRange,
   aiScopeColumns,
   aiScopeLocked,
@@ -1033,6 +1038,8 @@ export function ExcelShell({
           onStop={onStop}
           onNewChat={onNewChat}
           onUndo={onUndo}
+          onReviewAccept={onReviewAccept}
+          onReviewReject={onReviewReject}
           scopeRange={aiScopeRange}
           scopeColumns={aiScopeColumns}
           scopeLocked={aiScopeLocked}

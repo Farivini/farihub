@@ -622,6 +622,11 @@ export const cs = {
   appShowCommentsTitle: 'Připnout/odepnout bublinu komentáře vybrané buňky',
   appStructuralShiftBlocked:
     'Graf nebo tabulka na tomto listu je ukotvena k dotčeným řádkům/sloupcům, takže je nelze posunout; strukturální změna nebyla uložena. Vraťte ji zpět (Cmd+Z) a uložte znovu.',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved:
     'Změny AI použity (neuloženo). Zpět pomocí Cmd+Z; uložit do souboru pomocí Cmd+S.',
   appChartUpdated: 'Graf aktualizován.',

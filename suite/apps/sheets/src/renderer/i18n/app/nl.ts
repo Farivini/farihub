@@ -655,6 +655,11 @@ export const nl = {
   appShowCommentsTitle: 'De opmerkingsballon van de geselecteerde cel vastzetten/losmaken',
   appStructuralShiftBlocked:
     'Een grafiek of tabel op dit blad is verankerd aan de betrokken rijen/kolommen; ze kunnen niet verschuiven en de structuurwijziging is niet opgeslagen. Maak deze ongedaan (⌘Z) en sla opnieuw op.',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved:
     'AI-wijzigingen toegepast (niet opgeslagen). Ongedaan maken met ⌘Z; opslaan met ⌘S.',
   appChartUpdated: 'Grafiek bijgewerkt.',

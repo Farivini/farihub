@@ -656,6 +656,11 @@ export const it = {
   appShowCommentsTitle: 'Fissa/sblocca il fumetto del commento della cella selezionata',
   appStructuralShiftBlocked:
     'Un grafico o una tabella in questo foglio è ancorato alle righe/colonne interessate; non possono spostarsi e la modifica strutturale non è stata salvata. Annullala (⌘Z) e salva di nuovo.',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved: 'Modifiche IA applicate (non salvate). Annulla con ⌘Z; salva con ⌘S.',
   appChartUpdated: 'Grafico aggiornato.',
   appChartNotEditable: 'Questo grafico non è modificabile.',

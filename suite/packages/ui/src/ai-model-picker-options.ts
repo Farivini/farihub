@@ -1,5 +1,6 @@
 import {
   AI_PROVIDERS,
+  DEFAULT_AI_PROVIDER,
   activeProvider,
   customEndpointLabel,
   resolveCustomEndpoints,
@@ -58,12 +59,13 @@ export function aiModelPickerGroups(input: AiSettings, gskLoggedIn: boolean): Ai
     const config = settings.providers?.[meta.id]
     const stored = config?.model?.trim() ?? ''
     // CLI vendors pass activeProvider unconfigured (the binary auto-discovers);
-    // list them only once the settings page holds a model or a path
+    // list them only once the settings page holds a model or a path — except the
+    // default provider (Fariv: the local Codex), which is always offered
     const usable =
       meta.id === 'genspark'
         ? gskLoggedIn
         : meta.needsCliPath
-          ? Boolean(stored || config?.cliPath?.trim())
+          ? meta.id === DEFAULT_AI_PROVIDER || Boolean(stored || config?.cliPath?.trim())
           : activeProvider({ ...settings, provider: meta.id }) === meta.id
     if (!usable) continue
     const models = stored && !meta.models.includes(stored) ? [stored, ...meta.models] : meta.models

@@ -621,6 +621,11 @@ export const id = {
   appShowCommentsTitle: 'Sematkan/lepas sematan balon komentar sel yang dipilih',
   appStructuralShiftBlocked:
     'Bagan atau tabel di sheet ini tertaut ke baris/kolom yang terdampak sehingga tidak bisa digeser; perubahan struktur tidak disimpan. Urungkan (⌘Z) lalu simpan lagi.',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved:
     'Perubahan AI diterapkan (belum disimpan). Urungkan dengan ⌘Z; simpan dengan ⌘S.',
   appChartUpdated: 'Bagan diperbarui.',

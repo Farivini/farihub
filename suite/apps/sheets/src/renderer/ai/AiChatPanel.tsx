@@ -1,6 +1,8 @@
+import type { ReviewTask } from '@genoffice/agent-core'
 import {
   aiPanelWidthAtPointer,
   AiPanelSideButton,
+  AiReviewCard,
   AiModelPicker,
   type AiModelPickerBridge,
 } from '@genoffice/ui'
@@ -217,6 +219,8 @@ export interface AiChatMessage {
   readonly loginRequired?: boolean | undefined
   /** Set when this message reflects an auto-applied plan; renders an inline [Undo] button. */
   readonly autoApplied?: { readonly opCount: number; readonly undoSteps: number } | undefined
+  /** Fariv review of the AI task this reply carried out (replaces the inline Undo box) */
+  readonly review?: ReviewTask<string> | undefined
   /** attachments consumed from the composer by this user message (read-only echo chips) */
   readonly attachments?: readonly AttachmentMeta[] | undefined
   /** skills the user attached to this message from the composer menu */
@@ -259,6 +263,8 @@ export function AiChatPanel({
   onStop,
   onNewChat,
   onUndo,
+  onReviewAccept,
+  onReviewReject,
   scopeRange,
   scopeColumns,
   scopeLocked,
@@ -306,6 +312,9 @@ export function AiChatPanel({
   readonly onStop: () => void
   readonly onNewChat: () => void
   readonly onUndo: (steps: number) => void
+  /** Fariv review card: keep / undo the whole AI task with this id */
+  readonly onReviewAccept?: (taskId: string) => void
+  readonly onReviewReject?: (taskId: string) => void
   /** A1 notation of the range this run is scoped to, or null when there is no
    *  scope — a resting single-cell selection carries no intent worth showing,
    *  and dismissing the chip clears it until the next selection change */
@@ -693,7 +702,15 @@ export function AiChatPanel({
                     </span>
                   )
                 )}
-                {entry.autoApplied && (
+                {entry.review && (
+                  <AiReviewCard
+                    task={entry.review}
+                    lang={lang}
+                    onAccept={() => onReviewAccept?.(entry.review!.id)}
+                    onReject={() => onReviewReject?.(entry.review!.id)}
+                  />
+                )}
+                {entry.autoApplied && !entry.review && (
                   <div className="ai-auto-applied">
                     <span className="ai-auto-applied-text">
                       {t('aiAutoApplied', { count: entry.autoApplied.opCount })}

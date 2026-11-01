@@ -636,6 +636,11 @@ export const ru = {
   appShowCommentsTitle: 'Закрепить/открепить всплывающее примечание выделенной ячейки',
   appStructuralShiftBlocked:
     'Диаграмма или таблица на этом листе привязана к затрагиваемым строкам/столбцам, сдвиг невозможен; структурное изменение не сохранено. Отмените его (⌘Z) и сохраните снова.',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved:
     'Изменения ИИ применены (не сохранены). Отмена — ⌘Z; сохранить в файл — ⌘S.',
   appChartUpdated: 'Диаграмма обновлена.',

@@ -70,3 +70,22 @@ export { createIpcTransport, IPC_STREAM_SILENCE_TIMEOUT_MS } from './electron-tr
 export { streamText } from './stream-text'
 export type { StreamTextOptions, StreamTextOutcome } from './stream-text'
 export type { IpcStreamChunk, IpcStreamStart, IpcTransportOptions } from './electron-transport'
+export {
+  acceptOnSave,
+  acceptReview,
+  finishRun,
+  holdsSave,
+  markConflict,
+  recordChanges,
+  rejectReview,
+  startReview,
+} from './review-task'
+export type {
+  ReviewAction,
+  ReviewConflict,
+  ReviewStatus,
+  ReviewStep,
+  ReviewTask,
+  RunEnd,
+  SameMarker,
+} from './review-task'

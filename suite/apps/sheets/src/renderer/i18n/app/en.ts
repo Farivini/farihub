@@ -601,6 +601,11 @@ export const en = {
   appShowCommentsTitle: "Pin/unpin the selected cell's comment bubble",
   appStructuralShiftBlocked:
     "A chart or table on this sheet is anchored to the affected rows/columns, so they can't shift; the structural change was not saved. Undo it (Cmd+Z) and save again.",
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved:
     'AI changes applied (not saved). Undo with Cmd+Z; save to the file with Cmd+S.',
   appChartUpdated: 'Chart updated.',

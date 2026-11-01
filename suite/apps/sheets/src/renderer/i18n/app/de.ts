@@ -670,6 +670,11 @@ export const de = {
   appShowCommentsTitle: 'Kommentar-Sprechblase der ausgewählten Zelle anheften/lösen',
   appStructuralShiftBlocked:
     'Ein Diagramm oder eine Tabelle auf diesem Blatt ist an den betroffenen Zeilen/Spalten verankert; sie können nicht verschoben werden, die Strukturänderung wurde nicht gespeichert. Machen Sie sie rückgängig (⌘Z) und speichern Sie erneut.',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved:
     'KI-Änderungen angewendet (nicht gespeichert). Rückgängig mit ⌘Z; speichern mit ⌘S.',
   appChartUpdated: 'Diagramm aktualisiert.',

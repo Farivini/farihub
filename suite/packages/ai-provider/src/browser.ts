@@ -13,6 +13,7 @@ export type {
 } from './types'
 export {
   AI_PROVIDERS,
+  DEFAULT_AI_PROVIDER,
   activeProvider,
   cloudToolsEnabled,
   DEFAULT_MAX_OUTPUT_TOKENS,

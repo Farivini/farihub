@@ -611,6 +611,11 @@ export const vi = {
   appShowCommentsTitle: 'Ghim/bỏ ghim bong bóng nhận xét của ô đã chọn',
   appStructuralShiftBlocked:
     'Một biểu đồ hoặc bảng trên trang tính này được neo vào các hàng/cột bị ảnh hưởng, nên chúng không thể dịch chuyển; thay đổi cấu trúc chưa được lưu. Hãy hoàn tác (Cmd+Z) và lưu lại.',
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved:
     'Các thay đổi của AI đã được áp dụng (chưa lưu). Hoàn tác bằng Cmd+Z; lưu vào tệp bằng Cmd+S.',
   appChartUpdated: 'Đã cập nhật biểu đồ.',

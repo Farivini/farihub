@@ -681,6 +681,11 @@ export const fr = {
   appShowCommentsTitle: 'Épingler/détacher la bulle de commentaire de la cellule sélectionnée',
   appStructuralShiftBlocked:
     "Un graphique ou un tableau de cette feuille est ancré aux lignes/colonnes concernées : impossible de les décaler, la modification structurelle n'a pas été enregistrée. Annulez-la (⌘Z) puis réenregistrez.",
+  appAiChangesInReview:
+    'AI changes ready for review: accept or reject them in the panel. The file has not been changed.',
+  appAiChangesRolledBack: 'The AI task failed; its partial changes were undone.',
+  appAiTaskRejected: 'AI task undone.',
+  appAiSaveWaitsForTask: 'The AI is still working; save after reviewing the task.',
   appAiChangesNotSaved:
     'Modifications IA appliquées (non enregistrées). Annulez avec ⌘Z ; enregistrez avec ⌘S.',
   appChartUpdated: 'Graphique mis à jour.',

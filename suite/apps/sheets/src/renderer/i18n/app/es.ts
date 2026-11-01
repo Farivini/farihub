@@ -662,6 +662,11 @@ export const es = {
   appShowCommentsTitle: 'Fijar o soltar el globo de comentario de la celda seleccionada',
   appStructuralShiftBlocked:
     'Un gráfico o tabla de esta hoja está anclado a las filas/columnas afectadas; no se pueden desplazar y el cambio estructural no se guardó. Deshágalo (⌘Z) y vuelva a guardar.',
+  appAiChangesInReview:
+    'Cambios de la IA listos para revisar: acéptalos o recházalos en el panel. El archivo no se ha modificado.',
+  appAiChangesRolledBack: 'La tarea de la IA falló; se deshicieron los cambios parciales.',
+  appAiTaskRejected: 'Tarea de la IA deshecha.',
+  appAiSaveWaitsForTask: 'La IA sigue trabajando; guarda después de revisar la tarea.',
   appAiChangesNotSaved: 'Cambios de IA aplicados (sin guardar). Deshaga con ⌘Z; guarde con ⌘S.',
   appChartUpdated: 'Gráfico actualizado.',
   appChartNotEditable: 'Este gráfico no es editable.',

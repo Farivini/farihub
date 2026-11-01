@@ -499,7 +499,7 @@ export const WORKBOOK_TOOLS: AgentToolDef[] = [
   {
     name: 'propose_operations',
     description:
-      'Submit a batch of change operations, applied to the workbook immediately (the user can roll back with the [Undo] button or ⌘Z). Basic operations: ' +
+      'Submit a batch of change operations, applied to the open workbook as a draft: the file is not written until the user reviews the whole task and accepts it (Reject undoes the task). Basic operations: ' +
       '{op:"set_cell",sheetId,address,value} | {op:"set_formula",sheetId,address,formula(starts with =)} | ' +
       '{op:"clear_cell",sheetId,address} | {op:"rename_sheet",sheetId,name}. ' +
       'Field definitions for the remaining operations live in the guides — load_guide before using them: ' +

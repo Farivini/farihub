@@ -7,31 +7,33 @@ import {
 } from '../src/ai-model-picker-options'
 
 const anthropicModels = AI_PROVIDERS.find((m) => m.id === 'anthropic')!.models
+/** Fariv: the default local Codex is always offered (it auto-discovers its binary) */
+const CODEX = { id: 'codex', label: 'Codex CLI', models: [] }
 
 describe('aiModelPickerGroups', () => {
-  it('lists nothing while signed out with no keys', () => {
-    expect(aiModelPickerGroups(defaultAiSettings(), false)).toEqual([])
+  it('lists only the default local Codex while signed out with no keys', () => {
+    expect(aiModelPickerGroups(defaultAiSettings(), false)).toEqual([CODEX])
   })
 
   it('lists Genspark only when signed in', () => {
     const ids = aiModelPickerGroups(defaultAiSettings(), true).map((g) => g.id)
-    expect(ids).toEqual(['genspark'])
+    expect(ids).toEqual(['genspark', 'codex'])
   })
 
   it('adds a vendor once its key is set and puts an off-catalog model first', () => {
     const settings = defaultAiSettings()
     settings.providers.anthropic = { apiKey: 'k', model: 'claude-next' }
     const groups = aiModelPickerGroups(settings, false)
-    expect(groups.map((g) => g.id)).toEqual(['anthropic'])
-    expect(groups[0]!.models).toEqual(['claude-next', ...anthropicModels])
+    expect(groups.map((g) => g.id)).toEqual(['codex', 'anthropic'])
+    expect(groups[1]!.models).toEqual(['claude-next', ...anthropicModels])
   })
 
   it('needs a base URL for custom endpoints', () => {
     const settings = defaultAiSettings()
     settings.providers.custom = { apiKey: '', model: 'llama', baseUrl: '' }
-    expect(aiModelPickerGroups(settings, false)).toEqual([])
+    expect(aiModelPickerGroups(settings, false)).toEqual([CODEX])
     settings.providers.custom = { apiKey: '', model: 'llama', baseUrl: 'http://localhost:11434/v1' }
-    expect(aiModelPickerGroups(settings, false).map((g) => g.id)).toEqual(['custom'])
+    expect(aiModelPickerGroups(settings, false).map((g) => g.id)).toEqual(['codex', 'custom'])
   })
 })
 
@@ -52,21 +54,19 @@ describe('selection round trip', () => {
     expect(settings.providers.anthropic.model).toBe(anthropicModels[0])
   })
 
-  it('falls back to Genspark when the stored provider is unusable', () => {
+  it('falls back to the default local Codex when the stored provider is unusable', () => {
     const settings = defaultAiSettings()
     settings.provider = 'anthropic'
-    expect(aiModelPickerSelection(settings).provider).toBe('genspark')
+    expect(aiModelPickerSelection(settings).provider).toBe('codex')
   })
 })
 
 describe('CLI vendors', () => {
-  it('lists Codex only after the settings page stored a path or model', () => {
+  it('always lists the default Codex, with or without a stored path', () => {
     const settings = defaultAiSettings()
-    expect(aiModelPickerGroups(settings, false)).toEqual([])
+    expect(aiModelPickerGroups(settings, false)).toEqual([CODEX])
     settings.providers.codex = { apiKey: '', model: '', cliPath: '/usr/local/bin/codex' }
-    expect(aiModelPickerGroups(settings, false)).toEqual([
-      { id: 'codex', label: 'Codex CLI', models: [] },
-    ])
+    expect(aiModelPickerGroups(settings, false)).toEqual([CODEX])
   })
 })
 
@@ -97,6 +97,7 @@ describe('custom endpoints', () => {
   it('lists one group per configured endpoint with its cached models', () => {
     const groups = aiModelPickerGroups(settings(), false)
     expect(groups).toEqual([
+      CODEX,
       { id: 'custom', endpoint: 'a', label: 'Ollama', models: ['llama3'] },
       { id: 'custom', endpoint: 'b', label: 'gw.example.com', models: ['gpt-x', 'gpt-y'] },
     ])
