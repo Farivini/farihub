@@ -1,3 +1,7 @@
+# Atualização da investigação
+
+Leia primeiro [FOLLOWUP.md](FOLLOWUP.md): os testes adversos mudaram a recomendação. GridPath não está escolhido como vencedor; edição com muitas dependências teve custo maior no caminho testado. O restante deste documento registra a primeira rodada, anterior a essa verificação.
+
 # Fusão: prova curta executada
 
 Base Farihub: `87665ca443be25724e0869380b377ff0eeb96fe7` (PR #8). Nenhuma alteração no aplicativo ou nas dependências de produção.
