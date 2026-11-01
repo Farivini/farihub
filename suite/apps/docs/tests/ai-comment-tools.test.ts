@@ -185,7 +185,7 @@ describe('comment tools', () => {
       access,
     )
     expect(exec.isError).toBeFalsy()
-    expect(exec.mutated).toBe(false)
+    expect(exec.mutated).toBe(true) // a document store changed: part of the task's review
     expect(comments[0].done).toBe(true)
   })
 

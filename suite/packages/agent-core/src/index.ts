@@ -79,8 +79,11 @@ export {
   isOpenReview,
   markConflict,
   noteAiChange,
+  noteUserEdit,
+  rebaseAfter,
   rejectReview,
   startReview,
+  undoAccepted,
 } from './review-task'
 export type {
   ReviewAction,

@@ -88,7 +88,7 @@ describe('set_header_footer tool', () => {
     const { access, writes } = makeAccess(emptyState())
     const exec = run(editor, { kind: 'footer', text: '{PAGE} / {NUMPAGES}' }, access)
     expect(exec.isError).toBeFalsy()
-    expect(exec.mutated).toBe(false)
+    expect(exec.mutated).toBe(true) // a document store changed: part of the task's review
     expect(writes).toEqual([{ kind: 'footer', view: 'default', text: '{PAGE} / {NUMPAGES}' }])
     const first = run(editor, { kind: 'header', text: 'Cover', view: 'first' }, access)
     expect(first.output).toContain('first-page variant')

@@ -7,8 +7,11 @@ import {
   holdsSave,
   markConflict,
   noteAiChange,
+  noteUserEdit,
+  rebaseAfter,
   rejectReview,
   startReview,
+  undoAccepted,
   type ReviewTask,
 } from '../src/review-task'
 
@@ -187,5 +190,52 @@ describe('createReviewStore', () => {
     off()
     store.set(startReview('c', 1))
     expect(seen).toEqual(['a:pending', 'b:running', 'b:accepted', 'a:accepted'])
+  })
+})
+
+describe('Accept → Undo task', () => {
+  const accepted = (): ReviewTask<number> =>
+    acceptReview(finishRun(ranTask([2, 1]), { after: 2 }).task).task
+
+  it('undoes an accepted task of several changes in one action, confirmed by the editor', () => {
+    const step = undoAccepted(accepted(), 2)
+    expect(step).toMatchObject({ action: 'rollback', task: { status: 'reverting', changes: 3 } })
+    expect(holdsSave(step.task)).toBe(true)
+    const done = confirmRevert(step.task, true)
+    expect(done.status).toBe('undone')
+    expect(holdsSave(done)).toBe(false)
+  })
+
+  it('an unconfirmed undo leaves the task accepted, flagged, and claims nothing', () => {
+    const back = confirmRevert(undoAccepted(accepted(), 2).task, false)
+    expect(back).toMatchObject({ status: 'accepted', conflict: 'untracked' })
+    expect(undoAccepted(back, 2).action).toBe('none')
+  })
+
+  it('is refused once the document changed after the task', () => {
+    const step = undoAccepted(accepted(), 5)
+    expect(step).toMatchObject({ action: 'none', task: { status: 'accepted', conflict: 'edited' } })
+  })
+
+  it('follows a save that rewrote the document without changing it', () => {
+    const rebased = rebaseAfter(accepted(), 2, 20)
+    expect(undoAccepted(rebased, 20).action).toBe('rollback')
+    // a marker that is not the task's end is left alone
+    expect(rebaseAfter(accepted(), 7, 20).after).toBe(2)
+  })
+
+  it('only accepted tasks with changes can be undone', () => {
+    expect(undoAccepted(finishRun(ranTask([1]), { after: 1 }).task, 1).action).toBe('none')
+    expect(undoAccepted(finishRun(startReview('e', 0), { after: 0 }).task, 0).action).toBe('none')
+  })
+})
+
+describe('noteUserEdit', () => {
+  it('marks a running task interleaved (a change outside the agent, e.g. a header edit)', () => {
+    const task = noteUserEdit(ranTask([1]))
+    expect(task.interleaved).toBe(true)
+    const end = finishRun(task, { after: 1, error: 'boom' })
+    expect(end).toMatchObject({ action: 'none', task: { status: 'pending', conflict: 'edited' } })
+    expect(noteUserEdit(end.task)).toBe(end.task)
   })
 })

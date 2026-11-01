@@ -26,7 +26,14 @@
  */
 
 export type ReviewStatus =
-  'running' | 'pending' | 'reverting' | 'accepted' | 'rejected' | 'rolled-back'
+  | 'running'
+  | 'pending'
+  | 'reverting'
+  | 'accepted'
+  | 'rejected'
+  | 'rolled-back'
+  /** accepted, then undone as a whole by the user (Accept → Undo task) */
+  | 'undone'
 
 /**
  * Why the task cannot be undone as a unit:
@@ -57,7 +64,7 @@ export interface ReviewTask<M> {
   /** the run's failure message, when it failed */
   readonly failure?: string
   /** what the pending revert is for */
-  readonly reverting?: 'reject' | 'failure'
+  readonly reverting?: 'reject' | 'failure' | 'undo'
 }
 
 /** What the editor has to do after a transition. */
@@ -186,13 +193,58 @@ export function rejectReview<M>(
 export function confirmRevert<M>(task: ReviewTask<M>, reverted: boolean): ReviewTask<M> {
   if (task.status !== 'reverting') return task
   const { reverting, ...rest } = task
-  if (!reverted) return { ...rest, status: 'pending', conflict: 'untracked' }
-  return { ...rest, status: reverting === 'failure' ? 'rolled-back' : 'rejected' }
+  if (!reverted) {
+    // an unconfirmed undo of an accepted task leaves it accepted (its changes stay)
+    return { ...rest, status: reverting === 'undo' ? 'accepted' : 'pending', conflict: 'untracked' }
+  }
+  return {
+    ...rest,
+    status: reverting === 'failure' ? 'rolled-back' : reverting === 'undo' ? 'undone' : 'rejected',
+  }
+}
+
+/**
+ * Accept → Undo task: an accepted task is undone as a unit, while the document still
+ * is what the task left (no edit, no other task since). Saving waits for the editor's
+ * confirmation, as for a Reject; the undone state is then saved like any change.
+ */
+export function undoAccepted<M>(
+  task: ReviewTask<M>,
+  current: M,
+  same: SameMarker<M> = defaultSame,
+): ReviewStep<M> {
+  if (task.status !== 'accepted' || task.changes === 0) return { task, action: 'none' }
+  if (task.conflict) return { task, action: 'none' }
+  if (task.untracked) return { task: { ...task, conflict: 'untracked' }, action: 'none' }
+  if (task.after === undefined || !same(task.after, current)) {
+    return { task: { ...task, conflict: 'edited' }, action: 'none' }
+  }
+  return { task: { ...task, status: 'reverting', reverting: 'undo' }, action: 'rollback' }
+}
+
+/**
+ * The editor rewrote the document without changing its content (a save that reloads
+ * the file): the task's end marker follows, so a later Undo still matches.
+ */
+export function rebaseAfter<M>(
+  task: ReviewTask<M>,
+  from: M,
+  to: M,
+  same: SameMarker<M> = defaultSame,
+): ReviewTask<M> {
+  if (task.after === undefined || !same(task.after, from)) return task
+  return { ...task, after: to }
+}
+
+/** The user edited the document while the task was running (outside the agent's changes). */
+export function noteUserEdit<M>(task: ReviewTask<M>): ReviewTask<M> {
+  if (task.status !== 'running' || task.interleaved) return task
+  return { ...task, interleaved: true }
 }
 
 /** The editor noticed a change that undoing the task would also revert. */
 export function markConflict<M>(task: ReviewTask<M>, reason: ReviewConflict): ReviewTask<M> {
-  if (task.status !== 'pending' || task.conflict) return task
+  if ((task.status !== 'pending' && task.status !== 'accepted') || task.conflict) return task
   return { ...task, conflict: reason }
 }
 

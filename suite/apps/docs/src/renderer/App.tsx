@@ -393,8 +393,14 @@ import { stepHangingIndent, stepParagraphIndent } from './editor/indent'
 import { PasswordDialog } from './components/PasswordDialog'
 import { ProtectDialog, type ProtectDialogResult } from './components/ProtectDialog'
 import { t, useI18n } from './i18n/locale'
-import { holdsSave } from '@genoffice/agent-core'
-import { docsReview } from './ai/review-store'
+import { holdsSave, rebaseAfter } from '@genoffice/agent-core'
+import { docsReview, docsReviewHost, sameDocsMarker } from './ai/review-store'
+import {
+  captureDocStores,
+  docStoresDeps,
+  docStoresFingerprint,
+  restoreDocStores,
+} from './ai/doc-stores'
 import {
   getActiveSubEditor,
   setActiveSubEditor,
@@ -407,6 +413,7 @@ import { applyTocPageDisplays, backfillTocPageDom } from './editor/toc-refresh'
 import { setSelectionAlign } from './editor/direction'
 
 import {
+  TABLE_TRAILING_SKIP,
   editorExtensions,
   findFloatImageAt,
   resolvedCommentsPluginKey,
@@ -484,6 +491,7 @@ import {
 } from './doc-state'
 import {
   applyAiDocContent as applyAiDocContentImpl,
+  applyParsedRuntime,
   exportPdf as exportPdfImpl,
   exportHtml as exportHtmlImpl,
   exportMarkdown as exportMarkdownImpl,
@@ -2495,7 +2503,7 @@ export function App() {
     }
   }
 
-  const save = useCallback((saveAs: boolean, auto = false): Promise<boolean> => {
+  const save = useCallback(async (saveAs: boolean, auto = false): Promise<boolean> => {
     // Fariv: nothing writes the file while an AI task is running, under review or
     // being undone — not AutoSave, not the user's own Save (which would put undecided
     // changes in the file): each task is decided explicitly first
@@ -2504,9 +2512,30 @@ export function App() {
         const running = docsReview.open().some((task) => task.status === 'running')
         setStatus(running ? t('appAiSaveWaitsForTask') : t('appAiSaveWaitsForReview'))
       }
-      return Promise.resolve(false)
+      return false
     }
-    return saveImpl(fileCtxRef.current, saveAs, auto)
+    // A save reloads the document from the written file (new anchors, reparsed
+    // stores) without changing its content: accepted tasks that can still be undone
+    // follow it, so Accept → Undo task keeps working after AutoSave
+    const host = docsReviewHost.current
+    const undoable = docsReview
+      .list()
+      .filter((task) => task.status === 'accepted' && task.changes > 0 && !task.conflict)
+    const before = undoable.length > 0 && host ? host.marker() : null
+    const saved = await saveImpl(fileCtxRef.current, saveAs, auto)
+    if (saved && before && host) {
+      await host.settled()
+      const after = host.marker()
+      const textOf = (doc: unknown) => (doc as { textContent?: string } | null)?.textContent
+      // an edit typed while the file was being written is not part of the task
+      if (textOf(after.doc) === textOf(before.doc)) {
+        for (const task of undoable) {
+          const latest = docsReview.get(task.id)
+          if (latest) docsReview.set(rebaseAfter(latest, before, after, sameDocsMarker))
+        }
+      }
+    }
+    return saved
   }, [])
 
   // ---- Mailings: the data source and the merge ----
@@ -5877,7 +5906,10 @@ export function App() {
   useEffect(
     () =>
       docsReview.subscribe((task) => {
-        if (task.status === 'accepted' && task.changes > 0) acceptedUnsavedRef.current = true
+        // accepted, or accepted and then undone: the file must catch up
+        if ((task.status === 'accepted' || task.status === 'undone') && task.changes > 0) {
+          acceptedUnsavedRef.current = true
+        }
         if (!acceptedUnsavedRef.current || holdsSave(docsReview.list())) return
         acceptedUnsavedRef.current = false
         const cur = fileCtxRef.current
@@ -5887,6 +5919,86 @@ export function App() {
       }),
     [save],
   )
+
+  // ---- Fariv review host (ai/review-store.ts): what the AI review needs from the app ----
+  // Store writes are React state, visible after the next commit: `settled()` resolves
+  // after it (forcing one), and store changes are reported once committed.
+  const settleWaitersRef = useRef<Array<() => void>>([])
+  const [, setSettleTick] = useState(0)
+  useEffect(() => {
+    if (settleWaitersRef.current.length === 0) return
+    for (const resolve of settleWaitersRef.current.splice(0)) resolve()
+  })
+  const storesListenersRef = useRef(new Set<(fingerprint: string) => void>())
+  const lastStoresFpRef = useRef<string | null>(null)
+  useEffect(
+    () => {
+      const fingerprint = docStoresFingerprint(fileCtxRef.current)
+      const previous = lastStoresFpRef.current
+      lastStoresFpRef.current = fingerprint
+      if (previous === null || previous === fingerprint) return
+      for (const listener of [...storesListenersRef.current]) listener(fingerprint)
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    docStoresDeps(fileCtxRef.current),
+  )
+  const reviewEditorRef = useRef(editor)
+  reviewEditorRef.current = editor
+  const nextCommit = () =>
+    new Promise<void>((resolve) => {
+      settleWaitersRef.current.push(resolve)
+      setSettleTick((n) => n + 1)
+    })
+  docsReviewHost.current = {
+    // one commit is not always enough: a store write can make an effect write another
+    // store (page setup → derived section state); wait until a commit leaves them alone
+    settled: async () => {
+      await nextCommit()
+      for (let round = 0; round < 8; round += 1) {
+        const before = docStoresFingerprint(fileCtxRef.current)
+        await nextCommit()
+        if (docStoresFingerprint(fileCtxRef.current) === before) return
+      }
+    },
+    marker: () => ({
+      doc: reviewEditorRef.current?.state.doc ?? null,
+      stores: docStoresFingerprint(fileCtxRef.current),
+    }),
+    capture: () => {
+      const ed = reviewEditorRef.current
+      const ctx = fileCtxRef.current
+      if (!ed || !ctx.doc) return null
+      return { parsed: ctx.doc.parsed, pm: ed.getJSON(), stores: captureDocStores(ctx) }
+    },
+    restore: (snapshot) => {
+      const ed = reviewEditorRef.current
+      const ctx = fileCtxRef.current
+      if (!ed || !ctx.doc) return false
+      const parsed = snapshot.parsed as typeof ctx.doc.parsed
+      // a save since the task rebased the document onto the written file: go back to
+      // the package the snapshot's anchors point into
+      const rebased = ctx.doc.parsed !== parsed
+      if (rebased) {
+        applyParsedRuntime(ctx, ed, parsed)
+        ctx.setDoc((prev) => (prev ? { ...prev, parsed } : prev))
+      }
+      ed.chain()
+        .setMeta(TABLE_TRAILING_SKIP, true)
+        .setMeta(TRACK_IGNORE, true)
+        .setContent(snapshot.pm as never)
+        .run()
+      restoreDocStores(ctx, snapshot.stores)
+      // the file already holds what is being undone: the restored session is written again
+      if (rebased) ctx.dirtyRef.current = true
+      return true
+    },
+    subscribeStores: (listener) => {
+      storesListenersRef.current.add(listener)
+      return () => {
+        storesListenersRef.current.delete(listener)
+      }
+    },
+  }
 
   useEffect(() => {
     // editing shortcuts only fire when focus is in an editor surface (main
@@ -6772,6 +6884,18 @@ export function App() {
       exportHtmlTo: (path: string) => exportHtml(path),
       exportMarkdownTo: (path: string) => exportMarkdown(path),
       subEditor: () => getActiveSubEditor(),
+      // the document stores beside the editor (header/footer text, page setup), as
+      // the save would write them
+      stores: () => {
+        const ctx = fileCtxRef.current
+        const hf = aiHfAccessRef.current?.read()
+        return {
+          header: hf?.header ?? '',
+          footer: hf?.footer ?? '',
+          orientation: ctx.section?.orientation ?? null,
+          pageWidth: ctx.section?.pageWidth ?? null,
+        }
+      },
     }
   }, [editor, openRecent, save, status, exportPdf, exportHtml, exportMarkdown])
 
@@ -7123,6 +7247,8 @@ export function App() {
     }),
     [],
   )
+  const aiHfAccessRef = useRef(aiHfAccess)
+  aiHfAccessRef.current = aiHfAccess
 
   // AI page-setup tool: reads the live section list (block ranges in PM
   // indexes) and writes through the Layout tab's paths. The mirror lets a

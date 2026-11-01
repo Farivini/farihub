@@ -74,6 +74,7 @@ Um modelo único para os três editores (`packages/agent-core/src/review-task.ts
 | A IA trabalha | Cada mudança da IA é registrada com o marcador do documento **antes e depois** dela. O arquivo em disco não muda: nada salva enquanto a tarefa roda. |
 | A tarefa termina com alterações | Cartão "N alterações da IA no documento aberto — o arquivo ainda não foi alterado", com **Aceitar** e **Rejeitar**. |
 | Aceitar | Mantém a tarefa inteira (todas as operações) numa ação. Com o salvamento automático ligado, grava assim que **nenhuma outra tarefa** estiver aberta; desligado, fica pendente como uma edição manual. |
+| Aceitar → **Desfazer tarefa** (Documentos) | Desfaz numa ação a tarefa já aceita, **mesmo depois de o salvamento automático tê-la gravado**: volta o documento, os estados do DOCX e a base do arquivo de antes da tarefa, confirma e grava de novo. Fica indisponível (com explicação) assim que o documento recebe outra edição ou outra tarefa depois dela. |
 | Rejeitar | Desfaz a tarefa inteira numa ação: planilha pelos passos de desfazer da tarefa, documento pelo snapshot de antes da tarefa, apresentação pelo snapshot do lote no processo principal (inclui a passada de QC). O cartão mostra "Desfazendo…" e **o salvamento só é liberado depois que o editor confirma** que o documento voltou ao estado de antes da tarefa. Planilha: posição do histórico igual à inicial. Documento: igualdade estrutural com o documento inicial. Apresentação: impressão digital do deck no processo principal igual à inicial. |
 | Falha no meio, sem interferência | A tarefa é desfeita e só então o cartão diz "as alterações dela foram desfeitas". |
 | Falha no meio **com edição manual durante a tarefa** | A edição da pessoa fica; a tarefa **não** é desfeita (desfazer em bloco levaria a edição junto). As alterações parciais da IA ficam no cartão, sinalizadas ("não foram desfeitas automaticamente"), Rejeitar fica indisponível e o arquivo não é salvo até a pessoa decidir. |
@@ -81,7 +82,20 @@ Um modelo único para os três editores (`packages/agent-core/src/review-task.ts
 | O documento mudou depois da tarefa | Rejeitar é recusado (cartão em vermelho), porque desfaria também a edição da pessoa. Aceitar continua possível, e o Desfazer passo a passo também. |
 | Nova instrução, "Nova conversa", Salvar | **Nenhum deles decide uma tarefa pendente.** Ela continua aberta até Aceitar ou Rejeitar explícitos. Depois de uma nova conversa, as pendentes aparecem em "Alterações da IA aguardando decisão", acima do campo de mensagem. Com qualquer tarefa aberta, o salvamento automático **e o salvamento manual** esperam, com o aviso "Há alterações da IA aguardando decisão". A cópia de recuperação da planilha continua sendo gravada. |
 
-Marcadores: planilha = profundidade e identidade do topo da pilha de desfazer (no livro em memória, também uma impressão digital do conteúdo); documento = o nó do documento ProseMirror, comparado estruturalmente; apresentação = impressão digital SHA-1 do deck, lida do processo principal (`slides:deck-fingerprint`).
+Marcadores: planilha = profundidade e identidade do topo da pilha de desfazer (no livro em memória, também uma impressão digital do conteúdo); documento = o nó do documento ProseMirror, comparado estruturalmente, **mais uma impressão digital dos estados do DOCX** (abaixo); apresentação = impressão digital SHA-1 do deck, lida do processo principal (`slides:deck-fingerprint`).
+
+**Documentos: tudo o que o .docx grava entra na revisão.** Além do texto, uma tarefa pode alterar estados que ficam ao lado do documento ProseMirror e são gravados no salvamento. A lista vem do próprio contexto de salvamento (`apps/docs/src/renderer/ai/doc-stores.ts`):
+- cabeçalhos e rodapés, incluindo variantes e edições por seção;
+- seções e configuração de página, cor da página e numeração de páginas e de listas;
+- estilos pendentes, comentários, marca d'água, tinta, notas de rodapé e de fim, fontes bibliográficas, tema, fontes padrão e proteção do documento.
+
+O tratamento desses estados:
+- `set_header_footer`, `set_page_setup`, `define_style`, `set_watermark` (texto e imagem) e `resolve_comment` agora declaram a mudança (`mutated: true`). Antes, uma tarefa só de cabeçalho ou de página terminava "aceita" sem decisão.
+- Antes de cada tarefa é guardada a **sessão inteira**: a base do arquivo (o pacote lido, para onde apontam as âncoras), o documento e uma cópia de todos esses estados com seus indicadores de pendência.
+- Rejeitar, uma falha e o Desfazer tarefa restauram tudo isso. Se um salvamento ocorreu no meio, a restauração volta também à base do arquivo de antes, e o salvamento seguinte regrava o arquivo de antes da tarefa.
+- A confirmação compara documento e estados com o estado inicial.
+- Como esses estados são estado do React, marcadores e confirmações esperam o React terminar de aplicar as gravações: `settled()` espera até um commit deixar os estados estáveis, porque uma mudança de página dispara efeitos que gravam outros estados.
+- Uma mudança do usuário num desses estados durante a tarefa (por exemplo, editar o cabeçalho) conta como edição intercalada, igual a uma edição no texto. Ativar ou desativar o Controlar Alterações é um modo, não conteúdo: não entra.
 
 **Limitação conhecida:** uma edição manual feita **exatamente enquanto** uma ferramenta da IA está sendo aplicada (uma janela de milissegundos, entre o início e o fim da mesma ferramenta) é atribuída à IA. Fora dessa janela, a edição é detectada.
 
@@ -98,6 +112,9 @@ Reaproveitado da base, sem reescrever: o loop de agente (`AgentLoop`), as ferram
 | Falha sem interferência: desfeita e confirmada | ✓ | ✓ | ✓ |
 | **Nova instrução e nova conversa** não decidem a pendente; aceitar uma enquanto outra está aberta não salva; ao rejeitar a outra, só a aceita é gravada | ✓ | ✓ | ✓ |
 | **Histórico insuficiente** (lote de 104 mil células): falha não anunciada como desfeita, tarefa sinalizada, arquivo intacto | ✓ | — | — |
+| Tarefa **só de cabeçalho** entra em revisão; rejeitar e falha restauram o cabeçalho; nenhuma parte do pacote muda | — | ✓ | — |
+| Tarefa **mista** (texto + cabeçalho + página em paisagem): rejeitar e falha restauram os três; pacote intacto | — | ✓ | — |
+| **Aceitar → Desfazer tarefa** depois do salvamento automático: texto, cabeçalho e orientação voltam, e o arquivo regravado não os contém; recusado após uma edição posterior | — | ✓ | — |
 
 Unitários: `packages/agent-core/tests/review-task.test.ts` (17 casos: edição intercalada, reversão não confirmada, histórico insuficiente, várias tarefas abertas, decisão em uma ação), `packages/ui/tests/ai-review-card.test.ts` (estados do cartão, lista de pendentes), provedores e seletor de modelo com o Codex como padrão.
 
@@ -159,6 +176,7 @@ Registradas antes de qualquer porte. Nada do Farihub foi removido; a base é usa
 - Conexão real com o Codex: validar no Windows com a conta do usuário (passos na etapa 3). Os testes daqui usam um modelo simulado.
 - Servidor MCP para agentes externos (desligado por padrão): com ele ligado, as ferramentas `apply_*` editam o documento aberto sem passar pelo cartão de revisão; só o salvamento silencioso deles é bloqueado durante uma revisão na planilha. Levar as escritas do MCP para o mesmo fluxo de tarefa antes de habilitá-lo por padrão.
 - Documento: com "Controlar alterações" ligado, a tarefa também fica como revisões pendentes na guia Revisão; o cartão aceita ou rejeita a tarefa inteira, e a guia continua aceitando ou rejeitando revisão por revisão.
+- Aceitar → Desfazer tarefa existe só em Documentos. Na planilha, o salvamento reinicia a pilha de desfazer do Univer. Na apresentação, falta ligar o snapshot do lote ao salvamento. Até lá, depois de aceita, a tarefa se desfaz com Ctrl+Z passo a passo.
 - Rascunho isolado: hoje a prévia é o próprio documento aberto. Uma cópia separada para a IA, com mescla ao aceitar, eliminaria a janela de atribuição durante a aplicação de uma ferramenta e permitiria editar livremente enquanto a IA trabalha.
 - Conflito por mudança no disco (`disk`) está no modelo, mas ainda não ligado à observação de arquivo de cada editor.
 - Validação no Windows real (instalar, abrir, salvar): o CI produz o instalador; falta rodá-lo numa máquina Windows.

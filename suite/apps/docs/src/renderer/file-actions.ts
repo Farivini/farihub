@@ -357,6 +357,26 @@ export function restoreMarksAfterDocRewrite(editor: Editor, snapshot: string | n
 }
 
 /** doc-level layout inputs living outside CSS: default tab grid + hyphenation lang */
+/**
+ * Apply what the editor derives from a parsed package (list numbering, layout
+ * settings, lazy media, font table, document CSS) — the same steps a save runs
+ * when it rebases onto the reparsed file. The Fariv review reuses it to bring
+ * back the pre-task session after a save (Accept → Undo task).
+ */
+export function applyParsedRuntime(
+  ctx: Pick<FileActionContext, 'setDocCss'>,
+  editor: Editor,
+  parsed: ParsedDocFull,
+): void {
+  setLazyMediaHashes(parsed.extras.lazyMediaHashes)
+  setDocFontTable(parsed.fontTable)
+  editor.storage.listNumbering.styles = parsed.styles
+  editor.storage.listNumbering.docDefaults = parsed.docDefaults
+  editor.storage.listNumbering.defs = parsed.numbering
+  applyDocLayoutSettings(editor, parsed)
+  ctx.setDocCss(docStyleCss(parsed))
+}
+
 function applyDocLayoutSettings(editor: Editor, parsed: ParsedDocFull): void {
   setNoteNumFmts({ footnote: parsed.footnoteProps, endnote: parsed.endnoteProps })
   editor.storage.tabStops.defaultTabStopTwips = parsed.defaultTabStopTwips ?? null

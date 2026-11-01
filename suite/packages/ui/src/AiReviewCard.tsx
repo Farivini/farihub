@@ -13,11 +13,14 @@ export function AiReviewCard({
   lang,
   onAccept,
   onReject,
+  onUndo,
 }: {
   readonly task: ReviewTask<unknown>
   readonly lang: string
   readonly onAccept: () => void
   readonly onReject: () => void
+  /** Accept → Undo task; omitted where the editor does not offer it */
+  readonly onUndo?: (() => void) | undefined
 }) {
   const labels = aiReviewLabels(lang)
   if (task.status === 'running') return null
@@ -73,7 +76,30 @@ export function AiReviewCard({
         </>
       )}
       {task.status === 'reverting' && <span className="ai-review-text">{labels.reverting}</span>}
-      {task.status === 'accepted' && <span className="ai-review-text">{labels.accepted}</span>}
+      {task.status === 'accepted' && (
+        <>
+          <span className="ai-review-text">{labels.accepted}</span>
+          {onUndo && task.changes > 0 && task.conflict && (
+            <span className="ai-review-conflict" role="alert">
+              {labels.undoUnavailable}
+            </span>
+          )}
+          {onUndo && task.changes > 0 && (
+            <span className="ai-review-actions">
+              <button
+                type="button"
+                className="ai-review-btn ai-review-undo"
+                title={labels.undoTaskTitle}
+                disabled={Boolean(task.conflict)}
+                onClick={onUndo}
+              >
+                {labels.undoTask}
+              </button>
+            </span>
+          )}
+        </>
+      )}
+      {task.status === 'undone' && <span className="ai-review-text">{labels.undone}</span>}
       {task.status === 'rejected' && <span className="ai-review-text">{labels.rejected}</span>}
       {task.status === 'rolled-back' && (
         <span className="ai-review-text ai-review-failed">{labels.rolledBack}</span>

@@ -114,3 +114,47 @@ describe('AiOpenReviews', () => {
     expect(none.innerHTML).toBe('')
   })
 })
+
+describe('AiReviewCard — Accept → Undo task', () => {
+  const accepted = acceptReview(finishRun(ran(3), { after: 2 }).task).task
+
+  it('offers Undo task on an accepted task where the editor supports it', () => {
+    const onUndo = vi.fn()
+    const host = render(
+      createElement(AiReviewCard, {
+        task: accepted,
+        lang: 'pt',
+        onAccept: () => {},
+        onReject: () => {},
+        onUndo,
+      }),
+    )
+    expect(host.textContent).toContain('Alterações aceitas')
+    const undo = host.querySelector<HTMLButtonElement>('.ai-review-undo')!
+    expect(undo.textContent).toBe('Desfazer tarefa')
+    act(() => undo.click())
+    expect(onUndo).toHaveBeenCalledOnce()
+    // without the handler (editors that do not offer it) there is no button
+    expect(card(accepted).querySelector('.ai-review-undo')).toBeNull()
+  })
+
+  it('explains and disables Undo task when it is no longer possible', () => {
+    const host = render(
+      createElement(AiReviewCard, {
+        task: { ...accepted, conflict: 'edited' as const },
+        lang: 'pt',
+        onAccept: () => {},
+        onReject: () => {},
+        onUndo: () => {},
+      }),
+    )
+    expect(host.querySelector<HTMLButtonElement>('.ai-review-undo')!.disabled).toBe(true)
+    expect(host.textContent).toContain('não pode mais ser desfeita de uma vez')
+  })
+
+  it('states an undone task', () => {
+    expect(card({ ...accepted, status: 'undone' }).textContent).toContain(
+      'Tarefa aceita e depois desfeita',
+    )
+  })
+})

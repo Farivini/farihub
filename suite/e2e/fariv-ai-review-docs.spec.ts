@@ -17,7 +17,9 @@ import {
  * The task's paragraphs are shown in the open document (a preview, not an isolated
  * draft); the file is written only after an explicit Accept.
  *
- * Instruction directives read by the simulated model:
+ * Instruction directives read by the simulated model (in this order):
+ *   HEADER: texto            set_header_footer (default header) — a store beside the document
+ *   LANDSCAPE                set_page_setup (landscape) — the section settings
  *   PARAS: texto 1|texto 2   one insert_content (at the start) per `|` part
  *   ESPERA                   hold the run (after the changes) until the test releases it
  *   FALHA                    then fail with HTTP 500
@@ -35,8 +37,44 @@ async function documentXml(path: string): Promise<string> {
   return (await zip.file('word/document.xml')?.async('string')) ?? ''
 }
 
+/** every XML part of the saved package (body, headers, settings…), in name order */
+async function allXml(path: string): Promise<string> {
+  const zip = await JSZip.loadAsync(await readFile(path))
+  const parts = Object.values(zip.files)
+    .filter((f) => !f.dir && f.name.endsWith('.xml'))
+    .sort((a, b) => a.name.localeCompare(b.name))
+  return (await Promise.all(parts.map((f) => f.async('string')))).join('\n')
+}
+
+function stores(page: Page) {
+  return page.evaluate(() => (window as unknown as DocsWindow).__aidocs!.stores())
+}
+
 function editorText(page: Page): Promise<string> {
   return page.evaluate(() => (window as unknown as DocsWindow).__aidocs!.editor!.getText())
+}
+
+/** the simulated model's tool calls for one run, from the instruction's directives */
+function docsSteps(run: RunContext) {
+  const header = directive(run.instruction, 'HEADER')
+  const paragraphs = directive(run.instruction, 'PARAS').split('|').filter(Boolean)
+  return [
+    ...(header
+      ? [
+          () => ({
+            tool: 'set_header_footer',
+            args: { kind: 'header', view: 'default', text: header },
+          }),
+        ]
+      : []),
+    ...(run.instruction.includes('LANDSCAPE')
+      ? [() => ({ tool: 'set_page_setup', args: { orientation: 'landscape' } })]
+      : []),
+    ...paragraphs.map((value) => () => ({
+      tool: 'insert_content',
+      args: { html: `<p>${value}</p>`, afterBlockIndex: -1 },
+    })),
+  ]
 }
 
 async function ask(page: Page, instruction: string): Promise<void> {
@@ -48,14 +86,7 @@ async function ask(page: Page, instruction: string): Promise<void> {
 test('documento: revisão da tarefa da IA — decisão explícita, nada parcial, edição manual preservada', async () => {
   test.setTimeout(240_000)
   let gate = { reached: deferred(), release: deferred() }
-  const { server, port } = await startScriptedModel((run) => {
-    const paragraphs = directive(run.instruction, 'PARAS').split('|').filter(Boolean)
-    const steps = paragraphs.map((value) => () => ({
-      tool: 'insert_content',
-      args: { html: `<p>${value}</p>`, afterBlockIndex: -1 },
-    }))
-    return scriptedRun(run, steps, gate)
-  })
+  const { server, port } = await startScriptedModel((run) => scriptedRun(run, docsSteps(run), gate))
   const dir = await mkdtemp(join(tmpdir(), 'fariv-review-docx-'))
   const doc = join(dir, 'relatorio.docx')
   await copyFile(DOCX_FIXTURE, doc)
@@ -176,6 +207,121 @@ test('documento: revisão da tarefa da IA — decisão explícita, nada parcial,
     expect(await documentXml(doc)).not.toContain('Pendente Q')
   } finally {
     await closeAndSaveVideo(launched, 'fariv-ai-review-docs')
+    server.close()
+  }
+})
+
+test('documento: cabeçalho, configuração de página e Aceitar → desfazer a tarefa inteira', async () => {
+  test.setTimeout(240_000)
+  const { server, port } = await startScriptedModel((run) => scriptedRun(run, docsSteps(run)))
+  const dir = await mkdtemp(join(tmpdir(), 'fariv-review-docx-stores-'))
+  const doc = join(dir, 'relatorio.docx')
+  await copyFile(DOCX_FIXTURE, doc)
+  const userDataDir = await mkdtemp(join(tmpdir(), 'fariv-review-docx-stores-ud-'))
+  await useScriptedModel(userDataDir, port)
+  const launched = await launchShell({
+    userDataDir,
+    onboardingSeen: true,
+    settings: { autoSaveDefault: true, autoSaveDefaultUpdatedAt: Date.now() },
+    videoDir: 'fariv-ai-review-docs-stores',
+    openFile: doc,
+    lang: 'pt',
+  })
+  try {
+    const docs = await waitForPageWithUrl(launched.app, '://docs/')
+    await docs.waitForFunction(() => !!(window as unknown as DocsWindow).__aidocs?.editor, null, {
+      timeout: 30_000,
+    })
+    await docs.waitForTimeout(1_000)
+    const rail = docs.locator('.ai-rail')
+    if (await rail.isVisible()) await rail.click()
+    const cards = docs.locator('.ai-panel .ai-review-card')
+    const lastCard = () => cards.last()
+    const original = await allXml(doc)
+    const storesBefore = await stores(docs)
+    const textBefore = await editorText(docs)
+    expect(storesBefore.orientation).toBe('portrait')
+
+    // 1) a task that only changes the header is reviewed (not accepted silently);
+    //    Reject puts the header back and the file is untouched
+    await ask(docs, 'Cabeçalho.\nHEADER: Cabeçalho rejeitado')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await expect(lastCard()).toContainText('1 alteração da IA no documento aberto')
+    expect((await stores(docs)).header).toBe('Cabeçalho rejeitado')
+    await docs.waitForTimeout(2_000)
+    expect(await allXml(doc)).toBe(original)
+    await lastCard().locator('.ai-review-reject').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'rejected')
+    expect(await stores(docs)).toEqual(storesBefore)
+    expect(await allXml(doc)).toBe(original)
+
+    // 2) a header-only task that fails is undone, confirmed
+    await ask(docs, 'Cabeçalho e falhe.\nHEADER: Cabeçalho com falha\nFALHA')
+    await expect(lastCard()).toHaveAttribute('data-review', 'rolled-back', { timeout: 30_000 })
+    expect(await stores(docs)).toEqual(storesBefore)
+    expect(await allXml(doc)).toBe(original)
+
+    // 3) a task mixing text, header and page setup is rejected as a whole
+    await ask(docs, 'Misture.\nHEADER: Cabeçalho misto\nLANDSCAPE\nPARAS: Texto misto')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await expect(lastCard()).toContainText('3 alterações da IA')
+    expect(await stores(docs)).toMatchObject({
+      header: 'Cabeçalho misto',
+      orientation: 'landscape',
+    })
+    expect(await editorText(docs)).toContain('Texto misto')
+    await docs.screenshot({ path: screenshotPath('fariv-review-docs-mixed-pending') })
+    await lastCard().locator('.ai-review-reject').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'rejected')
+    expect(await stores(docs)).toEqual(storesBefore)
+    expect(await editorText(docs)).toBe(textBefore)
+    expect(await allXml(doc)).toBe(original)
+
+    // 4) the same mix failing midway is undone as a whole, confirmed
+    await ask(
+      docs,
+      'Misture e falhe.\nHEADER: Cabeçalho parcial\nLANDSCAPE\nPARAS: Texto parcial\nFALHA',
+    )
+    await expect(lastCard()).toHaveAttribute('data-review', 'rolled-back', { timeout: 30_000 })
+    expect(await stores(docs)).toEqual(storesBefore)
+    expect(await editorText(docs)).toBe(textBefore)
+    expect(await allXml(doc)).toBe(original)
+
+    // 5) Accept writes text, header and page setup; Accept → Undo task takes all of it
+    //    back in one action — after AutoSave already wrote it — and the file follows
+    await ask(docs, 'Misture.\nHEADER: Cabeçalho aceito\nLANDSCAPE\nPARAS: Texto aceito')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await lastCard().locator('.ai-review-accept').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'accepted')
+    await expect.poll(() => allXml(doc), POLL).toContain('Texto aceito')
+    expect(await allXml(doc)).toContain('Cabeçalho aceito')
+    expect(await allXml(doc)).toContain('w:orient="landscape"')
+    await docs.screenshot({ path: screenshotPath('fariv-review-docs-accepted-undo') })
+    await lastCard().locator('.ai-review-undo').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'undone', { timeout: 30_000 })
+    expect(await stores(docs)).toEqual(storesBefore)
+    expect(await editorText(docs)).toBe(textBefore)
+    await expect.poll(() => allXml(doc), POLL).not.toContain('Texto aceito')
+    expect(await allXml(doc)).not.toContain('Cabeçalho aceito')
+    expect(await allXml(doc)).not.toContain('w:orient="landscape"')
+
+    // 6) once the user edits after the task, Undo task is refused (it would take the edit)
+    await ask(docs, 'Insira.\nPARAS: Aceito e depois editado')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await lastCard().locator('.ai-review-accept').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'accepted')
+    await docs.evaluate(() =>
+      (window as unknown as DocsWindow).__aidocs!.editor!.commands.focus('end'),
+    )
+    await docs.keyboard.type(' Edição posterior.', { delay: 20 })
+    await lastCard().locator('.ai-review-undo').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'conflict-edited')
+    await expect(lastCard().locator('.ai-review-undo')).toBeDisabled()
+    await expect(lastCard()).toContainText('não pode mais ser desfeita de uma vez')
+    expect(await editorText(docs)).toContain('Aceito e depois editado')
+    expect(await editorText(docs)).toContain('Edição posterior.')
+  } finally {
+    await closeAndSaveVideo(launched, 'fariv-ai-review-docs-stores')
     server.close()
   }
 })

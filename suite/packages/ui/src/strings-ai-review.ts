@@ -26,6 +26,13 @@ export interface AiReviewLabels {
   conflictUntracked: string
   /** heading of the tasks still waiting for a decision (shown after a new conversation) */
   openTitle: string
+  /** Accept → undo the whole task (button and tooltip) */
+  undoTask: string
+  undoTaskTitle: string
+  /** an accepted task undone as a whole */
+  undone: string
+  /** an accepted task that can no longer be undone as a whole */
+  undoUnavailable: string
 }
 
 const pt: AiReviewLabels = {
@@ -48,6 +55,11 @@ const pt: AiReviewLabels = {
   conflictUntracked:
     'Não há histórico suficiente para desfazer esta tarefa de uma vez. Aceite, ou feche o arquivo sem salvar para descartá-la.',
   openTitle: 'Alterações da IA aguardando decisão',
+  undoTask: 'Desfazer tarefa',
+  undoTaskTitle: 'Desfazer de uma vez todas as alterações desta tarefa aceita',
+  undone: 'Tarefa aceita e depois desfeita',
+  undoUnavailable:
+    'Esta tarefa não pode mais ser desfeita de uma vez: o documento mudou depois dela ou não há histórico suficiente. Use Desfazer (Ctrl+Z) passo a passo.',
 }
 
 const en: AiReviewLabels = {
@@ -70,6 +82,11 @@ const en: AiReviewLabels = {
   conflictUntracked:
     'There is not enough history to undo this task in one step. Accept it, or close the file without saving to discard it.',
   openTitle: 'AI changes waiting for a decision',
+  undoTask: 'Undo task',
+  undoTaskTitle: 'Undo all the changes of this accepted task at once',
+  undone: 'Task accepted, then undone',
+  undoUnavailable:
+    'This task can no longer be undone in one step: the document changed after it or there is not enough history. Use Undo (Ctrl+Z) step by step.',
 }
 
 const es: AiReviewLabels = {
@@ -93,6 +110,11 @@ const es: AiReviewLabels = {
   conflictUntracked:
     'No hay historial suficiente para deshacer esta tarea de una vez. Acéptala, o cierra el archivo sin guardar para descartarla.',
   openTitle: 'Cambios de la IA pendientes de decisión',
+  undoTask: 'Deshacer tarea',
+  undoTaskTitle: 'Deshacer de una vez todos los cambios de esta tarea aceptada',
+  undone: 'Tarea aceptada y luego deshecha',
+  undoUnavailable:
+    'Esta tarea ya no se puede deshacer de una vez: el documento cambió después de ella o no hay historial suficiente. Usa Deshacer (Ctrl+Z) paso a paso.',
 }
 
 /** Portuguese and Spanish for the Fariv audience; every other interface language reads English. */

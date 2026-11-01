@@ -1092,7 +1092,8 @@ async function setPictureWatermark(
   if (error) return fail(summary, error)
   return {
     output: `Picture watermark set (${natural.width}x${natural.height}px source).`,
-    mutated: false, // header part state, written on save
+    // a document store changed (the watermark header part is written on save): part of the task's review
+    mutated: true,
     summary,
   }
 }
@@ -1789,7 +1790,8 @@ function executeSyncTool(
       }
       return {
         output: `Comment ${rootId} marked as resolved.`,
-        mutated: false, // app state only; the document content is untouched
+        // a document store changed (comments.xml is written on save): part of the task's review
+        mutated: true,
         summary: t('aiSumResolveComment'),
       }
     }
@@ -1971,7 +1973,8 @@ function executeSyncTool(
       if (error) return fail(summaryOf(), error)
       return {
         output: `Updated the ${kind}${view !== 'default' ? ` (${view}-page variant)` : ''}.`,
-        mutated: false, // app state only, saved with the document; not part of the PM doc
+        // a document store changed (header/footer parts are written on save): part of the task's review
+        mutated: true,
         summary: summaryOf(),
       }
     }
@@ -2015,7 +2018,8 @@ function executeSyncTool(
       }
       return {
         output: `Page setup updated.\n${lines.join('\n')}`,
-        mutated: false, // section settings live beside the document and are written on save
+        // a document store changed (section settings are written on save): part of the task's review
+        mutated: true,
         summary,
       }
     }
@@ -2061,7 +2065,8 @@ function executeSyncTool(
       const { styleId } = resolved.value.upsert
       return {
         output: `${resolved.value.existing ? 'Updated' : 'Created'} style ${styleId}; apply it with the applyStyle op { op: "applyStyle", target, styleId: "${styleId}" }.`,
-        mutated: false, // styles.xml is written on save; the PM doc is untouched
+        // a document store changed (styles.xml is written on save): part of the task's review
+        mutated: true,
         summary,
       }
     }
@@ -2075,7 +2080,8 @@ function executeSyncTool(
       if (error) return fail(summary, error)
       return {
         output: resolved.spec ? `Watermark set to "${resolved.spec.text}".` : 'Watermark removed.',
-        mutated: false, // header part state, written on save
+        // a document store changed (the watermark header part is written on save): part of the task's review
+        mutated: true,
         summary,
       }
     }
