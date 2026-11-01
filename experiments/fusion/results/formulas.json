@@ -1,0 +1,109 @@
+{
+  "scope": "13 synthetic probes with known answers, not Excel parity certification",
+  "results": [
+    {
+      "formula": "=SUM(1,2,3)",
+      "expected": 6,
+      "gridpath": 6,
+      "gridpathPass": true,
+      "ironcalcDisplay": "6",
+      "ironcalcPass": true
+    },
+    {
+      "formula": "=IF(TRUE,7,9)",
+      "expected": 7,
+      "gridpath": 7,
+      "gridpathPass": true,
+      "ironcalcDisplay": "7",
+      "ironcalcPass": true
+    },
+    {
+      "formula": "=ROUND(2.345,2)",
+      "expected": 2.35,
+      "gridpath": 2.35,
+      "gridpathPass": true,
+      "ironcalcDisplay": "2.35",
+      "ironcalcPass": true
+    },
+    {
+      "formula": "=DATE(2024,1,1)",
+      "expected": 45292,
+      "gridpath": 45292,
+      "gridpathPass": true,
+      "ironcalcDisplay": "1/1/2024",
+      "ironcalcPass": true
+    },
+    {
+      "formula": "=SUMIF(B1:B3,\">1\",C1:C3)",
+      "expected": 50,
+      "gridpath": 50,
+      "gridpathPass": true,
+      "ironcalcDisplay": "50",
+      "ironcalcPass": true
+    },
+    {
+      "formula": "=XLOOKUP(2,B1:B3,C1:C3)",
+      "expected": 20,
+      "gridpath": 20,
+      "gridpathPass": true,
+      "ironcalcDisplay": "20",
+      "ironcalcPass": true
+    },
+    {
+      "formula": "=XLOOKUP(2,{1;2;3},{10;20;30})",
+      "expected": 20,
+      "gridpath": "#N/A",
+      "gridpathPass": false,
+      "ironcalcDisplay": "#N/A",
+      "ironcalcPass": false
+    },
+    {
+      "formula": "=LET(x,5,x*2)",
+      "expected": 10,
+      "gridpath": 10,
+      "gridpathPass": true,
+      "ironcalcDisplay": "10",
+      "ironcalcPass": true
+    },
+    {
+      "formula": "=SUM(FILTER({1;2;3},{TRUE;FALSE;TRUE}))",
+      "expected": 4,
+      "gridpath": 4,
+      "gridpathPass": true,
+      "ironcalcDisplay": "4",
+      "ironcalcPass": true
+    },
+    {
+      "formula": "=SUM(SEQUENCE(3))",
+      "expected": 6,
+      "gridpath": 6,
+      "gridpathPass": true,
+      "ironcalcDisplay": "6",
+      "ironcalcPass": true
+    },
+    {
+      "formula": "=LAMBDA(x,x+1)(2)",
+      "expected": 3,
+      "gridpath": 3,
+      "gridpathPass": true,
+      "ironcalcDisplay": "3",
+      "ironcalcPass": true
+    },
+    {
+      "formula": "=TEXTJOIN(\"-\",TRUE,\"A\",\"B\")",
+      "expected": "A-B",
+      "gridpath": "A-B",
+      "gridpathPass": true,
+      "ironcalcDisplay": "A-B",
+      "ironcalcPass": true
+    },
+    {
+      "formula": "=IFERROR(1/0,99)",
+      "expected": 99,
+      "gridpath": 99,
+      "gridpathPass": true,
+      "ironcalcDisplay": "99",
+      "ironcalcPass": true
+    }
+  ]
+}
