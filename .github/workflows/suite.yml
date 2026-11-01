@@ -80,8 +80,9 @@ jobs:
       # The Fariv flows (open, edit, save and reopen in the three formats; review and undo)
       # plus the upstream smoke tests they build on.
       - run: xvfb-run --auto-servernum -- npm run test:e2e:fariv
+      # always: the screenshots are the PR's visual evidence (review cards, identity, round trips)
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: suite-e2e-artifacts
           path: |
