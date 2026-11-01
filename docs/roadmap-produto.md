@@ -23,6 +23,20 @@ Nada aqui é estimativa de prazo.
 - **Placeholders:** Documentos e Apresentações aparecem como “em preparação”; não há editor.
 - **Atenção:** o painel do assistente monta um contexto limitado (até 20 linhas de amostra, 30 colunas, 50 linhas de dinâmica). Isso **não** é capacidade de analisar a base inteira; ver “Execução da IA”.
 
+## Pacote Fariv sobre a base GenOffice OSS (`suite/`)
+
+Em andamento: o pacote desktop com os três editores no mesmo aplicativo usa a base GenOffice OSS escolhida no mapa de reaproveitamento (PR #9). O Farihub web desta página continua como referência; as decisões aprovadas dele são portadas sem apagar o original. Detalhes, verificações e diferenças em [suite-integracao.md](suite-integracao.md).
+
+| Item | Estado | Observação |
+| --- | --- | --- |
+| Base importada com origem, versão e licença rastreáveis | **Incorporado** | GenOffice `36a509e8`, Apache-2.0, sem `ee/`; `suite/UPSTREAM.md`. |
+| Planilhas, Documentos e Apresentações no mesmo app (XLSX, DOCX, PPTX) | **Incorporado** | Shell com abas da base; e2e Fariv abre, edita, salva e reabre os três formatos. |
+| Desenvolvimento com recarga e instalador Windows no CI | **Incorporado** | `npm run suite:dev`; `suite.yml` gera o instalador (sem assinatura). Falta validar num Windows real. |
+| Identidade Fariv, seletor central, barra enxuta | Planejado | Próxima etapa. Hoje o app ainda se apresenta como GenOffice/Genspark. |
+| Assistente nos arquivos abertos (Codex local), com rascunho, prévia, aceitar/rejeitar, desfazer e conflito | Planejado | A base aplica lotes direto (com desfazer); a revisão prévia é adaptação nossa. |
+| Claude local no mesmo contrato; tarefas recorrentes | Planejado | Componentes identificados no Nimbalyst. |
+| Fórmulas em português, CSV pt-BR, agregação para bases grandes | Planejado | Existem no Farihub; a base usa nomes em inglês, ponto decimal no CSV e limita a dinâmica a 10 mil linhas. |
+
 ## Planilhas
 
 | Item | Estado | Observação |
