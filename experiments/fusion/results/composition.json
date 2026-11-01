@@ -1,0 +1,14 @@
+{
+  "scope": "Headless composition proof; native pivot XML present; NOT verified in Excel",
+  "inputRows": 3,
+  "totalRevenue": 120,
+  "formulaAfterReopen": {
+    "content": "=B4*C4",
+    "display": "40",
+    "value": 40
+  },
+  "pivotParts": [
+    "xl/pivotTables/pivotTable1.xml"
+  ],
+  "bytes": 9848
+}
