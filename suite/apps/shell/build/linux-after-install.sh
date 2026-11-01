@@ -2,12 +2,12 @@
 # deb/rpm post-install. Replaces electron-builder's default template, so its
 # chrome-sandbox and AppArmor steps are repeated here (genoffice#2150).
 set -e
-app="/opt/GenOffice"
+app="/opt/Fariv"
 # Chromium aborts when the SUID helper exists without 4755; Chrome's deb sets it unconditionally.
 [ -f "$app/chrome-sandbox" ] && { chown root:root "$app/chrome-sandbox" 2>/dev/null || true; chmod 4755 "$app/chrome-sandbox" 2>/dev/null || true; }
 # Ubuntu 24.04+ restricts unprivileged userns; --skip-kernel-load doubles as the abi/4.0 check.
 profile_src="$app/resources/apparmor-profile"
-profile_dst="/etc/apparmor.d/genoffice"
+profile_dst="/etc/apparmor.d/fariv"
 if [ -f "$profile_src" ] && apparmor_status --enabled >/dev/null 2>&1; then
   if apparmor_parser --skip-kernel-load --debug "$profile_src" >/dev/null 2>&1; then
     cp -f "$profile_src" "$profile_dst"
@@ -35,7 +35,7 @@ link="/usr/bin/genoffice"
 [ -x "$launcher" ] || exit 0
 if [ -L "$link" ]; then
   case "$(readlink "$link")" in
-    /opt/GenOffice/*) ;;
+    /opt/Fariv/*) ;;
     *) [ -e "$link" ] && { echo "genoffice: $link is another program, left as is; run: ln -s $launcher $link" >&2; exit 0; } ;;
   esac
 elif [ -e "$link" ]; then

@@ -126,7 +126,7 @@ describe('createDefaultAppService', () => {
     const run = vi.fn<RunCommand>(async (cmd, args) => {
       calls.push([cmd, ...args])
       if (args[0] === 'query')
-        return args[2].includes('spreadsheetml') ? 'wps-office-et.desktop\n' : 'genoffice.desktop\n'
+        return args[2].includes('spreadsheetml') ? 'wps-office-et.desktop\n' : 'fariv.desktop\n'
       return ''
     })
     const svc = createDefaultAppService({
@@ -148,7 +148,7 @@ describe('createDefaultAppService', () => {
     expect(calls.find((c) => c[1] === 'default')).toEqual([
       'xdg-mime',
       'default',
-      'genoffice.desktop',
+      'fariv.desktop',
       ...OFFICE_TYPES.map((t) => t.mime),
     ])
   })
