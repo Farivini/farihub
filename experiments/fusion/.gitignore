@@ -1,0 +1,5 @@
+workspace/
+node_modules/
+results/*.xlsx
+package.json
+package-lock.json
