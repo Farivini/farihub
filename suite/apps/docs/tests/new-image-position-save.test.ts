@@ -7,7 +7,7 @@
  * imageRelH/imageRelV / imagePosH+imagePosV, so the reopened picture edits
  * like an original one.
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { Editor } from '@tiptap/core'
 import { NodeSelection } from '@tiptap/pm/state'
 import type { Node as ProsemirrorNode } from '@tiptap/pm/model'
@@ -18,6 +18,24 @@ import { pictureNode } from '../src/renderer/ai/floating-ops'
 import { insertPictureAtSelection } from '../src/renderer/editor/insert-picture'
 import { blocksToPmDoc, pmDocToSavePlan, type PmNode } from '../src/renderer/editor/convert'
 import { editorExtensions } from '../src/renderer/editor/extensions'
+
+/**
+ * Every editor a test opens is destroyed after it: a transaction arms the picture
+ * frame plugin's 150 ms settle timer, which would otherwise fire after the jsdom
+ * environment is torn down ("requestAnimationFrame is not defined").
+ */
+const openEditors: Editor[] = []
+class TrackedEditor extends Editor {
+  constructor(options: ConstructorParameters<typeof Editor>[0]) {
+    super(options)
+    openEditors.push(this)
+  }
+}
+afterEach(() => {
+  for (const editor of openEditors.splice(0)) {
+    if (!editor.isDestroyed) editor.destroy()
+  }
+})
 
 const TINY_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
@@ -51,7 +69,7 @@ const picture = {
 async function openBlank() {
   const source = await buildBlankDocx()
   const parsed = await parseDocx(source)
-  const editor = new Editor({
+  const editor = new TrackedEditor({
     element: document.createElement('div'),
     extensions: editorExtensions,
     content: blocksToPmDoc(parsed.blocks) as never,
@@ -82,7 +100,7 @@ async function save(editor: Editor, parsed: Awaited<ReturnType<typeof parseDocx>
 
 async function reopen(zip: JSZip) {
   const parsed = await parseDocx(await zip.generateAsync({ type: 'uint8array' }))
-  const editor = new Editor({
+  const editor = new TrackedEditor({
     element: document.createElement('div'),
     extensions: editorExtensions,
     content: blocksToPmDoc(parsed.blocks) as never,
@@ -248,7 +266,7 @@ describe('new image floating position on save', () => {
   it('keeps the position of a pasted copy of an original floating picture', async () => {
     const source = await buildDocx({ bodyXml: FLOATING_PIC_PARA, withImage: true })
     const parsed = await parseDocx(source)
-    const editor = new Editor({
+    const editor = new TrackedEditor({
       element: document.createElement('div'),
       extensions: editorExtensions,
       content: blocksToPmDoc(parsed.blocks) as never,
