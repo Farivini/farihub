@@ -4,7 +4,7 @@ import type {
   PointerEvent as ReactPointerEvent,
   ReactElement,
 } from 'react'
-import logoLockup from './assets/genoffice-logo.svg'
+import logoLockup from './assets/fariv-logo.svg'
 import { KbAskPanel } from './KbAskPanel'
 import { FileBadge } from './file-badge'
 import { placeFolderMenu } from './folder-menu-position'
@@ -1017,13 +1017,8 @@ function AccountEntry({
         onClick={handleClick}
         aria-haspopup="dialog"
         aria-expanded={settingsOpen}
-        data-tip={
-          loggedIn
-            ? email || t('loggedInGenspark')
-            : waiting
-              ? t('waitingLogin')
-              : (errorText ?? t('loginGenspark'))
-        }
+        // Fariv: the entry opens the settings; the origin's cloud sign-in is not offered
+        data-tip={loggedIn ? email || t('loggedInGenspark') : waiting ? t('waitingLogin') : t('settings')}
         aria-label={t('settings')}
       >
         <span
@@ -1049,8 +1044,17 @@ function AccountEntry({
                 strokeLinecap="round"
               />
             </svg>
-          ) : (
+          ) : loggedIn ? (
             initial
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM19.4 13.5l1.6 1.2-1.8 3.1-1.9-.7a7.4 7.4 0 0 1-2 1.2L15 20.5h-3.6l-.3-2.2a7.4 7.4 0 0 1-2-1.2l-1.9.7-1.8-3.1 1.6-1.2a7.6 7.6 0 0 1 0-2.4L5.4 9.9l1.8-3.1 1.9.7a7.4 7.4 0 0 1 2-1.2l.3-2.2H15l.3 2.2a7.4 7.4 0 0 1 2 1.2l1.9-.7 1.8 3.1-1.6 1.2a7.6 7.6 0 0 1 0 2.4z"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinejoin="round"
+              />
+            </svg>
           )}
           {skillUpdate && (
             <span className="account-badge" role="img" aria-label={t('intgUpdateDue')} />
@@ -1064,9 +1068,9 @@ function AccountEntry({
                 : t('loggedIn')
               : waiting
                 ? t('waitingShort')
-                : t('login')}
+                : t('settings')}
           </span>
-          {!loggedIn && !waiting && errorText && (
+          {loggedIn && errorText && (
             <span className="account-sub error">{errorText}</span>
           )}
         </span>
@@ -3468,7 +3472,7 @@ export function Home() {
         style={sidebarWidth === null ? undefined : { width: sidebarWidth }}
       >
         <div className="sidebar-logo">
-          <img className="logo-lockup" src={logoLockup} alt="GenOffice" />
+          <img className="logo-lockup" src={logoLockup} alt="Fariv" />
         </div>
         <nav className="sidebar-nav">
           <button

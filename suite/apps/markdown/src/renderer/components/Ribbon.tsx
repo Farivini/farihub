@@ -486,7 +486,7 @@ export function Ribbon({
               <span className="rb-big-icon">
                 <GensparkMark size={26} />
               </span>
-              <span>Genspark AI</span>
+              <span>Fariv IA</span>
             </button>
             {aiPresets.map(({ kind, btn, prompt }) => (
               <button

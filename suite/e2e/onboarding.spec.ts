@@ -10,16 +10,15 @@ test.describe('first-run onboarding', () => {
     try {
       const overlay = page.locator('.onb-overlay')
       await expect(overlay).toBeVisible()
-      await expect(page.locator('.onb-slide.active .onb-title')).toHaveText('Welcome to GenOffice')
+      await expect(page.locator('.onb-slide.active .onb-title')).toHaveText('Welcome to Fariv')
       await page.screenshot({ path: screenshotPath('onboarding-slide-1') })
 
-      await page.locator('.onb-next').click()
-      await expect(page.locator('.onb-slide.active .onb-offer')).toBeVisible()
-      await page.screenshot({ path: screenshotPath('onboarding-slide-2') })
-
+      // Fariv: no community/credits slide and no GitHub star hint
       await page.locator('.onb-next').click()
       await expect(page.locator('.onb-slide.active .onb-title')).toHaveText('Free for everyone')
-      await page.screenshot({ path: screenshotPath('onboarding-slide-3') })
+      await expect(page.locator('.onb-offer')).toHaveCount(0)
+      await expect(page.locator('.onb-star-hint')).toHaveCount(0)
+      await page.screenshot({ path: screenshotPath('onboarding-slide-2') })
 
       // last slide's primary button finishes the onboarding
       await page.locator('.onb-next').click()

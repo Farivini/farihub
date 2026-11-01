@@ -26,18 +26,12 @@ interface Slide {
   art: 'logo' | 'gift' | 'check'
 }
 
+// Fariv: the origin's community slide (GenTeam group, cloud credits), its GitHub star
+// hint, the credits footnote and the analytics notice (analytics is off in Fariv builds)
+// are not shown.
 const SLIDES: readonly Slide[] = [
   { titleKey: 'onbTitle1', subtitleKey: 'onbSubtitle1', bodyKey: 'onbBody1', art: 'logo' },
-  { titleKey: 'onbTitle2', subtitleKey: 'onbBody2', showOffer: true, art: 'gift' },
-  {
-    titleKey: 'onbTitle3',
-    subtitleKey: 'onbBody3',
-    bodyKey: 'onbNote3',
-    bodyDim: true,
-    showStar: true,
-    showAnalyticsNotice: true,
-    art: 'check',
-  },
+  { titleKey: 'onbTitle3', subtitleKey: 'onbBody3', art: 'check' },
 ]
 
 /** render `**emphasized**` segments of a localized string as <strong> */

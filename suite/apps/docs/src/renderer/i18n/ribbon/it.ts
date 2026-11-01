@@ -194,7 +194,7 @@ export const it = {
   ribbonReplaceTip: 'Trova e sostituisci testo',
   ribbonSelectAll: 'Seleziona tutto',
   ribbonSelectAllTip: 'Seleziona l’intero documento',
-  ribbonAiAssistant: 'Genspark',
+  ribbonAiAssistant: 'Fariv',
   ribbonAiAssistantTip: "Apri l'assistente IA",
   ribbonRemoveTableStyleTip: 'Rimuovi stile tabella',
   ribbonNoStyle: 'Nessuno stile',

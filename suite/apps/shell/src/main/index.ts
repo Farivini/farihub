@@ -428,6 +428,9 @@ for (const stream of [process.stdout, process.stderr]) {
   })
 }
 
+/** Fariv build: hide the origin project's community asks (GitHub star card, GenTeam group). */
+const FARIV_HIDES_ORIGIN_COMMUNITY = true
+
 // ANY unpacked run (`npm run shell`, `npm run dev`, `npx electron .`) must not
 // share the installed app's userData or single-instance lock — otherwise a dev
 // run silently quits and forwards its argv to the running installed GenOffice.
@@ -444,7 +447,7 @@ if (!app.isPackaged) {
     // moves once — it sits on the same volume as appData, so the rename is
     // atomic, and a concurrent dev instance keeps its open file handles.
     const appData = app.getPath('appData')
-    const devDir = join(appData, 'GenOffice-Dev')
+    const devDir = join(appData, 'Fariv-Dev')
     const oldDevDir = join(appData, 'GenOffice Dev')
     let userData = devDir
     if (existsSync(oldDevDir) && !existsSync(devDir)) {
@@ -4089,7 +4092,7 @@ function createShellWindow(): void {
     ...(restored ? { x: restored.x, y: restored.y } : {}),
     minWidth: SHELL_WINDOW_MIN_WIDTH,
     minHeight: SHELL_WINDOW_MIN_HEIGHT,
-    title: 'GenOffice',
+    title: 'Fariv',
     // Paint the theme's surface before the renderer's first frame so the window
     // does not flash white in dark mode. nativeTheme.themeSource is already set
     // from the saved theme in app.whenReady, before this window is created.
@@ -5599,6 +5602,8 @@ function registerHomeIpc(): void {
   // returning true also counts as "shown": the renderer displays it
   // unconditionally, so no separate mark-shown round-trip is needed
   ipcMain.handle(HOME_CHANNELS.starPromptShouldShow, (): StarPromptShow => {
+    // Fariv: the card asks for a star on the origin project's GitHub; never shown here.
+    if (FARIV_HIDES_ORIGIN_COMMUNITY) return { show: false, docOpens: readStarPrompt().docOpens ?? 0 }
     if (starPromptSessionGrant) return starPromptSessionGrant
     const now = Date.now()
     const state = readStarPrompt()

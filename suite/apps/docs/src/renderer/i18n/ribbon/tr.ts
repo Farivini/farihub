@@ -192,7 +192,7 @@ export const tr = {
   ribbonReplaceTip: 'Metin bul ve değiştir',
   ribbonSelectAll: 'Tümünü Seç',
   ribbonSelectAllTip: 'Belgenin tamamını seç',
-  ribbonAiAssistant: 'Genspark',
+  ribbonAiAssistant: 'Fariv',
   ribbonAiAssistantTip: 'Yapay zeka asistanını aç',
   ribbonRemoveTableStyleTip: 'Tablo stilini kaldır',
   ribbonNoStyle: 'Stil Yok',

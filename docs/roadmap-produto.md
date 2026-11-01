@@ -32,7 +32,7 @@ Em andamento: o pacote desktop com os três editores no mesmo aplicativo usa a b
 | Base importada com origem, versão e licença rastreáveis | **Incorporado** | GenOffice `36a509e8`, Apache-2.0, sem `ee/`; `suite/UPSTREAM.md`. |
 | Planilhas, Documentos e Apresentações no mesmo app (XLSX, DOCX, PPTX) | **Incorporado** | Shell com abas da base; e2e Fariv abre, edita, salva e reabre os três formatos. |
 | Desenvolvimento com recarga e instalador Windows no CI | **Incorporado** | `npm run suite:dev`; `suite.yml` gera o instalador (sem assinatura). Falta validar num Windows real. |
-| Identidade Fariv, seletor central, barra enxuta | Planejado | Próxima etapa. Hoje o app ainda se apresenta como GenOffice/Genspark. |
+| Identidade Fariv, seletor central, barra enxuta | **Adaptado** | Nome, ícone, linha de título com seletor Planilhas · Documentos · Apresentações, faixas compactas por padrão, convites da origem retirados. Falta: conta/créditos da nuvem de origem no painel de IA (etapa 3), manual de ajuda descrevendo telas da origem, ícones de tipo de arquivo. |
 | Assistente nos arquivos abertos (Codex local), com rascunho, prévia, aceitar/rejeitar, desfazer e conflito | Planejado | A base aplica lotes direto (com desfazer); a revisão prévia é adaptação nossa. |
 | Claude local no mesmo contrato; tarefas recorrentes | Planejado | Componentes identificados no Nimbalyst. |
 | Fórmulas em português, CSV pt-BR, agregação para bases grandes | Planejado | Existem no Farihub; a base usa nomes em inglês, ponto decimal no CSV e limita a dinâmica a 10 mil linhas. |

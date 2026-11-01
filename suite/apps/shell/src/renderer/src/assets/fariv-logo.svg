@@ -1,0 +1,10 @@
+<svg width="480" height="120" viewBox="0 0 480 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="fg" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#e4561a"/>
+      <stop offset="1" stop-color="#ff9a52"/>
+    </linearGradient>
+  </defs>
+  <path d="M14 102L56 14l42 88" stroke="url(#fg)" stroke-width="16" stroke-linejoin="round" stroke-linecap="round"/>
+  <text x="128" y="88" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="68" font-weight="600" letter-spacing="14" fill="#2a2b31">FARIV</text>
+</svg>

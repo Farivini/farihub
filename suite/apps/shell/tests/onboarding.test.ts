@@ -45,11 +45,10 @@ async function click(selector: string): Promise<void> {
 }
 
 describe('analytics consent in onboarding', () => {
-  it('explains default-on analytics without an onboarding control', () => {
+  it('Fariv builds ship with analytics off: no analytics notice and no control', () => {
     renderOnboarding(vi.fn(async () => true))
     expect(host.querySelector('[role="switch"]')).toBeNull()
-    expect(host.textContent).toContain('Enabled by default')
-    expect(host.textContent).toContain('Settings → General')
+    expect(host.textContent).not.toContain('Enabled by default')
   })
 
   it('lets Skip and Escape finish without changing analytics', async () => {
@@ -71,7 +70,7 @@ describe('analytics consent in onboarding', () => {
     const onDone = vi.fn(async () => true)
     renderOnboarding(onDone)
 
-    await click('.onb-next')
+    // two slides in Fariv (no community/credits slide)
     await click('.onb-next')
     await click('.onb-next')
     expect(onDone).toHaveBeenCalledWith()

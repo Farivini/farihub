@@ -3462,7 +3462,7 @@ function Ribbon({
             <GensparkMark size={26} />
           </span>
           <span>
-            <strong>Genspark AI</strong>
+            <strong>Fariv IA</strong>
           </span>
         </button>
         <button
