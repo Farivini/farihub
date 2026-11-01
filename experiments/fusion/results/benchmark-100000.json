@@ -1,0 +1,60 @@
+{
+  "scope": "Headless Linux Node, synthetic data, no UI/Windows/AI/provider comparison",
+  "node": "v24.22.1",
+  "cpu": "AMD EPYC 9V74 80-Core Processor",
+  "rows": 100000,
+  "results": [
+    {
+      "name": "Farihub IronCalc 0.9.1 WASM",
+      "fillMs": 1408.394738,
+      "initialCalculationMs": 150.7375280000001,
+      "editMs": [
+        197.35253799999964,
+        128.7259650000001,
+        122.64281800000026,
+        133.41642600000023,
+        134.5430369999999
+      ]
+    },
+    {
+      "name": "GridPath 0.5.2 published WASM",
+      "fillMs": 1301.2778620000004,
+      "initialCalculationMs": 467.5830139999998,
+      "editMs": [
+        76.42017399999986,
+        0.07388900000023568,
+        0.3156669999998485,
+        0.03859699999975419,
+        0.025959000000511878
+      ],
+      "lastDeltaCells": 2
+    },
+    {
+      "name": "Pivot sum by 5 regions",
+      "rows": 10000,
+      "farihubMs": 4.335398000000168,
+      "genoffice": {
+        "ms": 13.872969000000012,
+        "total": 100000
+      }
+    },
+    {
+      "name": "Pivot sum by 5 regions",
+      "rows": 10001,
+      "farihubMs": 1.86898199999996,
+      "genoffice": {
+        "error": "The pivot source is limited to 10,000 data rows.",
+        "code": "sourceRowLimit"
+      }
+    },
+    {
+      "name": "Pivot sum by 5 regions",
+      "rows": 1000000,
+      "farihubMs": 78.09844299999986,
+      "genoffice": {
+        "error": "The pivot source is limited to 10,000 data rows.",
+        "code": "sourceRowLimit"
+      }
+    }
+  ]
+}
