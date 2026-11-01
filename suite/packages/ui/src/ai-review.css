@@ -1,0 +1,82 @@
+/* Fariv review card under an AI task (pending → accept / reject). Chrome only:
+   semantic tokens, accent inherited from the editor. */
+
+.ai-review-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ai-review-pending {
+  border-color: var(--accent);
+}
+
+.ai-review-text {
+  flex: 1 1 180px;
+}
+
+.ai-review-failed,
+.ai-review-conflict {
+  color: var(--danger);
+}
+
+.ai-review-conflict {
+  flex-basis: 100%;
+}
+
+.ai-review-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.ai-review-btn {
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ai-review-btn:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.ai-review-accept {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ai-review-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ai-review-failed-kept {
+  flex-basis: 100%;
+  color: var(--danger);
+}
+
+/* tasks whose reply left the conversation (new chat): kept until decided */
+.ai-review-open {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0 12px;
+}
+
+.ai-review-open-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}

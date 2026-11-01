@@ -18,7 +18,13 @@
     "test:e2e": "node --test --test-concurrency=1 tests/e2e/*.e2e.ts",
     "bench:browser": "node scripts/bench-browser.ts",
     "bench:table": "node scripts/bench-table.ts",
-    "bench:table:browser": "node scripts/bench-table-browser.ts"
+    "bench:table:browser": "node scripts/bench-table-browser.ts",
+    "suite:install": "npm --prefix suite ci",
+    "suite:dev": "npm --prefix suite run dev",
+    "suite:build": "npm --prefix suite run build:all",
+    "suite:start": "npm --prefix suite run shell",
+    "suite:e2e": "npm --prefix suite run test:e2e:fariv",
+    "suite:dist:win": "npm --prefix suite run dist:win:nopublish"
   },
   "devDependencies": {
     "@ironcalc/nodejs": "0.9.1",
