@@ -24,7 +24,7 @@
     "suite:build": "npm --prefix suite run build:all",
     "suite:start": "npm --prefix suite run shell",
     "suite:e2e": "npm --prefix suite run test:e2e:fariv",
-    "suite:dist:win": "npm --prefix suite run dist:win -- --publish never"
+    "suite:dist:win": "npm --prefix suite run dist:win:nopublish"
   },
   "devDependencies": {
     "@ironcalc/nodejs": "0.9.1",
