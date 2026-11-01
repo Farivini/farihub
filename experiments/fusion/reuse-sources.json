@@ -1,0 +1,202 @@
+{
+  "scope": "Source reuse map, not a shipped integration or exhaustive dependency audit",
+  "repos": {
+    "genoffice": {
+      "url": "https://github.com/genspark-ai/genoffice",
+      "dir": "genoffice-eval",
+      "sha": "36a509e8fc16ace85ed7afa3c37acb7b9c441ad1"
+    },
+    "nimbalyst": {
+      "url": "https://github.com/Nimbalyst/nimbalyst",
+      "dir": "nimbalyst-eval",
+      "sha": "b01bb2a0f8efe881a03b826844fde7be69f19e42"
+    },
+    "officecli": {
+      "url": "https://github.com/iOfficeAI/OfficeCLI",
+      "dir": "officecli-eval",
+      "sha": "c56512c8c7b76fe284f09940e4cd492470099d3e"
+    },
+    "aionui": {
+      "url": "https://github.com/iOfficeAI/AionUi",
+      "dir": "aionui-eval",
+      "sha": "11cd2a9a20d1e033157636efc570b41384c66d85"
+    }
+  },
+  "entries": [
+    {
+      "capability": "Pacote e abas",
+      "repo": "genoffice",
+      "path": "apps/shell/src/main/tab-manager.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/apps/shell/src/main/tab-manager.ts",
+      "adaptation": "Adotar como base de hospedagem dos editores; trocar navegação e tema."
+    },
+    {
+      "capability": "Janela e instalador",
+      "repo": "genoffice",
+      "path": "apps/shell/electron-builder.cjs",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/apps/shell/electron-builder.cjs",
+      "adaptation": "Reconfigurar appId, nome, ícones, updater e publicação Fariv; assinatura precisa ser nossa."
+    },
+    {
+      "capability": "Abrir e salvar",
+      "repo": "genoffice",
+      "path": "packages/electron-utils/src/atomic-write.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/packages/electron-utils/src/atomic-write.ts",
+      "adaptation": "Reutilizar escrita e adaptar aos contratos de salvamento do Fariv."
+    },
+    {
+      "capability": "Recuperação",
+      "repo": "genoffice",
+      "path": "packages/electron-utils/src/recovery-copy.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/packages/electron-utils/src/recovery-copy.ts",
+      "adaptation": "Reutilizar mecanismo; validar recuperação integrada com nossos documentos."
+    },
+    {
+      "capability": "Observar arquivo",
+      "repo": "genoffice",
+      "path": "packages/electron-utils/src/disk-watch.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/packages/electron-utils/src/disk-watch.ts",
+      "adaptation": "Sinal para detectar mudança; não é automação analítica pronta."
+    },
+    {
+      "capability": "Planilha e ferramentas de IA",
+      "repo": "genoffice",
+      "path": "apps/sheets/src/renderer/ai/tools.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/apps/sheets/src/renderer/ai/tools.ts",
+      "adaptation": "Reutilizar ferramentas e adaptar execução para rascunho em vez de autoaplicar."
+    },
+    {
+      "capability": "Contexto e consulta",
+      "repo": "genoffice",
+      "path": "apps/sheets/src/renderer/ai/aggregate-range.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/apps/sheets/src/renderer/ai/aggregate-range.ts",
+      "adaptation": "Usar leitura/consulta por necessidade; conectar agregação Fariv para bases grandes."
+    },
+    {
+      "capability": "Loop de IA",
+      "repo": "genoffice",
+      "path": "packages/agent-core/src/loop.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/packages/agent-core/src/loop.ts",
+      "adaptation": "Reutilizar streaming, ferramentas, cancelamento, limites e hooks de snapshot."
+    },
+    {
+      "capability": "Codex local",
+      "repo": "genoffice",
+      "path": "packages/ai-provider/src/codex-app-server.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/packages/ai-provider/src/codex-app-server.ts",
+      "adaptation": "Reutilizar descoberta/processo/protocolo. Login real ainda não validado."
+    },
+    {
+      "capability": "Gateway próprio",
+      "repo": "genoffice",
+      "path": "packages/ai-provider/src/protocols/openai-compatible.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/packages/ai-provider/src/protocols/openai-compatible.ts",
+      "adaptation": "Reutilizar base URL/modelo/chave; não precisa implementar protocolo de novo."
+    },
+    {
+      "capability": "Registro de provedores",
+      "repo": "genoffice",
+      "path": "packages/ai-provider/src/registry.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/packages/ai-provider/src/registry.ts",
+      "adaptation": "Reutilizar modalidades; credenciais Genspark não fazem parte do produto Fariv."
+    },
+    {
+      "capability": "Documento",
+      "repo": "genoffice",
+      "path": "packages/docx-engine/src/index.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/packages/docx-engine/src/index.ts",
+      "adaptation": "Reutilizar motor junto com apps/docs; motor sozinho não entrega editor paginado."
+    },
+    {
+      "capability": "IA no documento",
+      "repo": "genoffice",
+      "path": "apps/docs/src/renderer/ai/docs-skill.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/apps/docs/src/renderer/ai/docs-skill.ts",
+      "adaptation": "Reutilizar operações e contexto, adaptando revisão e estilo."
+    },
+    {
+      "capability": "Apresentação",
+      "repo": "genoffice",
+      "path": "packages/pptx-engine/src/index.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/packages/pptx-engine/src/index.ts",
+      "adaptation": "Reutilizar motor junto com apps/slides e pptx-render, sem reescrever via conversores básicos."
+    },
+    {
+      "capability": "IA nos slides",
+      "repo": "genoffice",
+      "path": "apps/slides/src/renderer/ai/slides-skill.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/apps/slides/src/renderer/ai/slides-skill.ts",
+      "adaptation": "Reutilizar operações de elementos e composição."
+    },
+    {
+      "capability": "Gateway XLSX",
+      "repo": "genoffice",
+      "path": "packages/xlsx-gateway/src/gateway/xlsx-gateway.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/packages/xlsx-gateway/src/gateway/xlsx-gateway.ts",
+      "adaptation": "Reutilizar preservação e escrita de recursos; Node fs/crypto não vão diretamente ao navegador."
+    },
+    {
+      "capability": "Importação CSV",
+      "repo": "genoffice",
+      "path": "packages/xlsx-gateway/src/gateway/csv-import.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/packages/xlsx-gateway/src/gateway/csv-import.ts",
+      "adaptation": "Comparar com importador já aprovado do Fariv; preservar regras pt-BR e segurança CSV."
+    },
+    {
+      "capability": "Extração de anexos",
+      "repo": "genoffice",
+      "path": "packages/file-parse/src/parse.ts",
+      "url": "https://github.com/genspark-ai/genoffice/blob/36a509e8fc16ace85ed7afa3c37acb7b9c441ad1/packages/file-parse/src/parse.ts",
+      "adaptation": "Reutilizar parsers de anexos; extrair texto não equivale a importar documento fiel."
+    },
+    {
+      "capability": "Claude local",
+      "repo": "nimbalyst",
+      "path": "packages/runtime/src/ai/server/providers/ClaudeCodeProvider.ts",
+      "url": "https://github.com/Nimbalyst/nimbalyst/blob/b01bb2a0f8efe881a03b826844fde7be69f19e42/packages/runtime/src/ai/server/providers/ClaudeCodeProvider.ts",
+      "adaptation": "Fonte de implementação; depende de SDK, armazenamento e serviços Nimbalyst. Desacoplar para AgentTransport, não copiar o runtime inteiro."
+    },
+    {
+      "capability": "Configuração do Claude",
+      "repo": "nimbalyst",
+      "path": "packages/runtime/src/ai/server/providers/claudeCode/sdkOptionsBuilder.ts",
+      "url": "https://github.com/Nimbalyst/nimbalyst/blob/b01bb2a0f8efe881a03b826844fde7be69f19e42/packages/runtime/src/ai/server/providers/claudeCode/sdkOptionsBuilder.ts",
+      "adaptation": "Adaptar opções e ferramentas permitidas à execução Fariv."
+    },
+    {
+      "capability": "Tarefas recorrentes",
+      "repo": "nimbalyst",
+      "path": "packages/extensions/automations/src/scheduler/AutomationScheduler.ts",
+      "url": "https://github.com/Nimbalyst/nimbalyst/blob/b01bb2a0f8efe881a03b826844fde7be69f19e42/packages/extensions/automations/src/scheduler/AutomationScheduler.ts",
+      "adaptation": "Extrair com parser, normalização, tipos e writer; substituir serviços de sessão por chamadas Fariv."
+    },
+    {
+      "capability": "Cálculo de horários",
+      "repo": "nimbalyst",
+      "path": "packages/extensions/automations/src/scheduler/scheduleUtils.ts",
+      "url": "https://github.com/Nimbalyst/nimbalyst/blob/b01bb2a0f8efe881a03b826844fde7be69f19e42/packages/extensions/automations/src/scheduler/scheduleUtils.ts",
+      "adaptation": "Reutilizar diário/semanal/intervalo; três sondagens locais passaram."
+    },
+    {
+      "capability": "Registro de saídas",
+      "repo": "nimbalyst",
+      "path": "packages/extensions/automations/src/output/OutputWriter.ts",
+      "url": "https://github.com/Nimbalyst/nimbalyst/blob/b01bb2a0f8efe881a03b826844fde7be69f19e42/packages/extensions/automations/src/output/OutputWriter.ts",
+      "adaptation": "Adaptar saídas de texto para artefatos e versões de documentos Fariv."
+    },
+    {
+      "capability": "CLI alternativo",
+      "repo": "officecli",
+      "path": "src/officecli/CommandBuilder.Watch.cs",
+      "url": "https://github.com/iOfficeAI/OfficeCLI/blob/c56512c8c7b76fe284f09940e4cd492470099d3e/src/officecli/CommandBuilder.Watch.cs",
+      "adaptation": "Reserva para renderização/automação C#; não adicionar um segundo escritor de arquivo por padrão."
+    },
+    {
+      "capability": "Agendamentos AionUi",
+      "repo": "aionui",
+      "path": "packages/desktop/src/renderer/pages/cron/cronUtils.ts",
+      "url": "https://github.com/iOfficeAI/AionUi/blob/11cd2a9a20d1e033157636efc570b41384c66d85/packages/desktop/src/renderer/pages/cron/cronUtils.ts",
+      "adaptation": "Referência de UI; backend AionCore é outro repositório, ainda não inspecionado. Não é scheduler completo neste arquivo."
+    }
+  ]
+}
