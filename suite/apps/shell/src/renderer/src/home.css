@@ -99,7 +99,7 @@ body.vib .home {
 
 .home {
   display: flex;
-  height: calc(100vh - 40px);
+  height: calc(100vh - var(--fariv-title-h, 36px) - var(--fariv-tab-row-h, 40px));
 }
 
 .sidebar {

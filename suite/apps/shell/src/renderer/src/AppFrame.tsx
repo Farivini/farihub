@@ -3,6 +3,7 @@ import { Home } from './Home'
 import { Onboarding } from './Onboarding'
 import { StarPromptCard } from './StarPromptCard'
 import { TabBar } from './TabBar'
+import { TitleBar } from './TitleBar'
 
 interface AppFrameProps {
   /** resolved before first paint (main.tsx) so home never flashes under the overlay */
@@ -50,6 +51,7 @@ export function AppFrame({ initialOnboardingSeen }: AppFrameProps) {
 
   return (
     <div className="app-frame">
+      <TitleBar />
       <TabBar />
       {/* docs/sheets tabs render as WebContentsView children of this window, positioned
        * by the main process to cover this area — only Home paints its own content here. */}

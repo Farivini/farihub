@@ -95,11 +95,21 @@ const mount = () =>
 
 describe('ribbon compact density', () => {
   beforeEach(() => {
-    localStorage.removeItem('t.compact')
+    // these cases start from a stored full band; the Fariv default is checked below
+    localStorage.setItem('t.compact', 'full')
     mount()
   })
 
-  it('starts at full: no compact class, band visible, tab selected', () => {
+  it('Fariv: with nothing stored the band starts compact (lean bar)', () => {
+    localStorage.removeItem('t.compact')
+    mount()
+    expect(isCompact()).toBe(true)
+    expect(isCollapsed()).toBe(false)
+    expect($('home').className).toContain('active')
+    expect(readRibbonDensity('t.compact')).toBe('compact')
+  })
+
+  it('a stored full band starts at full: no compact class, band visible, tab selected', () => {
     expect(isCompact()).toBe(false)
     expect(isCollapsed()).toBe(false)
     expect($('home').className).toContain('active')
@@ -239,7 +249,8 @@ describe('two-state call sites are unaffected', () => {
     expect(el.className).not.toContain('ribbon-compact')
     // the legacy key shape is preserved for apps that never opted in
     localStorage.removeItem('t.plain')
-    expect(readRibbonDensity('t.plain')).toBe('full')
+    // nothing stored reads as the Fariv default; the two-state hook never consults it
+    expect(readRibbonDensity('t.plain')).toBe('compact')
   })
 })
 

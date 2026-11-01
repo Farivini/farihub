@@ -93,7 +93,7 @@ const HOME_ID = 'home'
  */
 export class TabManager {
   private readonly tabs: TabRecord[] = [
-    { id: HOME_ID, kind: 'home', view: null, title: 'GenOffice', lastActiveAt: Date.now() },
+    { id: HOME_ID, kind: 'home', view: null, title: 'Fariv', lastActiveAt: Date.now() },
   ]
   private activeId: string = HOME_ID
   private nextId = 1

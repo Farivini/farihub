@@ -12,16 +12,128 @@
   zoom: var(--ui-scale);
 }
 
+/* ── Fariv title row (TitleBar.tsx): wordmark + centred space switcher ──
+ * Sits above the tab row; the window caption buttons (Windows/Linux overlay)
+ * are drawn over its right end, so the overlay colors in
+ * src/main/title-bar-overlay.ts match --fariv-title-bg / --fariv-title-text. */
+.app-frame {
+  --fariv-orange: #ff6b1a;
+  --fariv-title-h: 36px;
+  --fariv-tab-row-h: 40px;
+  --fariv-title-bg: #f4f2ef;
+  --fariv-title-text: #3a3b40;
+  --fariv-title-muted: #7a7b82;
+  --fariv-switch-bg: rgba(0, 0, 0, 0.06);
+  --fariv-switch-active-bg: #fff;
+  --fariv-switch-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme='dark'] .app-frame {
+  --fariv-title-bg: #15161a;
+  --fariv-title-text: #d6d7dc;
+  --fariv-title-muted: #8b8d96;
+  --fariv-switch-bg: rgba(255, 255, 255, 0.06);
+  --fariv-switch-active-bg: #2a2b31;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .app-frame {
+    --fariv-title-bg: #15161a;
+    --fariv-title-text: #d6d7dc;
+    --fariv-title-muted: #8b8d96;
+    --fariv-switch-bg: rgba(255, 255, 255, 0.06);
+    --fariv-switch-active-bg: #2a2b31;
+  }
+}
+
+.fariv-title-row {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--fariv-title-h);
+  display: flex;
+  align-items: center;
+  background: var(--fariv-title-bg);
+  color: var(--fariv-title-text);
+  -webkit-app-region: drag;
+  z-index: 11;
+}
+
+.fariv-title-row .tab-app-menu-btn {
+  color: var(--fariv-title-text);
+}
+
+.fariv-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  color: var(--fariv-title-text);
+  user-select: none;
+}
+
+/* centred on the window, not on the space left between the wordmark and the
+   caption buttons: absolute against the row */
+.fariv-switcher {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--fariv-switch-bg);
+  -webkit-app-region: no-drag;
+}
+
+.fariv-space {
+  height: 24px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fariv-title-muted);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.fariv-space:hover {
+  color: var(--fariv-title-text);
+}
+
+.fariv-space.active {
+  background: var(--fariv-switch-active-bg);
+  color: var(--fariv-orange);
+  font-weight: 600;
+  box-shadow: var(--fariv-switch-shadow);
+}
+
+.fariv-space:focus-visible {
+  outline: 2px solid var(--fariv-orange);
+  outline-offset: 1px;
+}
+
+.tab-bar-lead {
+  width: 8px;
+  flex-shrink: 0;
+}
+
 .tab-bar {
   --tabstrip-bg: #ebebeb;
   --tabstrip-text: #454746;
   --tabstrip-text-active: #1f1f1f;
   --tab-separator: rgba(0, 0, 0, 0.22);
   position: fixed;
-  top: 0;
+  top: var(--fariv-title-h);
   left: 0;
   right: 0;
-  height: 40px;
+  height: var(--fariv-tab-row-h);
   display: flex;
   align-items: stretch;
   background: var(--tabstrip-bg);
@@ -335,7 +447,7 @@ body.overlay-title-bar .tab-bar-drag-spacer {
 }
 
 .app-frame-content {
-  padding-top: 40px;
+  padding-top: calc(var(--fariv-title-h) + var(--fariv-tab-row-h));
 }
 
 /* ── Dark mode tab bar overrides ─────────────────────────── */

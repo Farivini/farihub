@@ -9,7 +9,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * constructors register are what these tests exercise.
  */
 
-const TAB_STRIP_HEIGHT = 40
+// title row + tab row (Fariv)
+const TAB_STRIP_HEIGHT = 76
 
 const { FakeWindow, detachedWindows } = vi.hoisted(() => {
   const WINDOW_WIDTH = 800
@@ -462,7 +463,7 @@ describe('shell window restore layout', () => {
     shell.bounds = { x: 0, y: 0, width: 1000, height: 800 }
     shell.emit('restore')
 
-    const scaledStrip = Math.round(TAB_STRIP_HEIGHT * 1.5) // 60
+    const scaledStrip = Math.round(TAB_STRIP_HEIGHT * 1.5)
     expect(view.setBounds).toHaveBeenCalledWith({
       x: 0,
       y: scaledStrip,

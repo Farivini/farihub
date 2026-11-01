@@ -4,8 +4,20 @@
  * No Electron or DOM imports so both sides — and unit tests — can use it.
  */
 
-/** rendered height of the shell's tab strip (apps/shell/src/renderer/src/tabbar.css) */
-export const TAB_STRIP_HEIGHT = 40
+/**
+ * Fariv: a title row (wordmark and the Planilhas · Documentos · Apresentações
+ * switcher, with the window caption buttons) sits above the tab row. Both are
+ * shell chrome, so editor views start below the two (tabbar.css).
+ */
+export const TITLE_ROW_HEIGHT = 36
+export const TAB_ROW_HEIGHT = 40
+/** rendered height of the shell's chrome: title row + tab strip (renderer/src/tabbar.css) */
+export const TAB_STRIP_HEIGHT = TITLE_ROW_HEIGHT + TAB_ROW_HEIGHT
+
+/** The title row's height at an interface scale: the caption-button overlay band. */
+export function titleRowHeight(scale = 1): number {
+  return Math.round(TITLE_ROW_HEIGHT * scale)
+}
 
 /**
  * The strip's rendered height at an interface scale.

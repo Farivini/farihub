@@ -68,7 +68,6 @@ function HelpIcon() {
   )
 }
 
-const IS_MAC = navigator.platform.toLowerCase().includes('mac')
 
 function HomeIcon() {
   return (
@@ -452,27 +451,9 @@ export function TabBar() {
 
   return (
     <div className="tab-bar">
-      <div className="tab-bar-drag-spacer" />
-      {!IS_MAC && (
-        <button
-          className="tab-app-menu-btn"
-          title={t('appMenu')}
-          aria-label={t('appMenu')}
-          onClick={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect()
-            void window.aiOfficeTabs.showAppMenu(Math.round(rect.left), Math.round(rect.bottom))
-          }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path
-              d="M4 7h16M4 12h16M4 17h16"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-      )}
+      {/* Fariv: the macOS traffic-light spacer, the app menu and the caption spacer moved
+          to the title row above (TitleBar.tsx); this row holds only the tabs. */}
+      <div className="tab-bar-lead" />
       <div
         className={`tab-strip ${dragVisual ? 'dragging' : ''} ${dockX !== null ? 'dock-target' : ''}`}
         ref={stripRef}
@@ -665,7 +646,6 @@ export function TabBar() {
           />
         </svg>
       </button>
-      <div className="tab-bar-caption-spacer" />
     </div>
   )
 }

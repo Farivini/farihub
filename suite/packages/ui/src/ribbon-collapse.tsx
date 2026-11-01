@@ -50,14 +50,22 @@ export function writeRibbonCollapsed(storageKey: string, collapsed: boolean): vo
  * Reads the persisted density, honouring the legacy `'1'`/`'0'` values written
  * by the two-state version so an existing collapsed ribbon stays collapsed.
  */
+/**
+ * Fariv: a band nobody has chosen yet starts compact (icon-only, shorter), so the
+ * editors open with a lean bar; the full band is one shortcut or tab press away and
+ * the choice persists. A stored choice, including the legacy '0' (full), wins.
+ */
+export const DEFAULT_RIBBON_DENSITY: RibbonDensity = 'compact'
+
 export function readRibbonDensity(storageKey: string): RibbonDensity {
   try {
     const raw = localStorage.getItem(storageKey)
-    if (raw === 'collapsed' || raw === 'compact') return raw
+    if (raw === 'collapsed' || raw === 'compact' || raw === 'full') return raw
     if (raw === '1') return 'collapsed'
-    return 'full'
+    if (raw === '0') return 'full'
+    return DEFAULT_RIBBON_DENSITY
   } catch {
-    return 'full'
+    return DEFAULT_RIBBON_DENSITY
   }
 }
 
