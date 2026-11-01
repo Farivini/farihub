@@ -23,6 +23,7 @@ import type { WebContents } from 'electron'
 import { execFile } from 'node:child_process'
 import { readFile, writeFile, rm, stat, mkdir, open } from 'node:fs/promises'
 import { createHash, randomUUID } from 'node:crypto'
+import { deckFingerprint } from './deck-fingerprint'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { cleanupExpiredGeneratedPages } from './generated-page-temp'
@@ -269,6 +270,7 @@ import {
   carryHistoryForReplacement,
   dialogParent,
   endHistoryBatch,
+  noteDeckSaved,
   getFontMetrics,
   hostWindowFor,
   resetFontMetrics,
@@ -515,6 +517,7 @@ export async function saveSessionDeckTo(session: Session, filePath: string): Pro
   await pushRecent(filePath)
   syncAttachedPaths(session, filePath)
   commitSaved(session.opened)
+  noteDeckSaved(session)
   if ((session.metaRev ?? 0) === metaRevAtSave) session.metaDirty = false
 }
 
@@ -4586,11 +4589,13 @@ export function registerSlidesIpc(): void {
   ipcMain.handle('slides:deck-fingerprint', (e) => {
     const session = sessions.get(e.sender.id)
     if (!session) return null
-    const content = JSON.stringify({
-      size: session.opened.deck.size,
-      slides: buildAllRenderSlides(session.opened, session.fitWidthPx),
-    })
-    return createHash('sha1').update(content).digest('hex')
+    const { deck, archive } = session.opened
+    return deckFingerprint(
+      buildAllRenderSlides(session.opened, session.fitWidthPx),
+      deck.size,
+      archive.entries,
+      new Set(deck.slides.map((slide) => slide.path)),
+    )
   })
 
   ipcMain.handle('slides:ai-snapshot-restore', (e, id: number) => {
@@ -4659,6 +4664,7 @@ export function registerSlidesIpc(): void {
       // whole package, doubling save latency on large decks. Element ids survive,
       // but the renderer still expects the render tree in the response.
       commitSaved(session.opened)
+      noteDeckSaved(session)
       if ((session.metaRev ?? 0) === metaRevAtSave) session.metaDirty = false
       return {
         ok: true,
@@ -4689,6 +4695,7 @@ export function registerSlidesIpc(): void {
       await pushRecent(r.filePath)
       syncAttachedPaths(session, r.filePath)
       commitSaved(session.opened)
+      noteDeckSaved(session)
       if ((session.metaRev ?? 0) === metaRevAtSave) session.metaDirty = false
       return {
         ok: true,

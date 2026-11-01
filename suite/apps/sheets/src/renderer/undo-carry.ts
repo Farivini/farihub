@@ -154,9 +154,20 @@ export function undoStackDepth(runtime: UniverRuntime | null): number {
 const undoItemTags = new WeakMap<object, number>()
 let nextUndoItemTag = 1
 
+/// A carried item is the same history entry as the one it was captured from: it
+/// keeps its tag, so a position recorded before a save (an accepted AI task's end)
+/// still matches after the session swap.
+function inheritTag(from: unknown, to: unknown): void {
+  if (typeof from !== 'object' || from === null) return
+  if (typeof to !== 'object' || to === null) return
+  const tag = undoItemTags.get(from)
+  if (tag !== undefined) undoItemTags.set(to, tag)
+}
+
 /// Identity of the top of the active unit's undo stack ("0" when empty): with the
 /// depth it tells whether the workbook is still in the same history position (an
-/// edit, an undo + a different edit, or a save all change it).
+/// edit or an undo + a different edit change it). Tags are unique across units and
+/// survive the save's session swap when the history is carried (see inheritTag).
 export function undoStackTopTag(runtime: UniverRuntime | null): string {
   if (!runtime) return '0'
   try {
@@ -170,7 +181,7 @@ export function undoStackTopTag(runtime: UniverRuntime | null): string {
       tag = nextUndoItemTag++
       undoItemTags.set(top, tag)
     }
-    return `${unitId}#${tag}`
+    return `#${tag}`
   } catch {
     return '0'
   }
@@ -190,8 +201,11 @@ export function captureUndoCarry(runtime: UniverRuntime | null, newSha: string):
     const redoable = carriableSuffix(service._redoStacks?.get(oldUnitId) ?? [])
     if (undoable.length === 0 && redoable.length === 0) return null
     const styles = (workbook.getSnapshot().styles ?? {}) as Record<string, unknown>
-    const rewrite = (item: CarriedUndoItem): unknown =>
-      rewriteCarriedValue(item, oldUnitId, newUnitId, styles)
+    const rewrite = (item: CarriedUndoItem): unknown => {
+      const carried = rewriteCarriedValue(item, oldUnitId, newUnitId, styles)
+      inheritTag(item, carried)
+      return carried
+    }
     return {
       unitId: newUnitId,
       items: undoable.map(rewrite),

@@ -666,6 +666,8 @@ export const ja = {
     "The AI task failed. Your edits were kept; the AI's partial changes wait for your decision and the file was not changed.",
   appAiRevertNotConfirmed:
     'Undoing the AI task could not be confirmed. It stays under review and the file was not saved.',
+  appAiUndoNotConfirmed:
+    'Could not confirm the AI task was fully undone; check the workbook with Undo/Redo.',
   appAiChangesNotSaved:
     'AI の変更を適用しました(未保存)。⌘Z で元に戻せます。⌘S でファイルに保存します。',
   // Floating objects / chart editing

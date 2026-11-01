@@ -11,6 +11,7 @@ import {
   beginHistoryBatch,
   carryHistoryForReplacement,
   endHistoryBatch,
+  noteDeckSaved,
   pushHistory,
   registerAiSnapshot,
   restoreAiSnapshot,
@@ -266,5 +267,33 @@ describe('Slides main-process history batching', () => {
         ) as PictureElement
       ).mediaRef,
     ).toBe(newMedia)
+  })
+})
+
+describe('history across a save', () => {
+  it('restoring a state from before the last save leaves the deck dirty, so it is written', () => {
+    const session = sessionWith('before')
+    beginHistoryBatch(session)
+    pushHistory(session)
+    setValue(session, 'ai task')
+    const id = registerAiSnapshot(session, endHistoryBatch(session)!)
+    // the accepted task is saved (commitSaved clears the dirty flags)
+    noteDeckSaved(session)
+    session.metaDirty = false
+    // Accept → Undo task restores the pre-task state, which is no longer on disk
+    expect(restoreAiSnapshot(session, id)).toBe(true)
+    expect(valueOf(session)).toBe('before')
+    expect(session.metaDirty).toBe(true)
+  })
+
+  it('a state taken after the last save restores its own clean flag', () => {
+    const session = sessionWith('saved')
+    noteDeckSaved(session)
+    pushHistory(session)
+    setValue(session, 'edited')
+    session.metaDirty = true
+    restoreSnapshot(session, session.undoStack.pop()!)
+    expect(valueOf(session)).toBe('saved')
+    expect(session.metaDirty).toBe(false)
   })
 })

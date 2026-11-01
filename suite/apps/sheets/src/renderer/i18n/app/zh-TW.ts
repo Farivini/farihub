@@ -554,6 +554,8 @@ export const zhTW = {
     "The AI task failed. Your edits were kept; the AI's partial changes wait for your decision and the file was not changed.",
   appAiRevertNotConfirmed:
     'Undoing the AI task could not be confirmed. It stays under review and the file was not saved.',
+  appAiUndoNotConfirmed:
+    'Could not confirm the AI task was fully undone; check the workbook with Undo/Redo.',
   appAiChangesNotSaved: '已套用 AI 變更(未儲存)。可用 ⌘Z 復原;用 ⌘S 儲存到檔案。',
   appChartUpdated: '圖表已更新。',
   appChartNotEditable: '該圖表無法編輯。',

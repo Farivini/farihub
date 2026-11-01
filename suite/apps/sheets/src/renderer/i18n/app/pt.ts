@@ -671,6 +671,8 @@ export const pt = {
     'A tarefa da IA falhou. Suas edições foram mantidas; as alterações parciais da IA aguardam sua decisão e o arquivo não foi alterado.',
   appAiRevertNotConfirmed:
     'Não foi possível confirmar que a tarefa da IA foi desfeita. Ela continua em revisão e o arquivo não foi salvo.',
+  appAiUndoNotConfirmed:
+    'Não foi possível confirmar que a tarefa da IA foi desfeita por inteiro; confira a planilha com Desfazer/Refazer.',
   appAiChangesNotSaved: 'Alterações de IA aplicadas (não salvas). Desfaça com ⌘Z; salve com ⌘S.',
   appChartUpdated: 'Gráfico atualizado.',
   appChartNotEditable: 'Este gráfico não é editável.',

@@ -274,6 +274,7 @@ interface ExcelShellProps {
   /** Fariv review card of an AI task: keep / undo the whole task */
   readonly onReviewAccept: (taskId: string) => void
   readonly onReviewReject: (taskId: string) => void
+  readonly onReviewUndo: (taskId: string) => void
   /** tasks still waiting for a decision (listed even after a new conversation) */
   readonly openReviews: readonly ReviewTask<string>[]
   /// A1 notation of the multi-cell selection the AI composer offers as this
@@ -538,6 +539,7 @@ export function ExcelShell({
   onUndo,
   onReviewAccept,
   onReviewReject,
+  onReviewUndo,
   openReviews,
   aiScopeRange,
   aiScopeColumns,
@@ -1044,6 +1046,7 @@ export function ExcelShell({
           onUndo={onUndo}
           onReviewAccept={onReviewAccept}
           onReviewReject={onReviewReject}
+          onReviewUndo={onReviewUndo}
           openReviews={openReviews}
           scopeRange={aiScopeRange}
           scopeColumns={aiScopeColumns}

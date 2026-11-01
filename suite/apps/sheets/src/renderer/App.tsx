@@ -70,7 +70,12 @@ import {
   workbookFontFamilies,
 } from './cell-font-fallback'
 import { isNumericIdentifierText } from './cell-warning'
-import { consumePendingUndoCarry, undoStackDepth, undoStackTopTag } from './undo-carry'
+import {
+  consumePendingUndoCarry,
+  hasPendingUndoCarry,
+  undoStackDepth,
+  undoStackTopTag,
+} from './undo-carry'
 import { sheetsReview } from './ai/review-store'
 
 /** Cheap content fingerprint (FNV-1a) for the in-memory workbook's review marker. */
@@ -163,6 +168,7 @@ import {
   noteAiChange,
   rejectReview,
   startReview,
+  undoAccepted,
   withAttachedSkills,
   type AgentImage,
   type ReviewTask,
@@ -1518,7 +1524,8 @@ export function App({
    * the whole task (see `@genoffice/agent-core` review-task). */
   /** the task of the run in flight (the store keeps every task until decided) */
   const runningTaskIdRef = useRef<string | null>(null)
-  /** undo steps each task left on the stack, by task id (Reject / rollback) */
+  /** undo steps each task left on the stack, by task id (Reject / rollback, and
+   * Accept → Undo task: the history is carried across saves, see undo-carry) */
   const aiTaskUndoRef = useRef(new Map<string, number>())
   /** tasks still waiting for a decision, for the panel (survive a new conversation) */
   const [openReviews, setOpenReviews] = useState<readonly ReviewTask<string>[]>(() =>
@@ -1531,7 +1538,16 @@ export function App({
     () =>
       sheetsReview.subscribe((task) => {
         setOpenReviews(sheetsReview.open())
-        if (task.status === 'accepted' && task.changes > 0) acceptedUnsavedRef.current = true
+        // an accepted task is saved; so is the state after Accept → Undo task
+        // (an Undo task that could not be confirmed leaves the task accepted and
+        // flagged: no save is triggered for it — the user checks it with Undo / Redo)
+        if (
+          (task.status === 'accepted' || task.status === 'undone') &&
+          task.changes > 0 &&
+          !task.conflict
+        ) {
+          acceptedUnsavedRef.current = true
+        }
         if (acceptedUnsavedRef.current && !holdsSave(sheetsReview.list())) {
           acceptedUnsavedRef.current = false
           void saveAcceptedRef.current()
@@ -4115,8 +4131,33 @@ export function App({
     if (!task) return
     const step = acceptReview(task)
     sheetsReview.set(step.task)
-    aiTaskUndoRef.current.delete(taskId)
+    // the undo steps stay recorded: Accept → Undo task undoes them as one unit
     // the store subscription saves it once nothing else is under review
+  }
+
+  /** The undo history is settled: no save in flight and the last save's reopen has
+   * re-installed the carried history (until then the position reads differently). */
+  async function historySettled(): Promise<void> {
+    for (let wait = 0; wait < 60; wait += 1) {
+      if (!saveGateRef.current.busy && !hasPendingUndoCarry()) return
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+  }
+
+  /** Accept → Undo task: undo an accepted task as one unit while the workbook is
+   * still where the task (and the saves after it) left it; the undone state is then
+   * saved like any change. Refused — with the card saying so — after another edit. */
+  async function handleReviewUndo(taskId: string): Promise<void> {
+    if (!sheetsReview.get(taskId) || aiBusy) return
+    await historySettled()
+    const task = sheetsReview.get(taskId)
+    if (!task) return
+    const steps = aiTaskUndoRef.current.get(taskId) ?? 0
+    const step = undoAccepted(steps > 0 ? task : { ...task, untracked: true }, reviewMarker())
+    sheetsReview.set(step.task)
+    if (step.action !== 'rollback') return
+    const reverted = await revertAiTask(step.task)
+    setMessage(reverted ? t('appAiTaskRejected') : t('appAiUndoNotConfirmed'))
   }
 
   function handleReviewReject(taskId: string): void {
@@ -5908,6 +5949,7 @@ export function App({
         onUndo={handleUndo}
         onReviewAccept={handleReviewAccept}
         onReviewReject={handleReviewReject}
+        onReviewUndo={(taskId) => void handleReviewUndo(taskId)}
         openReviews={openReviews}
         aiScopeRange={aiScopeChip.range}
         aiScopeColumns={aiScopeChip.columns ?? null}

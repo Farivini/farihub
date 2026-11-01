@@ -581,6 +581,8 @@ export const he = {
     "The AI task failed. Your edits were kept; the AI's partial changes wait for your decision and the file was not changed.",
   appAiRevertNotConfirmed:
     'Undoing the AI task could not be confirmed. It stays under review and the file was not saved.',
+  appAiUndoNotConfirmed:
+    'Could not confirm the AI task was fully undone; check the workbook with Undo/Redo.',
   appAiChangesNotSaved: 'שינויי ה-AI הוחלו (לא נשמרו). בטלו עם ⌘Z; שמרו לקובץ עם ⌘S.',
   appChartUpdated: 'התרשים עודכן.',
   appChartNotEditable: 'תרשים זה אינו ניתן לעריכה.',

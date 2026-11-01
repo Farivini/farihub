@@ -666,6 +666,8 @@ export const nl = {
     "The AI task failed. Your edits were kept; the AI's partial changes wait for your decision and the file was not changed.",
   appAiRevertNotConfirmed:
     'Undoing the AI task could not be confirmed. It stays under review and the file was not saved.',
+  appAiUndoNotConfirmed:
+    'Could not confirm the AI task was fully undone; check the workbook with Undo/Redo.',
   appAiChangesNotSaved:
     'AI-wijzigingen toegepast (niet opgeslagen). Ongedaan maken met ⌘Z; opslaan met ⌘S.',
   appChartUpdated: 'Grafiek bijgewerkt.',

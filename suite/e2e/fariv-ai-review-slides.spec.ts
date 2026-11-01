@@ -10,6 +10,8 @@ import {
   scriptedRun,
   startScriptedModel,
   useScriptedModel,
+  type Deferred,
+  type RunContext,
 } from './fariv-review-helpers'
 
 /**
@@ -98,6 +100,41 @@ async function deckText(page: Page): Promise<string> {
   })
 }
 
+/** read the slide, then the TITLE / NOTES changes the instruction asks for */
+function slidesScript(run: RunContext, gate?: { reached: Deferred; release: Deferred }) {
+  const title = directive(run.instruction, 'TITLE')
+  const notes = directive(run.instruction, 'NOTES')
+  const el = (results: readonly string[]) => /\b(e_[A-Za-z0-9_-]+)/.exec(results[0] ?? '')?.[1]
+  const steps = [
+    () => ({ tool: 'read_slide', args: { slideIndex: 0 } }),
+    ...(title
+      ? [
+          (results: readonly string[]) => ({
+            tool: 'apply_ops',
+            args: {
+              ops: [
+                {
+                  op: 'setText',
+                  target: { slide: 0, el: el(results) },
+                  paragraphs: [{ runs: [{ text: title }] }],
+                },
+              ],
+            },
+          }),
+        ]
+      : []),
+    ...(notes
+      ? [
+          () => ({
+            tool: 'apply_ops',
+            args: { ops: [{ op: 'setNotes', target: { slide: 0 }, text: notes }] },
+          }),
+        ]
+      : []),
+  ]
+  return scriptedRun(run, steps, gate)
+}
+
 async function ask(page: Page, instruction: string): Promise<void> {
   const composer = page.locator('.ai-panel textarea')
   await composer.fill(instruction)
@@ -107,39 +144,7 @@ async function ask(page: Page, instruction: string): Promise<void> {
 test('apresentação: revisão da tarefa da IA — decisão explícita, nada parcial, edição manual preservada', async () => {
   test.setTimeout(240_000)
   let gate = { reached: deferred(), release: deferred() }
-  const { server, port } = await startScriptedModel((run) => {
-    const title = directive(run.instruction, 'TITLE')
-    const notes = directive(run.instruction, 'NOTES')
-    const el = (results: readonly string[]) => /\b(e_[A-Za-z0-9_-]+)/.exec(results[0] ?? '')?.[1]
-    const steps = [
-      () => ({ tool: 'read_slide', args: { slideIndex: 0 } }),
-      ...(title
-        ? [
-            (results: readonly string[]) => ({
-              tool: 'apply_ops',
-              args: {
-                ops: [
-                  {
-                    op: 'setText',
-                    target: { slide: 0, el: el(results) },
-                    paragraphs: [{ runs: [{ text: title }] }],
-                  },
-                ],
-              },
-            }),
-          ]
-        : []),
-      ...(notes
-        ? [
-            () => ({
-              tool: 'apply_ops',
-              args: { ops: [{ op: 'setNotes', target: { slide: 0 }, text: notes }] },
-            }),
-          ]
-        : []),
-    ]
-    return scriptedRun(run, steps, gate)
-  })
+  const { server, port } = await startScriptedModel((run) => slidesScript(run, gate))
   const dir = await mkdtemp(join(tmpdir(), 'fariv-review-pptx-'))
   const deck = join(dir, 'apresentacao.pptx')
   await buildDeck(deck)
@@ -254,6 +259,94 @@ test('apresentação: revisão da tarefa da IA — decisão explícita, nada par
     expect(await savedXml(deck)).not.toContain('Pendente Q')
   } finally {
     await closeAndSaveVideo(launched, 'fariv-ai-review-slides')
+    server.close()
+  }
+})
+
+test('apresentação: Aceitar → desfazer a tarefa inteira, mesmo depois do salvamento automático', async () => {
+  test.setTimeout(180_000)
+  const { server, port } = await startScriptedModel((run) => slidesScript(run))
+  const dir = await mkdtemp(join(tmpdir(), 'fariv-undo-pptx-'))
+  const deck = join(dir, 'apresentacao.pptx')
+  await buildDeck(deck)
+  const userDataDir = await mkdtemp(join(tmpdir(), 'fariv-undo-pptx-ud-'))
+  await useScriptedModel(userDataDir, port)
+  const launched = await launchShell({
+    userDataDir,
+    onboardingSeen: true,
+    settings: { autoSaveDefault: true, autoSaveDefaultUpdatedAt: Date.now() },
+    videoDir: 'fariv-ai-review-slides-undo',
+    openFile: deck,
+    lang: 'pt',
+  })
+  try {
+    const slides = await waitForPageWithUrl(launched.app, '://slides/')
+    await expect(slides.locator('.stage-wrap canvas').first()).toBeVisible({ timeout: 30_000 })
+    await slides.waitForTimeout(1_000)
+    const rail = slides.locator('.ai-rail')
+    if (await rail.isVisible()) await rail.click()
+    const lastCard = () => slides.locator('.ai-panel .ai-review-card').last()
+
+    // 1) a task of several operations (title and notes) is accepted and written to the file
+    await ask(slides, 'Troque.\nTITLE: Título aceito\nNOTES: Notas aceitas')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await expect(lastCard()).toContainText('2 alterações da IA')
+    await lastCard().locator('.ai-review-accept').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'accepted')
+    await expect.poll(() => savedXml(deck), POLL).toContain('Título aceito')
+    expect(await savedXml(deck)).toContain('Notas aceitas')
+
+    // 2) Undo task: the whole task leaves the deck and the file, in one action
+    const undo = lastCard().locator('.ai-review-undo')
+    await expect(undo).toBeEnabled()
+    await slides.screenshot({ path: screenshotPath('fariv-review-slides-accepted-undo') })
+    await undo.click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'undone', { timeout: 30_000 })
+    await expect(lastCard()).toContainText('Tarefa aceita e depois desfeita')
+    await expect.poll(() => deckText(slides), POLL).toContain('Resultados')
+    expect(await deckText(slides)).not.toContain('Título aceito')
+    await expect.poll(() => savedXml(deck), POLL).not.toContain('Título aceito')
+    expect(await savedXml(deck)).not.toContain('Notas aceitas')
+    expect(await savedXml(deck)).toContain('Resultados')
+
+    // 3) after a manual edit, the accepted task can no longer be undone as a unit
+    await ask(slides, 'Anote.\nNOTES: Notas mantidas')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await lastCard().locator('.ai-review-accept').click()
+    await expect.poll(() => savedXml(deck), POLL).toContain('Notas mantidas')
+    await slides.locator('.stage-wrap').first().dblclick()
+    await slides.keyboard.press('ControlOrMeta+a')
+    await slides.keyboard.type('Minha edição', { delay: 20 })
+    await slides.keyboard.press('Escape')
+    await expect.poll(() => deckText(slides), POLL).toContain('Minha edição')
+    await lastCard().locator('.ai-review-undo').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'conflict-edited')
+    await expect(lastCard()).toContainText('não pode mais ser desfeita de uma vez')
+    await expect(lastCard().locator('.ai-review-undo')).toBeDisabled()
+    expect(await deckText(slides)).toContain('Minha edição')
+    expect(await savedXml(deck)).toContain('Notas mantidas')
+
+    // 4) a later task blocks undoing an earlier one; the latest one still can be undone
+    await ask(slides, 'Troque.\nTITLE: Primeira')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    const firstId = await lastCard().getAttribute('data-task')
+    await lastCard().locator('.ai-review-accept').click()
+    await expect.poll(() => savedXml(deck), POLL).toContain('Primeira')
+    await ask(slides, 'Anote.\nNOTES: Segunda')
+    await expect(lastCard()).not.toHaveAttribute('data-task', firstId!, { timeout: 30_000 })
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await lastCard().locator('.ai-review-accept').click()
+    await expect.poll(() => savedXml(deck), POLL).toContain('Segunda')
+    const earlier = slides.locator(`.ai-panel .ai-review-card[data-task="${firstId}"]`)
+    await earlier.locator('.ai-review-undo').click()
+    await expect(earlier).toHaveAttribute('data-review', 'conflict-edited')
+    expect(await deckText(slides)).toContain('Primeira')
+    await lastCard().locator('.ai-review-undo').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'undone', { timeout: 30_000 })
+    await expect.poll(() => savedXml(deck), POLL).not.toContain('Segunda')
+    expect(await savedXml(deck)).toContain('Primeira')
+  } finally {
+    await closeAndSaveVideo(launched, 'fariv-ai-review-slides-undo')
     server.close()
   }
 })

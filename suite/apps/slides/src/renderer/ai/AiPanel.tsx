@@ -17,6 +17,7 @@ import {
   finishRun,
   noteAiChange,
   rejectReview,
+  undoAccepted,
   startReview,
   withAttachedSkills,
   IPC_STREAM_SILENCE_TIMEOUT_MS,
@@ -940,8 +941,24 @@ export function AiPanel({
     if (!task) return
     const step = acceptReview(task)
     slidesReview.set(step.task)
-    taskBatchRef.current.delete(taskId)
+    // the restore point stays: Accept → Undo task restores it (the main process keeps
+    // the deck's AI restore points across saves, the newest 20)
     // the app saves it (AutoSave on) once nothing else is under review
+  }
+
+  /** Accept → Undo task: restore the deck from before an accepted task, while the deck
+   * still is what the task left (no edit, no other task since); the app then saves the
+   * restored deck. Refused, with the card saying so, otherwise. */
+  const undoTask = (taskId: string) => {
+    if (!slidesReview.get(taskId) || busy) return
+    void deckFingerprint().then((current) => {
+      const latest = slidesReview.get(taskId)
+      if (!latest) return
+      const tracked = taskBatchRef.current.has(taskId) ? latest : { ...latest, untracked: true }
+      const step = undoAccepted(tracked, current)
+      slidesReview.set(step.task)
+      if (step.action === 'rollback') void revertTask(step.task)
+    })
   }
 
   const rejectTask = (taskId: string) => {
@@ -2465,6 +2482,7 @@ export function AiPanel({
                   lang={lang}
                   onAccept={() => acceptTask(entry.review!.id)}
                   onReject={() => rejectTask(entry.review!.id)}
+                  onUndo={() => undoTask(entry.review!.id)}
                 />
               )}
               {entry.loginRequired && (

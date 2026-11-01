@@ -972,7 +972,15 @@ export function App() {
   useEffect(
     () =>
       slidesReview.subscribe((task) => {
-        if (task.status === 'accepted' && task.changes > 0) acceptedUnsavedRef.current = true
+        // accepted, or accepted and then undone (Accept → Undo task): the file catches up
+        // (an Undo task that could not be confirmed leaves the task flagged: no save)
+        if (
+          (task.status === 'accepted' || task.status === 'undone') &&
+          task.changes > 0 &&
+          !task.conflict
+        ) {
+          acceptedUnsavedRef.current = true
+        }
         if (!acceptedUnsavedRef.current || holdsSave(slidesReview.list())) return
         acceptedUnsavedRef.current = false
         if (!autoSaveRef.current || !pathRef.current) return

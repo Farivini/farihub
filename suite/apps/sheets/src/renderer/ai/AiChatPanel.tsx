@@ -266,6 +266,7 @@ export function AiChatPanel({
   onUndo,
   onReviewAccept,
   onReviewReject,
+  onReviewUndo,
   openReviews = [],
   scopeRange,
   scopeColumns,
@@ -317,6 +318,8 @@ export function AiChatPanel({
   /** Fariv review card: keep / undo the whole AI task with this id */
   readonly onReviewAccept?: (taskId: string) => void
   readonly onReviewReject?: (taskId: string) => void
+  /** Accept → Undo task: undo an accepted AI task as one unit */
+  readonly onReviewUndo?: (taskId: string) => void
   /** tasks still waiting for a decision; those whose reply left the chat are listed above the composer */
   readonly openReviews?: readonly ReviewTask<string>[]
   /** A1 notation of the range this run is scoped to, or null when there is no
@@ -713,6 +716,7 @@ export function AiChatPanel({
                     lang={lang}
                     onAccept={() => onReviewAccept?.(entry.review!.id)}
                     onReject={() => onReviewReject?.(entry.review!.id)}
+                    onUndo={onReviewUndo ? () => onReviewUndo(entry.review!.id) : undefined}
                   />
                 )}
                 {entry.autoApplied && !entry.review && (

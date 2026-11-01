@@ -9,6 +9,7 @@ import {
   isLoadArtifact,
   rewriteCarriedValue,
   stashUndoCarry,
+  undoStackTopTag,
   type CarriedUndoItem,
 } from '../src/renderer/undo-carry'
 import type { UniverRuntime } from '../src/renderer/univer-state'
@@ -424,5 +425,39 @@ describe('captureUndoCarry / consumePendingUndoCarry', () => {
       undoMutations: { params: { cellValue: { 0: { 0: { s: unknown } } } } }[]
     }
     expect(item.undoMutations[0]!.params.cellValue[0][0].s).toEqual(stylesPool.st9)
+  })
+})
+
+describe('undoStackTopTag across a carried save', () => {
+  function runtimeOn(unitId: string, service: FakeService): UniverRuntime {
+    return {
+      univer: { __getInjector: () => ({ get: () => service }) },
+      univerAPI: {
+        getActiveWorkbook: () => ({ getId: () => unitId, getSnapshot: () => ({ styles: {} }) }),
+      },
+    } as unknown as UniverRuntime
+  }
+
+  it('keeps the history position of a carried entry (an accepted AI task can still be undone)', () => {
+    const top = cellItem(OLD_UNIT, 2)
+    const service = fakeService([cellItem(OLD_UNIT, 1), top])
+    const before = undoStackTopTag(runtimeOn(OLD_UNIT, service))
+    expect(before).not.toBe('0')
+    const carry = captureUndoCarry(runtimeOn(OLD_UNIT, service), 'newsha')
+    stashUndoCarry(carry)
+    // the reopened unit's stack holds the carried copies
+    service._undoStacks.set(NEW_UNIT, [])
+    const installed: unknown[] = []
+    service.pushUndoRedo = (item: unknown) => {
+      installed.push(item)
+      service._undoStacks.get(NEW_UNIT)!.push(item as CarriedUndoItem)
+    }
+    consumePendingUndoCarry(runtimeOn(NEW_UNIT, service), NEW_UNIT)
+    expect(installed).toHaveLength(2)
+    expect(installed[1]).not.toBe(top)
+    expect(undoStackTopTag(runtimeOn(NEW_UNIT, service))).toBe(before)
+    // a different entry has a different position
+    service._undoStacks.get(NEW_UNIT)!.push(cellItem(NEW_UNIT, 3))
+    expect(undoStackTopTag(runtimeOn(NEW_UNIT, service))).not.toBe(before)
   })
 })

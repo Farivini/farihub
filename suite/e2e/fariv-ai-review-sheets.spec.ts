@@ -280,3 +280,118 @@ test('planilha: revisão da tarefa da IA — decisão explícita, nada parcial, 
     server.close()
   }
 })
+
+test('planilha: Aceitar → desfazer a tarefa inteira, mesmo depois do salvamento automático', async () => {
+  test.setTimeout(240_000)
+  const { server, port } = await startScriptedModel((run): ModelReply | Promise<ModelReply> => {
+    const sheetId = (results: readonly string[]) =>
+      /id=([^,)\s]+)/.exec(results[0] ?? '')?.[1] ?? 'sheet-1'
+    const groups = directive(run.instruction, 'OPS')
+      .split('|')
+      .filter(Boolean)
+      .map((group) => group.split(';').map((pair) => pair.split('=') as [string, string]))
+    return scriptedRun(run, [
+      () => ({ tool: 'get_workbook_context', args: {} }),
+      ...groups.map((ops) => (results: readonly string[]) => ({
+        tool: 'propose_operations',
+        args: {
+          summary: 'Editar células',
+          operations: ops.map(([address, value]) => ({
+            op: 'set_cell',
+            sheetId: sheetId(results),
+            address,
+            value,
+          })),
+        },
+      })),
+    ])
+  })
+  const dir = await mkdtemp(join(tmpdir(), 'fariv-undo-'))
+  const workbook = join(dir, 'vendas.xlsx')
+  await copyFile(XLSX_FIXTURE, workbook)
+  const userDataDir = await mkdtemp(join(tmpdir(), 'fariv-undo-ud-'))
+  await useScriptedModel(userDataDir, port)
+  const launched = await launchShell({
+    userDataDir,
+    onboardingSeen: true,
+    settings: { autoSaveDefault: true, autoSaveDefaultUpdatedAt: Date.now() },
+    videoDir: 'fariv-ai-review-sheets-undo',
+    openFile: workbook,
+    lang: 'pt',
+  })
+  try {
+    const sheets = await waitForPageWithUrl(launched.app, '://sheets/')
+    await sheets.waitForFunction(() => document.body.textContent?.includes('Sheet1'), null, {
+      timeout: 30_000,
+    })
+    await sheets.waitForTimeout(1_000)
+    const expand = sheets.locator('.copilot.collapsed .expand-copilot')
+    if (await expand.isVisible()) await expand.click()
+    const lastCard = () => sheets.locator('.copilot .ai-review-card').last()
+
+    // 1) a task of several operations (two batches) is accepted and written to the file
+    await ask(sheets, 'Escreva.\nOPS: A3=Aceito 1;B3=Aceito 2;C3=Aceito 3|A4=Aceito 4;B4=Aceito 5')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await expect(lastCard()).toContainText('5 alterações da IA')
+    await lastCard().locator('.ai-review-accept').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'accepted')
+    for (const value of ['Aceito 1', 'Aceito 3', 'Aceito 5']) {
+      await expect.poll(() => savedText(workbook), POLL).toContain(value)
+    }
+
+    // 2) Undo task: the whole task leaves the workbook and the file, in one action —
+    //    across the save that already wrote it (the history is carried over the save)
+    const undo = lastCard().locator('.ai-review-undo')
+    await expect(undo).toBeEnabled()
+    await expect(undo).toHaveText('Desfazer tarefa')
+    await sheets.screenshot({ path: screenshotPath('fariv-review-sheets-accepted-undo') })
+    await undo.click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'undone', { timeout: 30_000 })
+    await expect(lastCard()).toContainText('Tarefa aceita e depois desfeita')
+    for (const address of ['A3', 'B3', 'C3', 'A4', 'B4']) {
+      expect(await cell(sheets, address)).toBe('')
+    }
+    await expect.poll(() => savedText(workbook), POLL).not.toContain('Aceito')
+
+    // 3) after a manual edit, the accepted task can no longer be undone as a unit (that
+    //    would take the edit too): the card says so and nothing changes
+    await ask(sheets, 'Escreva.\nOPS: A5=Mantido 1;B5=Mantido 2')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await lastCard().locator('.ai-review-accept').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'accepted')
+    await expect.poll(() => savedText(workbook), POLL).toContain('Mantido 2')
+    await typeInto(sheets, 'D5', 'Edição manual')
+    await lastCard().locator('.ai-review-undo').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'conflict-edited')
+    await expect(lastCard()).toContainText('não pode mais ser desfeita de uma vez')
+    await expect(lastCard().locator('.ai-review-undo')).toBeDisabled()
+    expect(await cell(sheets, 'A5')).toBe('Mantido 1')
+    expect(await cell(sheets, 'D5')).toBe('Edição manual')
+
+    // 4) a later task blocks undoing an earlier one, which would take it too
+    await ask(sheets, 'Escreva.\nOPS: A6=Primeira')
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await lastCard().locator('.ai-review-accept').click()
+    await expect.poll(() => savedText(workbook), POLL).toContain('Primeira')
+    const first = lastCard()
+    const firstId = await first.getAttribute('data-task')
+    await ask(sheets, 'Escreva.\nOPS: A7=Segunda')
+    await expect(lastCard()).not.toHaveAttribute('data-task', firstId!, { timeout: 30_000 })
+    await expect(lastCard()).toHaveAttribute('data-review', 'pending', { timeout: 30_000 })
+    await lastCard().locator('.ai-review-accept').click()
+    await expect.poll(() => savedText(workbook), POLL).toContain('Segunda')
+    const earlier = sheets.locator(`.copilot .ai-review-card[data-task="${firstId}"]`)
+    await earlier.locator('.ai-review-undo').click()
+    await expect(earlier).toHaveAttribute('data-review', 'conflict-edited')
+    expect(await cell(sheets, 'A6')).toBe('Primeira')
+    // the latest one still can
+    await lastCard().locator('.ai-review-undo').click()
+    await expect(lastCard()).toHaveAttribute('data-review', 'undone', { timeout: 30_000 })
+    expect(await cell(sheets, 'A7')).toBe('')
+    await expect.poll(() => savedText(workbook), POLL).not.toContain('Segunda')
+    expect(await savedText(workbook)).toContain('Primeira')
+  } finally {
+    await closeAndSaveVideo(launched, 'fariv-ai-review-sheets-undo')
+    server.close()
+  }
+})

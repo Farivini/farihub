@@ -70,6 +70,9 @@ export interface Session {
   /** Monotonic count of metaDirty transitions, so a save can tell a notes/comments
       edit committed while its write was streaming from one the write carried. */
   metaRev?: number
+  /** Count of saves: a history snapshot from before the last save describes a deck
+      that is no longer on disk, so restoring it leaves the session dirty */
+  savedGen?: number
   /** Transform preview gesture in progress (the first preview already pushed an undo snapshot; later previews/final commit do not) */
   transformPreview?: boolean
   /** Redo stack as it was before the preview gesture's pushHistory cleared it; a cancel puts it back */
@@ -88,6 +91,11 @@ export interface Session {
   opLog?: OpLogEntry[]
 }
 export const sessions = new Map<number, Session>()
+
+/** The deck was written to disk (after commitSaved): older history states now differ from the file. */
+export function noteDeckSaved(session: Session): void {
+  session.savedGen = (session.savedGen ?? 0) + 1
+}
 
 /** Flag an archive-only edit (notes/comments) and advance the save-snapshot counter. */
 export function markMetaDirty(session: Session): void {
@@ -142,6 +150,8 @@ export interface HistorySnapshot {
   size: { cx: number; cy: number }
   /** archive-only edits (notes, theme) flag the session, so undo must restore that too */
   metaDirty: boolean
+  /** the session's savedGen when the snapshot was taken */
+  savedGen?: number
 }
 const MAX_HISTORY = 50
 
@@ -155,6 +165,7 @@ export function takeSnapshot(session: Session): HistorySnapshot {
     entries: new Map(session.opened.archive.entries),
     size: { ...session.opened.deck.size },
     metaDirty: !!session.metaDirty,
+    savedGen: session.savedGen ?? 0,
   }
 }
 
@@ -165,6 +176,7 @@ function cloneSnapshot(snap: HistorySnapshot): HistorySnapshot {
     entries: new Map(snap.entries),
     size: { ...snap.size },
     metaDirty: snap.metaDirty,
+    ...(snap.savedGen !== undefined ? { savedGen: snap.savedGen } : {}),
   }
 }
 
@@ -332,6 +344,10 @@ export function restoreSnapshot(session: Session, snap: HistorySnapshot): void {
   session.opened.deck.slides = fresh.slides
   session.opened.deck.size = fresh.size
   session.metaDirty = fresh.metaDirty
+  // A state from before the last save (undo across an AutoSave, Accept → Undo task)
+  // differs from the file: its clean flags describe the old file, so mark the session
+  // dirty — the archive it restored is what the next save writes.
+  if ((fresh.savedGen ?? 0) !== (session.savedGen ?? 0)) markMetaDirty(session)
   const entries = session.opened.archive.entries
   entries.clear()
   for (const [k, v] of fresh.entries) entries.set(k, v)

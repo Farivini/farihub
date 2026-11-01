@@ -673,6 +673,8 @@ export const es = {
     'La tarea de la IA falló. Tus ediciones se conservaron; los cambios parciales de la IA esperan tu decisión y el archivo no se modificó.',
   appAiRevertNotConfirmed:
     'No se pudo confirmar que la tarea de la IA se deshiciera. Sigue en revisión y el archivo no se guardó.',
+  appAiUndoNotConfirmed:
+    'No se pudo confirmar que la tarea de la IA se deshizo por completo; revise el libro con Deshacer/Rehacer.',
   appAiChangesNotSaved: 'Cambios de IA aplicados (sin guardar). Deshaga con ⌘Z; guarde con ⌘S.',
   appChartUpdated: 'Gráfico actualizado.',
   appChartNotEditable: 'Este gráfico no es editable.',
