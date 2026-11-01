@@ -836,8 +836,13 @@ export function AiPanel({
   // slide list follows it asynchronously). Every read goes through one promise chain,
   // so the agent's changes are recorded in order.
 
-  const deckFingerprint = (): Promise<string | null> =>
-    window.slidesApi.deckFingerprint().catch(() => null)
+  const deckFingerprint = async (): Promise<string | null> => {
+    try {
+      return (await window.slidesApi.deckFingerprint?.()) ?? null
+    } catch {
+      return null
+    }
+  }
   /** the task of the run in flight; history batch (restore point) by task id */
   const runningTaskIdRef = useRef<string | null>(null)
   const taskBatchRef = useRef(new Map<string, number>())
@@ -888,7 +893,9 @@ export function AiPanel({
         ),
       )
     }
-    const reverted = restored != null && (await deckFingerprint()) === reverting.before
+    // confirmed only against a real fingerprint: without one the revert cannot be verified
+    const after = restored != null ? await deckFingerprint() : null
+    const reverted = after !== null && after === reverting.before
     if (reverted) taskBatchRef.current.delete(reverting.id)
     const next = confirmRevert(reverting, reverted)
     slidesReview.set(next)

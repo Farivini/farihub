@@ -119,6 +119,7 @@ function installSlidesApi(): void {
     value: {
       aiGskStatus: vi.fn(async () => ({ loggedIn: true })),
       beginHistoryBatch: vi.fn(async () => false),
+      deckFingerprint: vi.fn(async () => 'deck-fingerprint'),
       endHistoryBatch: vi.fn(async () => null),
       aiLogRunFailure: vi.fn(async () => undefined),
     },
