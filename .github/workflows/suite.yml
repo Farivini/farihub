@@ -1,0 +1,119 @@
+name: Suite
+# The Fariv suite (suite/: Planilhas, Documentos, Apresentações on the GenOffice OSS base).
+# Tests and Electron e2e on Linux; the Windows installer is built on every run and kept as
+# an artifact (unsigned: signing needs Fariv's certificate, not configured here).
+on:
+  push:
+    paths: ['suite/**', '.github/workflows/suite.yml']
+  pull_request:
+    paths: ['suite/**', '.github/workflows/suite.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: suite-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    working-directory: suite
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: suite/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: suite/apps/sheets/native/xlsx-engine
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron
+          key: electron-bin-${{ runner.os }}-${{ hashFiles('suite/package-lock.json') }}
+          restore-keys: electron-bin-${{ runner.os }}-
+      - run: npm ci --no-audit --no-fund
+      # Every npm dependency must carry a licence on the allowlist (tools/check-licenses.mjs).
+      - run: npm run licenses
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses
+          manifest-path: suite/apps/sheets/native/xlsx-engine/Cargo.toml
+      - run: npm run typecheck
+      # pptx-engine validates saved decks with xmllint.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils
+        working-directory: .
+      - run: npm test
+
+  e2e:
+    # 22.04: 24.04's AppArmor hardening blocks the Electron renderer under xvfb.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: suite/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: suite/apps/sheets/native/xlsx-engine
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron
+          key: electron-bin-${{ runner.os }}-${{ hashFiles('suite/package-lock.json') }}
+          restore-keys: electron-bin-${{ runner.os }}-
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:all
+      - run: npm run fixtures -w @genoffice/sheets
+      - name: Allow unprivileged user namespaces (Electron)
+        run: |
+          if sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+      # The Fariv flows (open, edit, save and reopen in the three formats; review and undo)
+      # plus the upstream smoke tests they build on.
+      - run: xvfb-run --auto-servernum -- npm run test:e2e:fariv
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: suite-e2e-artifacts
+          path: |
+            suite/e2e/artifacts
+            suite/e2e/test-results
+          retention-days: 7
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: suite/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: suite/apps/sheets/native/xlsx-engine
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck -w @genoffice/shell
+      # notices + build:all (with the Rust sidecar, MSVC) + electron-builder --win.
+      - run: npm run dist:win -- --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fariv-windows-installer
+          path: |
+            suite/apps/shell/release/*.exe
+            suite/apps/shell/release/*.yml
+          if-no-files-found: error
+          retention-days: 14
