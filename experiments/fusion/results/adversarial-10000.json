@@ -1,0 +1,117 @@
+{
+  "scope": "Synthetic headless Node/Linux, no Excel real/UI/provider auth; no comparison of native vs WASM",
+  "results": [
+    {
+      "name": "10000 formulas depend on one global input",
+      "ok": true,
+      "rows": 10000,
+      "oldMs": [
+        12.183402000000001,
+        10.488026000000048,
+        9.900445999999988
+      ],
+      "gridpathMs": [
+        105.35351100000003,
+        97.80948899999999,
+        85.56597800000009
+      ],
+      "deltaCells": [
+        10001,
+        10001,
+        10001
+      ],
+      "engineTiming": [
+        {
+          "evaluateMs": 54.27668100000005,
+          "trackingMs": 1.4865270000000237,
+          "serializeMs": 43.24228800000003
+        },
+        {
+          "evaluateMs": 43.36129400000004,
+          "trackingMs": 1.0742280000001756,
+          "serializeMs": 47.79695099999981
+        },
+        {
+          "evaluateMs": 30.79792999999995,
+          "trackingMs": 0.6443730000000869,
+          "serializeMs": 42.291492999999946
+        }
+      ]
+    },
+    {
+      "name": "cross sheet dependencies and row insertion",
+      "ok": true,
+      "value": 42,
+      "formula": "=Dados!A2*2",
+      "structuralEditRequestsFullSnapshot": true
+    },
+    {
+      "name": "query sees data beyond initial sample",
+      "ok": true,
+      "ms": 107.79779500000018,
+      "response": {
+        "columns": [
+          {
+            "column": "A",
+            "header": "Regiao"
+          },
+          {
+            "column": "B",
+            "header": "Valor"
+          }
+        ],
+        "header_row": 1,
+        "matched": 1,
+        "row_range": "2-100001",
+        "rows": [
+          {
+            "cells": {
+              "A": "ALVO",
+              "B": 777
+            },
+            "row": 100001
+          }
+        ],
+        "rows_scanned": 100000,
+        "sheet": "Dados",
+        "truncated": false
+      }
+    },
+    {
+      "name": "XLSX saves recalculated formula caches",
+      "ok": true,
+      "cachedAfterReopen": {
+        "content": "=A1*2",
+        "display": "42",
+        "value": 42
+      }
+    },
+    {
+      "name": "unsupported formula with cached value is flagged",
+      "ok": true,
+      "cell": {
+        "content": "=fariv_unknown(1)",
+        "display": "99",
+        "value": 99
+      },
+      "flags": [
+        {
+          "col": 0,
+          "formula": "=fariv_unknown(1)",
+          "live": null,
+          "name": "fariv_unknown",
+          "row": 0,
+          "sheet": "Dados",
+          "shown": 99,
+          "why": "function"
+        }
+      ]
+    },
+    {
+      "name": "Excel row limit rejects five million rows",
+      "ok": true,
+      "rejected": true,
+      "message": "Invalid row"
+    }
+  ]
+}
