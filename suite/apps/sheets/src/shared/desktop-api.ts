@@ -849,6 +849,7 @@ export const workbookFileSchema = z
     csvFormat: z
       .object({
         delimiter: z.string().min(1).max(1),
+        declared: z.boolean().optional(),
         decimal: z.enum([',', '.']).nullable(),
         columns: z.array(
           z.object({

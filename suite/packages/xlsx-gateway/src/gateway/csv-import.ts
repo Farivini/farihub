@@ -309,10 +309,12 @@ export async function csvToXlsxBufferForOpen(
   const split = delimiter ?? resolveImportDelimiter(csvText)
   const rows = parseCsv(csvText, split)
   const typing = analyzeCsvColumns(rows, split)
+  // an Excel `sep=` line is written back, so the saved file reopens the same way
+  const declared = splitSepDeclaration(csvText).delimiter === split
   return {
     buffer: await xlsxBufferFromRows(rows, sheetName, typing.numberAt),
     empty: rows.length === 0,
-    report: typing.report,
+    report: declared ? { ...typing.report, declared: true } : typing.report,
   }
 }
 
@@ -332,13 +334,38 @@ export async function csvToXlsxBufferForOpen(
 export function resolveImportDelimiter(csvText: string): string {
   const declared = splitSepDeclaration(csvText).delimiter
   if (declared !== undefined) return declared
-  const sniffed = sniffDelimiter(csvText)
+  const sniffed = consistentDelimiter(csvText, sniffDelimiter(csvText))
   if (sniffed === ',') return sniffed
   const sniffedRows = parseCsv(csvText, sniffed)
   if (sniffedRows.length === 0 || sniffedRows[0]!.length !== 1) return sniffed
   if (bodyRowsAgreeOnWidth(sniffedRows.slice(1))) return sniffed
   if (parseCsv(csvText, ',').every((row) => row.length === 1)) return ','
   return sniffed
+}
+
+/**
+ * Frequency alone misreads a narrow pt-BR table: `a;b` over `1,25;2,25` holds
+ * more decimal commas than semicolons. When the counted delimiter splits the
+ * sample's rows into different widths (the header has none of it) and another
+ * delimiter splits every row, header included, into the same width above one,
+ * that one is the table's (the root Farihub rule: consistent across lines).
+ */
+function consistentDelimiter(csvText: string, counted: string): string {
+  const text = splitSepDeclaration(csvText).text
+  const cut = text.length > 64 * 1024 ? text.slice(0, text.lastIndexOf('\n', 64 * 1024)) : text
+  const width = (delimiter: string): number => {
+    const rows = parseCsv(cut, delimiter)
+      .slice(0, 20)
+      .filter((row) => row.some((field) => field !== ''))
+    if (rows.length < 2) return 0
+    const first = rows[0]!.length
+    return first > 1 && rows.every((row) => row.length === first) ? first : 0
+  }
+  if (width(counted) > 0) return counted
+  for (const delimiter of DELIMITERS) {
+    if (delimiter !== counted && width(delimiter) > 0) return delimiter
+  }
+  return counted
 }
 
 const TABLE_WIDTH_AGREEMENT = 0.6

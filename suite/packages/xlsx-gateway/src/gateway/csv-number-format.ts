@@ -52,6 +52,8 @@ export interface CsvColumnReport {
 
 export interface CsvImportReport {
   readonly delimiter: string
+  /** the file named its delimiter on an Excel `sep=` first line (kept on save) */
+  readonly declared?: boolean | undefined
   /** the decimal mark the file's numbers use, when they agree on one */
   readonly decimal: DecimalMark | null
   readonly columns: readonly CsvColumnReport[]

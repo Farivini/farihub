@@ -56,6 +56,24 @@ export interface CsvWorksheet {
 export interface CsvDialect {
   readonly delimiter: string
   readonly decimal: ',' | '.'
+  /** write Excel's `sep=` first line (the source file had one) */
+  readonly declare?: boolean
+}
+
+/// A number in plain decimal digits, never in exponent form: the importer reads
+/// `0,00000012` back as a number, but not `1,2e-7`.
+export function plainDecimal(value: number): string {
+  const text = String(value)
+  const match = /^(-?)(\d)(?:\.(\d+))?e([+-]\d+)$/.exec(text)
+  if (!match) return text
+  const [, sign, lead, rest = '', exponentText] = match
+  const digits = lead! + rest
+  const exponent = Number(exponentText)
+  if (exponent < 0) return `${sign}0.${'0'.repeat(-exponent - 1)}${digits}`
+  const point = exponent + 1
+  return point >= digits.length
+    ? `${sign}${digits}${'0'.repeat(point - digits.length)}`
+    : `${sign}${digits.slice(0, point)}.${digits.slice(point)}`
 }
 
 export const DEFAULT_CSV_DIALECT: CsvDialect = { delimiter: ',', decimal: '.' }
@@ -184,7 +202,7 @@ export function serializeActiveSheetCsv(
             if (typeof raw !== 'number' || !Number.isFinite(raw)) continue
             const display = displayRow[column] ?? ''
             // a General number is written with the file's own decimal mark
-            const full = dialect.decimal === ',' ? String(raw).replace('.', ',') : String(raw)
+            const full = dialect.decimal === ',' ? plainDecimal(raw).replace('.', ',') : String(raw)
             if (display === full) continue
             const format = patternOf ? patternOf(start + rowOffset, column, raw) : null
             if (format === null) displayRow[column] = full
@@ -205,7 +223,8 @@ export function serializeActiveSheetCsv(
     }
     return false
   })
-  return tooLarge ? 'too-large' : parts.join('')
+  if (tooLarge) return 'too-large'
+  return (dialect.declare ? `sep=${dialect.delimiter}\r\n` : '') + parts.join('')
 }
 
 /// The active FWorksheet through the structural CsvWorksheet slice, plus the
@@ -296,8 +315,18 @@ export async function handleExportCsv(ctx: CsvExportContext, targetPath?: string
 /// The dialect a CSV session was opened with (WorkbookFile.csvFormat): its
 /// delimiter, and a comma decimal only when the file's numbers used one.
 export function csvDialectOf(
-  format: { readonly delimiter: string; readonly decimal: ',' | '.' | null } | undefined,
+  format:
+    | {
+        readonly delimiter: string
+        readonly decimal: ',' | '.' | null
+        readonly declared?: boolean | undefined
+      }
+    | undefined,
 ): CsvDialect {
   if (!format) return DEFAULT_CSV_DIALECT
-  return { delimiter: format.delimiter, decimal: format.decimal === ',' ? ',' : '.' }
+  return {
+    delimiter: format.delimiter,
+    decimal: format.decimal === ',' ? ',' : '.',
+    ...(format.declared ? { declare: true } : {}),
+  }
 }

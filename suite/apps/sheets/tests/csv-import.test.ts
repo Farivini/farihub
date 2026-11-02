@@ -297,7 +297,9 @@ describe('csvToXlsxBufferForOpen', () => {
     // three tab columns instead of nine comma fragments, each field whole
     expect(pinned.empty).toBe(false)
     expect(await lastColumn(pinned.buffer)).toBe('C')
-    expect(await lastColumn(sniffed.buffer)).toBe('I')
+    // the raw count still prefers the comma, but the import now checks which
+    // delimiter splits every row (header included) evenly: the tab
+    expect(await lastColumn(sniffed.buffer)).toBe('C')
     const sheet = await (
       await JSZip.loadAsync(pinned.buffer)
     )

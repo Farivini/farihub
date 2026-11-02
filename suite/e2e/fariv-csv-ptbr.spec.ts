@@ -352,10 +352,13 @@ test('CSV pt-BR salvo no lugar mantém `;` e a vírgula decimal', async () => {
   try {
     const page = await openedSheets(app)
     const nameBox = page.locator('[data-u-comp="defined-name"] input')
-    await nameBox.click()
-    await nameBox.fill('E2')
-    await nameBox.press('Enter')
-    await expect(nameBox).toHaveValue('E2')
+    // the name box can miss the first jump while the grid settles: retry it
+    await expect(async () => {
+      await nameBox.click()
+      await nameBox.fill('E2')
+      await nameBox.press('Enter')
+      await expect(nameBox).toHaveValue('E2', { timeout: 2_000 })
+    }).toPass({ timeout: 20_000 })
     // the first key opens the cell editor; give the grid its focus back first
     await page.waitForTimeout(500)
     await page.keyboard.type('Dom', { delay: 20 })

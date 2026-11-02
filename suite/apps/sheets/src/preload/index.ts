@@ -878,6 +878,7 @@ function parseCsvFormat(input: unknown): NonNullable<WorkbookFile['csvFormat']> 
     typeof input.delimiter !== 'string' ||
     input.delimiter.length !== 1 ||
     !(input.decimal === null || isDecimalMark(input.decimal)) ||
+    (input.declared !== undefined && typeof input.declared !== 'boolean') ||
     !Array.isArray(input.columns)
   ) {
     throw new Error('Invalid workbook response.')
@@ -908,7 +909,12 @@ function parseCsvFormat(input: unknown): NonNullable<WorkbookFile['csvFormat']> 
       ...(entry.example === undefined ? {} : { example: entry.example }),
     }
   })
-  return { delimiter: input.delimiter, decimal: input.decimal, columns }
+  return {
+    delimiter: input.delimiter,
+    ...(input.declared === undefined ? {} : { declared: input.declared }),
+    decimal: input.decimal,
+    columns,
+  }
 }
 
 function parseWorkbookFile(input: unknown): WorkbookFile {

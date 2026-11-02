@@ -138,13 +138,14 @@ Reprodução que motivou a correção, no Electron real: o `tips.csv` público (
 - **Identificadores ficam texto, na coluna toda:** inteiros com zero à esquerda (`007`, CEP `01310100`) ou com 11 dígitos ou mais (CPF, CNPJ, telefone, código de barras). Antes, a mesma coluna podia sair metade número e metade texto.
 - **Coluna ambígua não é convertida.** `1.250` pode ser mil duzentos e cinquenta ou um vírgula vinte e cinco. Se a coluna não tem evidência própria, vale a convenção do resto do arquivo. Sem nenhuma evidência num arquivo com `;` ou tabulação, o dado fica como escrito. Uma coluna com as duas convenções (`16,99` e `16.99`) também fica como escrita. Nos dois casos o app explica num aviso e a IA recebe a mesma explicação.
 - Campos vazios continuam vazios. Aspas seguem o RFC 4180. Sinal `+`, porcentagem, moeda e datas continuam texto, como antes. Nada vira fórmula.
+- **Separador:** a contagem bruta continua escolhendo, mas, se o separador contado não aparece no cabeçalho ou deixa as linhas com larguras diferentes, vale o que divide todas as linhas na mesma largura. Assim, uma tabela pt-BR estreita (`a;b` sobre `1,25;2,25`, com mais vírgulas decimais que `;`) não se parte nas vírgulas. Uma linha `sep=` do Excel continua tendo prioridade.
 - CSV com ponto decimal e TSV continuam lidos como antes. Num arquivo com vírgula como separador, uma coluna só com valores como `1.250` mantém a leitura com ponto que sempre teve.
 
 **Sem configurar nada.** Quando o formato é inequívoco, abrir já resolve: o aviso diz quantas colunas foram lidas com vírgula decimal. O mesmo vale para Dados › De Texto/CSV, que usa a mesma regra.
 
 **A IA vê os números.** O `get_workbook_context` inclui como o arquivo foi lido: separador, decimal, colunas numéricas, identificadores e colunas ambíguas, com a instrução de não somar uma coluna ambígua sem perguntar. O `aggregate_range` soma os números importados (4.827,77 e 731,58 nos 244 registros).
 
-**Salvar.** Salvar como `.xlsx` guarda números (`<v>16.99</v>`). Ctrl+S no próprio CSV regrava **no formato de origem**: um arquivo pt-BR continua com `;` e `16,99`. Antes, toda regravação saía com vírgula como separador e ponto decimal, o que o Excel em português lê errado. Números com formato explícito saem como exibidos, e a formatação de exibição segue em inglês (pendência abaixo).
+**Salvar.** Salvar como `.xlsx` guarda números (`<v>16.99</v>`). Ctrl+S no próprio CSV regrava **no formato de origem**: um arquivo pt-BR continua com `;` e `16,99`. A linha `sep=` é regravada quando o arquivo original a tinha, e números muito pequenos ou grandes saem sem expoente (`0,00000012`), para o arquivo reabrir do mesmo jeito. Antes, toda regravação saía com vírgula como separador e ponto decimal, o que o Excel em português lê errado. Números com formato explícito saem como exibidos, e a formatação de exibição segue em inglês (pendência abaixo).
 
 **Testes.**
 

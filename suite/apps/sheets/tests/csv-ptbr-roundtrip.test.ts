@@ -1,8 +1,14 @@
+import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
 
 import { csvToXlsxBufferForOpen } from '@genoffice/xlsx-gateway/gateway/csv-import'
 import { describeCsvImport } from '@genoffice/xlsx-gateway/gateway/csv-number-format'
-import { csvDialectOf, csvField, serializeActiveSheetCsv } from '../src/renderer/csv-export'
+import {
+  csvDialectOf,
+  csvField,
+  plainDecimal,
+  serializeActiveSheetCsv,
+} from '../src/renderer/csv-export'
 import { csvOpenNotice } from '../src/renderer/csv-open-notice'
 
 /** a structural worksheet over display strings and raw values (as csv-export.test.ts) */
@@ -79,5 +85,55 @@ describe('what the user and the AI are told', () => {
   it('a plain point-decimal CSV needs no remark', async () => {
     const { report } = await csvToXlsxBufferForOpen('a,b\n1.5,x\n')
     expect(csvOpenNotice({ name: 'z.csv', csvFormat: report }, t)).toBeNull()
+  })
+})
+
+describe('a saved pt-BR CSV reopens the same way', () => {
+  /** open → the grid's values → save back → open again */
+  async function roundTrip(source: string) {
+    const first = await csvToXlsxBufferForOpen(source)
+    const zip = await JSZip.loadAsync(first.buffer)
+    const xml = await zip.file('xl/worksheets/sheet1.xml')!.async('string')
+    const raws: unknown[][] = []
+    for (const match of xml.matchAll(/<c r="([A-Z])(\d+)"( t="inlineStr")?>(.*?)<\/c>/g)) {
+      const [, column, row, inline, body] = match
+      const r = Number(row) - 1
+      const c = column!.charCodeAt(0) - 65
+      ;(raws[r] ??= [])[c] = inline
+        ? /<t[^>]*>(.*?)<\/t>/.exec(body!)![1]
+        : Number(/<v>(.*?)<\/v>/.exec(body!)![1])
+    }
+    const displays = raws.map((row) => row.map((value) => String(value)))
+    const saved = serializeActiveSheetCsv(
+      sheetOf(displays, raws) as never,
+      null,
+      () => null,
+      csvDialectOf(first.report),
+    )
+    if (saved === 'too-large') throw new Error('too large')
+    const second = await csvToXlsxBufferForOpen(saved)
+    return { saved, first: first.report, second: second.report, raws }
+  }
+
+  it('keeps an Excel `sep=` line', async () => {
+    const { saved, second } = await roundTrip('sep=;\r\na;b\r\n1,25;2,25\r\n3,25;4,25\r\n')
+    expect(saved).toBe('sep=;\r\na;b\r\n1,25;2,25\r\n3,25;4,25\r\n')
+    expect(second).toMatchObject({ delimiter: ';', declared: true, decimal: ',' })
+  })
+
+  it('a narrow `;` table without a declaration reopens with `;`', async () => {
+    const { second } = await roundTrip('a;b\r\n1,25;2,25\r\n3,25;4,25\r\n')
+    expect(second.delimiter).toBe(';')
+    expect(second.columns.map((column) => column.kind)).toEqual(['number', 'number'])
+  })
+
+  it('small and large numbers are written without an exponent, and stay numbers', async () => {
+    expect(plainDecimal(1.2e-7)).toBe('0.00000012')
+    expect(plainDecimal(-3.5e-9)).toBe('-0.0000000035')
+    expect(plainDecimal(1.5e21)).toBe('1500000000000000000000')
+    expect(plainDecimal(16.99)).toBe('16.99')
+    const { saved, second } = await roundTrip('v;w\r\n0,00000012;1,5\r\n2,5;3\r\n')
+    expect(saved).toContain('0,00000012;1,5')
+    expect(second.columns[0]).toMatchObject({ kind: 'number', decimal: ',', numbers: 2 })
   })
 })

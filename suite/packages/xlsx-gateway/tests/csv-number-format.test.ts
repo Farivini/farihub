@@ -163,3 +163,25 @@ describe('point-decimal CSV and TSV keep their reading', () => {
     expect(typing.numberAt(0, 'x')).toBeNull()
   })
 })
+
+describe('delimiter of a narrow pt-BR table', () => {
+  it('a two-column `;` table with decimal commas is not split on the commas', async () => {
+    const { cells, report } = await convert('a;b\n1,25;2,25\n3,25;4,25\n')
+    expect(report.delimiter).toBe(';')
+    expect(cells.A2).toBe(1.25)
+    expect(cells.B3).toBe(4.25)
+  })
+
+  it('a consistent comma table keeps the comma even with a `;` in the text', async () => {
+    const { cells, report } = await convert('nome,obs\nAna,"a; b"\nRui,c; d\n')
+    expect(report.delimiter).toBe(',')
+    expect(cells.B3).toBe('c; d')
+  })
+
+  it('an Excel `sep=` line is honoured and reported, so a save can write it back', async () => {
+    const { cells, report } = await convert('sep=;\na;b\n1,25;2,25\n')
+    expect(report).toMatchObject({ delimiter: ';', declared: true, decimal: ',' })
+    expect(cells.A2).toBe(1.25)
+    expect((await convert('a;b\n1,25;2,25\n')).report.declared).toBeUndefined()
+  })
+})
