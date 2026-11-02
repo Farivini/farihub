@@ -9,9 +9,10 @@ import { ILayoutService } from '@univerjs/preset-sheets-core'
 import { columnLabel } from '@genoffice/xlsx-gateway/domain/cell-address'
 import {
   decodeCsvBuffer,
-  isNumericCell,
   parseCsv,
+  resolveImportDelimiter,
 } from '@genoffice/xlsx-gateway/gateway/csv-import'
+import { analyzeCsvColumns } from '@genoffice/xlsx-gateway/gateway/csv-number-format'
 import type { AdvancedFilterColumn, AdvancedFilterCriteria } from './AdvancedFilterDialog'
 import {
   buildLabelMatrix,
@@ -97,7 +98,10 @@ function importCsvText(ctx: DataToolsContext, text: string): void {
     ctx.setMessage(t('appSelectCellFirst'))
     return
   }
-  const rows = parseCsv(text)
+  const delimiter = resolveImportDelimiter(text)
+  const rows = parseCsv(text, delimiter)
+  // numbers per column, in the file's own decimal convention (as the open path)
+  const typing = analyzeCsvColumns(rows, delimiter)
   const columns = rows.reduce((width, row) => Math.max(width, row.length), 0)
   if (rows.length === 0 || columns === 0) {
     ctx.setMessage(t('appCsvEmpty'))
@@ -110,7 +114,8 @@ function importCsvText(ctx: DataToolsContext, text: string): void {
   const values = rows.map((row) =>
     Array.from({ length: columns }, (_, index) => {
       const cell = row[index] ?? ''
-      return isNumericCell(cell) ? { v: Number(cell) } : { v: cell }
+      const number = typing.numberAt(index, cell)
+      return number !== null ? { v: number } : { v: cell }
     }),
   )
   const row = range.getRow()

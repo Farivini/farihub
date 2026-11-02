@@ -32,6 +32,7 @@ import {
   cellPatternLookup,
   handleExportCsv,
   serializeActiveSheetCsv,
+  csvDialectOf,
 } from './csv-export'
 import type { CellState } from '@genoffice/xlsx-gateway/domain/workbook.types'
 import type { SheetRedactionState } from '@genoffice/xlsx-gateway/gateway/xlsx-redaction'
@@ -372,6 +373,8 @@ export async function handleSave(
             active.sheet,
             state,
             cellPatternLookup(runtime, active.sheet.getSheetId(), state.file.date1904 === true),
+            // written back in the file's own convention (a pt-BR CSV keeps `;` and `16,99`)
+            csvDialectOf(state.file.csvFormat),
           )
     if (serialized === 'too-large') {
       ctx.setMessage(t('appCsvExportTooLarge'))

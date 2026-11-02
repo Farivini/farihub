@@ -614,6 +614,9 @@ export const en = {
     'Undoing the AI task could not be confirmed. It stays under review and the file was not saved.',
   appAiUndoNotConfirmed:
     'Could not confirm the AI task was fully undone; check the workbook with Undo/Redo.',
+  appCsvCommaDecimal: '{name} opened: comma-decimal numbers recognized in {count} columns.',
+  appCsvAmbiguousKept:
+    'Kept as text (ambiguous): {columns}. Values like "{example}" fit both decimal conventions; nothing was converted.',
   appAiChangesNotSaved:
     'AI changes applied (not saved). Undo with Cmd+Z; save to the file with Cmd+S.',
   appChartUpdated: 'Chart updated.',

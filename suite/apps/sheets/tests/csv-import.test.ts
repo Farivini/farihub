@@ -227,14 +227,17 @@ describe('isNumericCell', () => {
 
 describe('csvToXlsxBuffer', () => {
   it('produces a workbook whose sheet carries typed cells', async () => {
-    const buffer = await csvToXlsxBuffer('Item,Qty\n"A, large",007\nB,42')
+    const buffer = await csvToXlsxBuffer('Item,Code,Qty\n"A, large",007,1.5\nB,12,42')
     const zip = await JSZip.loadAsync(buffer)
     const sheet = await zip.file('xl/worksheets/sheet1.xml')?.async('text')
     expect(sheet).toContain(
       '<c r="A2" t="inlineStr"><is><t xml:space="preserve">A, large</t></is></c>',
     )
+    // a column holding a code is an identifier column: all of it stays text
     expect(sheet).toContain('<c r="B2" t="inlineStr"><is><t xml:space="preserve">007</t></is></c>')
-    expect(sheet).toContain('<c r="B3"><v>42</v></c>')
+    expect(sheet).toContain('<c r="B3" t="inlineStr"><is><t xml:space="preserve">12</t></is></c>')
+    expect(sheet).toContain('<c r="C2"><v>1.5</v></c>')
+    expect(sheet).toContain('<c r="C3"><v>42</v></c>')
     expect(await zip.file('xl/workbook.xml')?.async('text')).toContain('<sheet name="Sheet1"')
   })
 

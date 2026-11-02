@@ -37,7 +37,9 @@ describe('xlsx-gateway csv import round trip', () => {
     expect(cells['C1']?.value).toBe('age')
     expect(cells['A2']?.value).toBe('Doe, John')
     expect(cells['B2']?.value).toBe('says "hi"')
-    expect(cells['C2']?.value).toBe(30)
+    // A column holding a code (007) is an identifier column: all of it stays
+    // text, so the 30 beside it is not half-converted (csv-number-format.ts).
+    expect(cells['C2']?.value).toBe('30')
     expect(cells['A3']?.value).toBe('Alice')
     expect(cells['B3']?.value).toBe('plain')
     // Leading zeros survive the import as text.
@@ -57,20 +59,21 @@ describe('xlsx-gateway csv import round trip', () => {
   })
 
   it('keeps numbers numeric without corrupting codes or long ids', async () => {
-    const csv = 'code,value\n007,007\n00123,1.5\n12345678901234567890,-42\n1e3,1E-2\n-42.5,0'
+    const csv = 'code,value\n007,1e3\n00123,1.5\n12345678901234567890,-42\n456,1E-2\nX9,-42.5\n,0'
     const cells = await sheetCells(await csvToXlsxBuffer(csv))
 
+    // the code column stays text throughout (identifiers are judged per column)
     expect(cells['A2']?.value).toBe('007')
-    expect(cells['B2']?.value).toBe('007')
     expect(cells['A3']?.value).toBe('00123')
-    expect(cells['B3']?.value).toBe(1.5)
     // Past Excel's 15-digit precision the id must stay text.
     expect(cells['A4']?.value).toBe('12345678901234567890')
+    expect(cells['A5']?.value).toBe('456')
+    expect(cells['B2']?.value).toBe(1000)
+    expect(cells['B3']?.value).toBe(1.5)
     expect(cells['B4']?.value).toBe(-42)
-    expect(cells['A5']?.value).toBe(1000)
     expect(cells['B5']?.value).toBe(0.01)
-    expect(cells['A6']?.value).toBe(-42.5)
-    expect(cells['B6']?.value).toBe(0)
+    expect(cells['B6']?.value).toBe(-42.5)
+    expect(cells['B7']?.value).toBe(0)
   })
 
   it('keeps formula-like text as text instead of a stored formula', async () => {

@@ -1,8 +1,12 @@
-/// CSV → minimal xlsx conversion for the open-file path. Values only: cells
-/// that look like plain numbers become numeric, everything else stays text
-/// (leading zeros survive). The converted file is a fresh workbook.
+/// CSV → minimal xlsx conversion for the open-file path. Values only: numbers
+/// are recognized per column, in either decimal convention (`16,99` and
+/// `1.234,56` as well as `16.99`; see csv-number-format.ts); identifiers and
+/// everything else stay text (leading zeros survive). The converted file is a
+/// fresh workbook.
 
 import JSZip from 'jszip'
+
+import { analyzeCsvColumns, type CsvImportReport } from './csv-number-format'
 
 import { encodeXlsxEscapes } from './xlsx-escapes'
 import { DEFAULT_THEME_XML } from './xlsx-default-theme'
@@ -250,7 +254,15 @@ function columnLabel(column: number): string {
   return label
 }
 
-export function buildWorksheetXml(rows: readonly (readonly string[])[]): string {
+/** the number a cell holds (null keeps its text); the default reads each cell on its own */
+export type CellNumber = (column: number, value: string) => number | null
+
+const plainNumber: CellNumber = (_column, value) => (isNumericCell(value) ? Number(value) : null)
+
+export function buildWorksheetXml(
+  rows: readonly (readonly string[])[],
+  numberAt: CellNumber = plainNumber,
+): string {
   const lines: string[] = []
   let maxColumns = 1
   rows.forEach((row, rowIndex) => {
@@ -259,9 +271,10 @@ export function buildWorksheetXml(rows: readonly (readonly string[])[]): string 
       if (value === '') return
       maxColumns = Math.max(maxColumns, columnIndex + 1)
       const reference = `${columnLabel(columnIndex)}${rowIndex + 1}`
+      const number = numberAt(columnIndex, value)
       cells.push(
-        isNumericCell(value)
-          ? `<c r="${reference}"><v>${Number(value)}</v></c>`
+        number !== null
+          ? `<c r="${reference}"><v>${number}</v></c>`
           : `<c r="${reference}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(encodeXlsxEscapes(value))}</t></is></c>`,
       )
     })
@@ -276,9 +289,10 @@ export function buildWorksheetXml(rows: readonly (readonly string[])[]): string 
 }
 
 export async function csvToXlsxBuffer(csvText: string, sheetName = 'Sheet1'): Promise<Buffer> {
-  const rows = parseCsv(csvText, resolveImportDelimiter(csvText))
+  const delimiter = resolveImportDelimiter(csvText)
+  const rows = parseCsv(csvText, delimiter)
   if (rows.length === 0) throw new Error('The CSV file has no data rows.')
-  return xlsxBufferFromRows(rows, sheetName)
+  return xlsxBufferFromRows(rows, sheetName, analyzeCsvColumns(rows, delimiter).numberAt)
 }
 
 /**
@@ -291,9 +305,15 @@ export async function csvToXlsxBufferForOpen(
   csvText: string,
   sheetName = 'Sheet1',
   delimiter?: string,
-): Promise<{ buffer: Buffer; empty: boolean }> {
-  const rows = parseCsv(csvText, delimiter ?? resolveImportDelimiter(csvText))
-  return { buffer: await xlsxBufferFromRows(rows, sheetName), empty: rows.length === 0 }
+): Promise<{ buffer: Buffer; empty: boolean; report: CsvImportReport }> {
+  const split = delimiter ?? resolveImportDelimiter(csvText)
+  const rows = parseCsv(csvText, split)
+  const typing = analyzeCsvColumns(rows, split)
+  return {
+    buffer: await xlsxBufferFromRows(rows, sheetName, typing.numberAt),
+    empty: rows.length === 0,
+    report: typing.report,
+  }
 }
 
 /**
@@ -350,6 +370,7 @@ export async function blankXlsxBuffer(sheetName = 'Sheet1'): Promise<Buffer> {
 async function xlsxBufferFromRows(
   rows: readonly (readonly string[])[],
   sheetName: string,
+  numberAt?: CellNumber,
 ): Promise<Buffer> {
   validateSheetName(sheetName)
   const zip = new JSZip()
@@ -389,6 +410,6 @@ async function xlsxBufferFromRows(
   )
   zip.file('xl/theme/theme1.xml', DEFAULT_THEME_XML)
   zip.file('xl/styles.xml', MINIMAL_STYLESHEET_XML)
-  zip.file('xl/worksheets/sheet1.xml', buildWorksheetXml(rows))
+  zip.file('xl/worksheets/sheet1.xml', buildWorksheetXml(rows, numberAt))
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
 }

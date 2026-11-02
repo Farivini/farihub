@@ -868,6 +868,49 @@ if (process.env.GENOFFICE_DEBUG_HOOKS === '1') {
 // open documents dragged from the OS onto this tab as a new shell tab
 installDropOpenBridge()
 
+const CSV_COLUMN_KINDS = new Set(['number', 'identifier', 'ambiguous', 'text', 'empty'])
+const isDecimalMark = (value: unknown): value is ',' | '.' => value === ',' || value === '.'
+
+/** how the source CSV was read (WorkbookFile.csvFormat; csv-number-format.ts) */
+function parseCsvFormat(input: unknown): NonNullable<WorkbookFile['csvFormat']> {
+  if (
+    !isRecord(input) ||
+    typeof input.delimiter !== 'string' ||
+    input.delimiter.length !== 1 ||
+    !(input.decimal === null || isDecimalMark(input.decimal)) ||
+    !Array.isArray(input.columns)
+  ) {
+    throw new Error('Invalid workbook response.')
+  }
+  const columns = input.columns.map((entry) => {
+    if (
+      !isRecord(entry) ||
+      !isNonnegativeInteger(entry.column) ||
+      typeof entry.header !== 'string' ||
+      typeof entry.kind !== 'string' ||
+      !CSV_COLUMN_KINDS.has(entry.kind) ||
+      !isNonnegativeInteger(entry.numbers) ||
+      !isNonnegativeInteger(entry.keptAsText) ||
+      (entry.decimal !== undefined && !isDecimalMark(entry.decimal)) ||
+      (entry.decidedByFile !== undefined && typeof entry.decidedByFile !== 'boolean') ||
+      (entry.example !== undefined && typeof entry.example !== 'string')
+    ) {
+      throw new Error('Invalid workbook response.')
+    }
+    return {
+      column: entry.column,
+      header: entry.header,
+      kind: entry.kind as 'number' | 'identifier' | 'ambiguous' | 'text' | 'empty',
+      numbers: entry.numbers,
+      keptAsText: entry.keptAsText,
+      ...(entry.decimal === undefined ? {} : { decimal: entry.decimal }),
+      ...(entry.decidedByFile === undefined ? {} : { decidedByFile: entry.decidedByFile }),
+      ...(entry.example === undefined ? {} : { example: entry.example }),
+    }
+  })
+  return { delimiter: input.delimiter, decimal: input.decimal, columns }
+}
+
 function parseWorkbookFile(input: unknown): WorkbookFile {
   if (!isRecord(input)) throw new Error('Invalid workbook response.')
   const {
@@ -1211,6 +1254,7 @@ function parseWorkbookFile(input: unknown): WorkbookFile {
     ...(needsSaveAs === undefined ? {} : { needsSaveAs }),
     ...(csvPath === undefined ? {} : { csvPath }),
     ...(emptyCsv === undefined ? {} : { emptyCsv }),
+    ...(input.csvFormat === undefined ? {} : { csvFormat: parseCsvFormat(input.csvFormat) }),
     ...(restoredFromRecovery === undefined ? {} : { restoredFromRecovery }),
     ...(themeColors === undefined ? {} : { themeColors: themeColors as string[] }),
     ...(parsedThemeFonts === undefined ? {} : { themeFonts: parsedThemeFonts }),

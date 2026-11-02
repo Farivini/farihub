@@ -300,6 +300,9 @@ interface ExcelShellProps {
   readonly emptyCsvNotice: boolean
   readonly onOpenWorkbook: () => void
   readonly onDismissEmptyCsvNotice: () => void
+  /** how a CSV's numbers were read (comma decimal, ambiguous columns kept as text) */
+  readonly csvFormatNotice: string | null
+  readonly onDismissCsvFormatNotice: () => void
   /// Zoom of the active sheet in percent, echoed by the status-bar slider.
   readonly zoomPercent: number
   /// Aggregates ticked in the status bar's right-click menu (Excel parity).
@@ -555,6 +558,8 @@ export function ExcelShell({
   emptyCsvNotice,
   onOpenWorkbook,
   onDismissEmptyCsvNotice,
+  csvFormatNotice,
+  onDismissCsvFormatNotice,
   zoomPercent,
   statusBarFuncs,
   onToggleStatusBarFunc,
@@ -1070,6 +1075,19 @@ export function ExcelShell({
                   className="csv-empty-notice-close"
                   aria-label={t('appClose')}
                   onClick={onDismissEmptyCsvNotice}
+                >
+                  ×
+                </button>
+              </div>
+            )}
+            {csvFormatNotice && (
+              <div className="csv-empty-notice csv-format-notice" role="status">
+                <span>{csvFormatNotice}</span>
+                <button
+                  type="button"
+                  className="csv-empty-notice-close"
+                  aria-label={t('appClose')}
+                  onClick={onDismissCsvFormatNotice}
                 >
                   ×
                 </button>
