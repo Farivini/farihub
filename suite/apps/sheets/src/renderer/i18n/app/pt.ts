@@ -673,6 +673,9 @@ export const pt = {
     'Não foi possível confirmar que a tarefa da IA foi desfeita. Ela continua em revisão e o arquivo não foi salvo.',
   appAiUndoNotConfirmed:
     'Não foi possível confirmar que a tarefa da IA foi desfeita por inteiro; confira a planilha com Desfazer/Refazer.',
+  appCsvCommaDecimal: '{name} aberto: números com vírgula decimal reconhecidos em {count} colunas.',
+  appCsvAmbiguousKept:
+    'Mantido como texto (ambíguo): {columns}. Valores como “{example}” servem às duas convenções decimais; nada foi convertido.',
   appAiChangesNotSaved: 'Alterações de IA aplicadas (não salvas). Desfaça com ⌘Z; salve com ⌘S.',
   appChartUpdated: 'Gráfico atualizado.',
   appChartNotEditable: 'Este gráfico não é editável.',

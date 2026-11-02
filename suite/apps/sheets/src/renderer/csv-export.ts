@@ -50,13 +50,44 @@ export interface CsvWorksheet {
   }
 }
 
-export function csvField(text: string): string {
-  const normalized = text.replace(/\r\n|\r/g, '\n')
-  return /[",\n]/.test(normalized) ? `"${normalized.replace(/"/g, '""')}"` : normalized
+/// The convention a CSV is written in. Exports default to comma + point; a
+/// CSV opened from disk is saved back in its own convention (a pt-BR file keeps
+/// `;` and `16,99`), so the programs that read it keep working.
+export interface CsvDialect {
+  readonly delimiter: string
+  readonly decimal: ',' | '.'
+  /** write Excel's `sep=` first line (the source file had one) */
+  readonly declare?: boolean
 }
 
-export function csvFromDisplayRows(rows: readonly (readonly string[])[]): string {
-  return rows.map((row) => row.map(csvField).join(',') + '\r\n').join('')
+/// A number in plain decimal digits, never in exponent form: the importer reads
+/// `0,00000012` back as a number, but not `1,2e-7`.
+export function plainDecimal(value: number): string {
+  const text = String(value)
+  const match = /^(-?)(\d)(?:\.(\d+))?e([+-]\d+)$/.exec(text)
+  if (!match) return text
+  const [, sign, lead, rest = '', exponentText] = match
+  const digits = lead! + rest
+  const exponent = Number(exponentText)
+  if (exponent < 0) return `${sign}0.${'0'.repeat(-exponent - 1)}${digits}`
+  const point = exponent + 1
+  return point >= digits.length
+    ? `${sign}${digits}${'0'.repeat(point - digits.length)}`
+    : `${sign}${digits.slice(0, point)}.${digits.slice(point)}`
+}
+
+export const DEFAULT_CSV_DIALECT: CsvDialect = { delimiter: ',', decimal: '.' }
+
+export function csvField(text: string, delimiter = ','): string {
+  const normalized = text.replace(/\r\n|\r/g, '\n')
+  const special = /["\n]/.test(normalized) || normalized.includes(delimiter)
+  return special ? `"${normalized.replace(/"/g, '""')}"` : normalized
+}
+
+export function csvFromDisplayRows(rows: readonly (readonly string[])[], delimiter = ','): string {
+  return rows
+    .map((row) => row.map((field) => csvField(field, delimiter)).join(delimiter) + '\r\n')
+    .join('')
 }
 
 /// Runs `read` with the sheet dropped from the formula-view set, restoring it
@@ -150,6 +181,7 @@ export function serializeActiveSheetCsv(
   sheet: CsvWorksheet,
   state: LazyWorkbookState | null,
   patternOf?: CellPatternLookup,
+  dialect: CsvDialect = DEFAULT_CSV_DIALECT,
 ): string | 'too-large' {
   const rowCount = Math.max(sheet.getLastRow(), 0) + 1
   const columnCount = Math.max(sheet.getLastColumn(), 0) + 1
@@ -160,7 +192,7 @@ export function serializeActiveSheetCsv(
       const blockRows = Math.min(EXPORT_ROW_BLOCK, rowCount - start)
       const range = sheet.getRange(start, 0, blockRows, columnCount)
       const displays = range.getDisplayValues()
-      if (patternOf) {
+      if (patternOf || dialect.decimal !== '.') {
         const raws = range.getRawValues()
         for (let rowOffset = 0; rowOffset < displays.length; rowOffset += 1) {
           const displayRow = displays[rowOffset]
@@ -169,9 +201,10 @@ export function serializeActiveSheetCsv(
             const raw = raws[rowOffset]?.[column]
             if (typeof raw !== 'number' || !Number.isFinite(raw)) continue
             const display = displayRow[column] ?? ''
-            const full = String(raw)
+            // a General number is written with the file's own decimal mark
+            const full = dialect.decimal === ',' ? plainDecimal(raw).replace('.', ',') : String(raw)
             if (display === full) continue
-            const format = patternOf(start + rowOffset, column, raw)
+            const format = patternOf ? patternOf(start + rowOffset, column, raw) : null
             if (format === null) displayRow[column] = full
             else if (isHashOverflow(display) && format.renderValue !== null) {
               try {
@@ -183,14 +216,15 @@ export function serializeActiveSheetCsv(
           }
         }
       }
-      const part = csvFromDisplayRows(displays)
+      const part = csvFromDisplayRows(displays, dialect.delimiter)
       length += part.length
       if (length > MAX_CSV_EXPORT_CHARS) return true
       parts.push(part)
     }
     return false
   })
-  return tooLarge ? 'too-large' : parts.join('')
+  if (tooLarge) return 'too-large'
+  return (dialect.declare ? `sep=${dialect.delimiter}\r\n` : '') + parts.join('')
 }
 
 /// The active FWorksheet through the structural CsvWorksheet slice, plus the
@@ -275,5 +309,24 @@ export async function handleExportCsv(ctx: CsvExportContext, targetPath?: string
     const failed = error instanceof Error ? error.message : t('appCsvExportFailed')
     ctx.setMessage(failed)
     showToast(failed, 'error')
+  }
+}
+
+/// The dialect a CSV session was opened with (WorkbookFile.csvFormat): its
+/// delimiter, and a comma decimal only when the file's numbers used one.
+export function csvDialectOf(
+  format:
+    | {
+        readonly delimiter: string
+        readonly decimal: ',' | '.' | null
+        readonly declared?: boolean | undefined
+      }
+    | undefined,
+): CsvDialect {
+  if (!format) return DEFAULT_CSV_DIALECT
+  return {
+    delimiter: format.delimiter,
+    decimal: format.decimal === ',' ? ',' : '.',
+    ...(format.declared ? { declare: true } : {}),
   }
 }

@@ -21,7 +21,7 @@ As etapas seguem a ordem do pedido; cada uma é uma PR.
 | 3 | Assistente ligado aos arquivos abertos com as ferramentas existentes, pelo Codex local (app-server); prévia no documento aberto, aceitar/rejeitar, desfazer a tarefa, conflito e nada parcial no original | **Feita** (ver abaixo; prévia no próprio documento, rascunho isolado ainda não); conexão real com o Codex a validar no Windows |
 | 4 | Claude local no mesmo contrato de ferramentas (transporte extraído do Nimbalyst) | Planejada |
 | 5 | Tarefas recorrentes: scheduler do Nimbalyst ligado ao mesmo executor | Planejada |
-| 6 | Portar do Farihub o que a base não tem: agregação para bases grandes, fórmulas e importação pt-BR, salvamento | Planejada (diferenças já registradas abaixo) |
+| 6 | Portar do Farihub o que a base não tem: agregação para bases grandes, fórmulas e importação pt-BR, salvamento | **Importação de CSV pt-BR feita** (ver abaixo); fórmulas em português e agregação planejadas |
 
 ## Etapa 1: o que existe agora
 
@@ -128,6 +128,39 @@ Unitários: `packages/agent-core/tests/review-task.test.ts` (23 casos: edição 
 5. Falha: durante uma tarefa, desconecte a rede. Sem edição sua no meio, o cartão diz que as alterações foram desfeitas; se você editou enquanto a IA trabalhava, sua edição fica e o cartão pede a decisão.
 6. Anote a versão do Codex e o resultado de cada passo na PR.
 
+## Importação de CSV pt-BR (adiantada da etapa 6)
+
+Reprodução que motivou a correção, no Electron real: o `tips.csv` público (seaborn-data, 244 contas e gorjetas) abre certo no formato original, mas a variante com `;` e vírgula decimal abria com `16,99` como **texto**. Só 5 inteiros da primeira coluna viravam número, e uma soma direta dava 81 em vez de 4.827,77.
+
+**O que mudou.** O importador da suíte lê os números **por coluna**, com as regras do Farihub da raiz (`src/core/delimited.ts`), em `suite/packages/xlsx-gateway/src/gateway/csv-number-format.ts`:
+
+- `16,99` só pode ser vírgula decimal e `16.99` só ponto decimal. A coluna inteira segue o que os seus próprios valores mostram, então `1.234,56`, `-2,5` e `-1.000,00` viram números, e inteiros também.
+- **Identificadores ficam texto, na coluna toda:** inteiros com zero à esquerda (`007`, CEP `01310100`) ou com 11 dígitos ou mais (CPF, CNPJ, telefone, código de barras). Antes, a mesma coluna podia sair metade número e metade texto.
+- **Coluna ambígua não é convertida.** `1.250` pode ser mil duzentos e cinquenta ou um vírgula vinte e cinco. Se a coluna não tem evidência própria, vale a convenção do resto do arquivo. Sem nenhuma evidência num arquivo com `;` ou tabulação, o dado fica como escrito. Uma coluna com as duas convenções (`16,99` e `16.99`) também fica como escrita. Nos dois casos o app explica num aviso e a IA recebe a mesma explicação.
+- Campos vazios continuam vazios. Aspas seguem o RFC 4180. Sinal `+`, porcentagem, moeda e datas continuam texto, como antes. Nada vira fórmula.
+- **Separador:** a contagem bruta continua escolhendo, mas, se o separador contado não aparece no cabeçalho ou deixa as linhas com larguras diferentes, vale o que divide todas as linhas na mesma largura. Assim, uma tabela pt-BR estreita (`a;b` sobre `1,25;2,25`, com mais vírgulas decimais que `;`) não se parte nas vírgulas. Uma linha `sep=` do Excel continua tendo prioridade.
+- CSV com ponto decimal e TSV continuam lidos como antes. Num arquivo com vírgula como separador, uma coluna só com valores como `1.250` mantém a leitura com ponto que sempre teve.
+
+**Sem configurar nada.** Quando o formato é inequívoco, abrir já resolve: o aviso diz quantas colunas foram lidas com vírgula decimal. O mesmo vale para Dados › De Texto/CSV, que usa a mesma regra.
+
+**A IA vê os números.** O `get_workbook_context` inclui como o arquivo foi lido: separador, decimal, colunas numéricas, identificadores e colunas ambíguas, com a instrução de não somar uma coluna ambígua sem perguntar. O `aggregate_range` soma os números importados (4.827,77 e 731,58 nos 244 registros).
+
+**Salvar.** Salvar como `.xlsx` guarda números (`<v>16.99</v>`). Ctrl+S no próprio CSV regrava **no formato de origem**: um arquivo pt-BR continua com `;` e `16,99`. A linha `sep=` é regravada quando o arquivo original a tinha, e números muito pequenos ou grandes saem sem expoente (`0,00000012`), para o arquivo reabrir do mesmo jeito. Antes, toda regravação saía com vírgula como separador e ponto decimal, o que o Excel em português lê errado. Números com formato explícito saem como exibidos, e a formatação de exibição segue em inglês (pendência abaixo).
+
+**Testes.**
+
+| Teste | O que confere |
+| --- | --- |
+| `suite/e2e/fariv-csv-ptbr.spec.ts` (Electron real, conjunto e2e Fariv do CI) | Baixa o `tips.csv` e confere o SHA-256, sem guardar os dados no repositório (sem licença declarada); a variável `FARIV_TIPS_CSV` aponta para uma cópia local. Deriva a variante pt-BR e o TSV. **Original, pt-BR e TSV:** os 488 valores das duas colunas são números e somam 4.827,77 e 731,58, conferidos contra uma soma independente em centavos. **Original e pt-BR, com a IA (modelo simulado, ferramentas reais):** contexto com as notas da importação, `aggregate_range` sobre os 244 registros, fórmulas `SUM`/`COUNT` e tabela dinâmica por dia em revisão; aceitar; Salvar como `.xlsx` (dinâmica nativa, fórmula e `A2` numérico no arquivo); reabrir e conferir totais e dinâmica por dia (Thur 1.096,33 / 171,83; Fri 325,88 / 51,96; Sat 1.778,40 / 260,40; Sun 1.627,16 / 247,39). **Ctrl+S no CSV pt-BR** mantém `;` e `16,99`. **Coluna ambígua** (`1.250`) fica como escrita, com aviso; código `0012` mantém o zero. |
+| `suite/packages/xlsx-gateway/tests/csv-number-format.test.ts` | Formas de cada convenção, `1.234,56`, negativos, vazios, aspas, CEP/CPF/CNPJ, coluna ambígua, conflito, ponto decimal e TSV preservados. |
+| `suite/apps/sheets/tests/csv-ptbr-roundtrip.test.ts` | Regravação com `;` e vírgula decimal; aviso ao usuário; texto para a IA. |
+
+Custo: a leitura por coluna faz uma passada sobre as células já separadas. Num CSV de 26,6 MB (500 mil linhas, 4 milhões de células; o limite de importação é 32 MB), separar leva 0,5 s e analisar e converter, 1,1 s.
+
+Dois testes da base que esperavam uma coluna com `007` e `30` meio convertida foram ajustados à regra por coluna (`csv-roundtrip.test.ts`, `csv-import.test.ts`).
+
+Os testes usam um modelo simulado. Eles não validam a conta real do Codex; para isso, siga os passos da etapa 3 com um CSV pt-BR.
+
 ## Como rodar no Windows
 
 Pré-requisitos: Node.js 22 (≥ 22.12), Git, **Rust** (`rustup`, toolchain estável MSVC) e as **Build Tools do Visual Studio** com "Desenvolvimento para desktop com C++" (o sidecar de planilhas é compilado com cargo). O instalador também compila um auxiliar de OCR com o compilador .NET que já vem no Windows.
@@ -166,7 +199,7 @@ Registradas antes de qualquer porte. Nada do Farihub foi removido; a base é usa
 | Motor de fórmulas | IronCalc 0.9.1 em WASM, no worker | IronCalc 0.9.1 no sidecar Rust (leitura/escrita XLSX) + motor de fórmulas do Univer na grade | Não migrar motor nesta etapa. A PR #9 mostrou vantagens e desvantagens conforme as dependências das fórmulas; trocar exige medir a grade da base com dependências densas. |
 | Nomes de funções | Português (`SOMA`, `PROCV`, `;` e vírgula decimal) via camada de tokens (`src/core/formula-locale.ts`) | Nomes em inglês na barra de fórmulas | Portar a camada pt-BR (etapa 6). Até lá, registrado como regressão conhecida da base. |
 | Dinâmica | Agregação colunar no worker; medida com 1 milhão de linhas | Fonte da dinâmica limitada a **10.000 linhas** (`appPivotSourceRowLimit`) | Portar a agregação do Farihub (etapa 6); não aceitar o limite como definitivo. |
-| Importar CSV | Prévia com codificação (UTF-8/Windows-1252), separador, **vírgula decimal**, cabeçalho e tipo por coluna; datas dd/mm/aaaa; nada vira fórmula | Converte direto em XLSX; números só no formato com **ponto decimal** (`1.234,56` vira texto); detecta codificações (incluindo UTF-16 e asiáticas) | Portar a prévia e as regras pt-BR (etapa 6), mantendo a detecção de codificação da base. |
+| Importar CSV | Prévia com codificação (UTF-8/Windows-1252), separador, **vírgula decimal**, cabeçalho e tipo por coluna; datas dd/mm/aaaa; nada vira fórmula | Converte direto em XLSX; detecta codificações (incluindo UTF-16 e asiáticas). **Agora** lê números por coluna nas duas convenções (`1.234,56`), com identificadores como texto e colunas ambíguas explicadas | **Regras pt-BR portadas** (seção acima). Falta a prévia com escolha manual e as datas dd/mm/aaaa. |
 | Exportar CSV | `;`, BOM, modo "para abrir em planilhas" (texto que viraria fórmula ganha `'`) ou "dados originais" | Valores calculados com formatos aplicados, BOM | Comparar a proteção contra fórmulas e portar o modo protegido (etapa 6). |
 | Salvamento | Ctrl+S mantém o formato; perdas explicadas; gravação em fila; edição durante a gravação fica pendente | Escrita atômica (`atomic-write.ts`), cópia de recuperação, observação do arquivo em disco, salvamento cirúrgico do XLSX (partes intocadas ficam idênticas) | Base mais completa no desktop; conferir os avisos de perda e a regra "editar durante a gravação" (etapa 6). |
 | Operações de tabela | Filtros, ordenação, inserir/excluir com API tipada (PR #8) | Filtros, ordenação, inserir/excluir do Univer + operações do DSL da IA | Usar as da base; comparar desempenho em bases grandes antes de portar algo. |
@@ -174,6 +207,7 @@ Registradas antes de qualquer porte. Nada do Farihub foi removido; a base é usa
 
 ## Pendências conhecidas
 
+- CSV: a prévia de importação do Farihub (escolher separador, decimal e tipo por coluna) ainda não existe na suíte; datas `dd/mm/aaaa` e porcentagens continuam texto. Na regravação de um CSV pt-BR, números com formato explícito saem como exibidos pelo formatador, que segue em inglês.
 - Conexão real com o Codex: validar no Windows com a conta do usuário (passos na etapa 3). Os testes daqui usam um modelo simulado.
 - Servidor MCP para agentes externos (desligado por padrão): com ele ligado, as ferramentas `apply_*` editam o documento aberto sem passar pelo cartão de revisão; só o salvamento silencioso deles é bloqueado durante uma revisão na planilha. Levar as escritas do MCP para o mesmo fluxo de tarefa antes de habilitá-lo por padrão.
 - Documento: com "Controlar alterações" ligado, a tarefa também fica como revisões pendentes na guia Revisão; o cartão aceita ou rejeita a tarefa inteira, e a guia continua aceitando ou rejeitando revisão por revisão.

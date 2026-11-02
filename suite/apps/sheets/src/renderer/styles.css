@@ -1753,6 +1753,13 @@ button.check-item:hover {
   cursor: pointer;
 }
 
+/* how a CSV's numbers were read: at the bottom, clear of the header row and
+   of the sheet tabs */
+.csv-empty-notice.csv-format-notice {
+  top: auto;
+  bottom: 44px;
+}
+
 .csv-empty-notice button.csv-empty-notice-close {
   border: 0;
   background: transparent;

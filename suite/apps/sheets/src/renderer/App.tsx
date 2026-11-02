@@ -77,6 +77,8 @@ import {
   undoStackTopTag,
 } from './undo-carry'
 import { sheetsReview } from './ai/review-store'
+import { csvOpenNotice } from './csv-open-notice'
+import { describeCsvImport } from '@genoffice/xlsx-gateway/gateway/csv-number-format'
 
 /** Cheap content fingerprint (FNV-1a) for the in-memory workbook's review marker. */
 function fingerprint(text: string): string {
@@ -859,6 +861,8 @@ export function App({
       new URLSearchParams(window.location.search).get('openingWorkbook') === '1',
   )
   const [emptyCsvNotice, setEmptyCsvNotice] = useState(false)
+  /** how the opened CSV's numbers were read; stays until dismissed or another file opens */
+  const [csvFormatNotice, setCsvFormatNotice] = useState<string | null>(null)
   /// Zoom of the active sheet in percent, echoed by the status-bar slider.
   const [zoomPercent, setZoomPercent] = useState(100)
   const [statusBarFuncs, setStatusBarFuncs] = useState<readonly StatusBarFunc[]>(() =>
@@ -2124,6 +2128,10 @@ export function App({
   function sheetsSkillDeps(): SheetsSkillDeps {
     return {
       getActiveSheetInfo,
+      importNotes: () => {
+        const format = lazyWorkbookRef.current?.file.csvFormat
+        return format ? describeCsvImport(format) : null
+      },
       aggregateRange: (sheetId, bounds) => aggregateWorkbookRange(readContext(), sheetId, bounds),
       ensureRangeLoaded: async (range, sheetId) => {
         const state = lazyWorkbookRef.current
@@ -5359,6 +5367,18 @@ export function App({
         return
       }
       setEmptyCsvNotice(selected.emptyCsv === true)
+      setCsvFormatNotice(
+        selected.emptyCsv
+          ? null
+          : csvOpenNotice(
+              {
+                // the .csv the user opened, not the converted copy's name
+                name: selected.csvPath?.split(/[\\/]/).pop() ?? selected.name,
+                csvFormat: selected.csvFormat,
+              },
+              (key, values) => t(key, values),
+            ),
+      )
       setMessage(selected.emptyCsv ? '' : t('appOpened', { name: selected.name }))
     } catch (error: unknown) {
       setMessage(error instanceof Error ? error.message : t('appOpenFailed'))
@@ -5930,6 +5950,8 @@ export function App({
         emptyCsvNotice={emptyCsvNotice}
         onOpenWorkbook={() => void handleInspectWorkbook()}
         onDismissEmptyCsvNotice={() => setEmptyCsvNotice(false)}
+        csvFormatNotice={csvFormatNotice}
+        onDismissCsvFormatNotice={() => setCsvFormatNotice(null)}
         aiBusy={aiBusy}
         {...(sessionUsage !== undefined ? { sessionUsage } : {})}
         chat={chat}

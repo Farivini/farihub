@@ -1,8 +1,12 @@
-/// CSV → minimal xlsx conversion for the open-file path. Values only: cells
-/// that look like plain numbers become numeric, everything else stays text
-/// (leading zeros survive). The converted file is a fresh workbook.
+/// CSV → minimal xlsx conversion for the open-file path. Values only: numbers
+/// are recognized per column, in either decimal convention (`16,99` and
+/// `1.234,56` as well as `16.99`; see csv-number-format.ts); identifiers and
+/// everything else stay text (leading zeros survive). The converted file is a
+/// fresh workbook.
 
 import JSZip from 'jszip'
+
+import { analyzeCsvColumns, type CsvImportReport } from './csv-number-format'
 
 import { encodeXlsxEscapes } from './xlsx-escapes'
 import { DEFAULT_THEME_XML } from './xlsx-default-theme'
@@ -250,7 +254,15 @@ function columnLabel(column: number): string {
   return label
 }
 
-export function buildWorksheetXml(rows: readonly (readonly string[])[]): string {
+/** the number a cell holds (null keeps its text); the default reads each cell on its own */
+export type CellNumber = (column: number, value: string) => number | null
+
+const plainNumber: CellNumber = (_column, value) => (isNumericCell(value) ? Number(value) : null)
+
+export function buildWorksheetXml(
+  rows: readonly (readonly string[])[],
+  numberAt: CellNumber = plainNumber,
+): string {
   const lines: string[] = []
   let maxColumns = 1
   rows.forEach((row, rowIndex) => {
@@ -259,9 +271,10 @@ export function buildWorksheetXml(rows: readonly (readonly string[])[]): string 
       if (value === '') return
       maxColumns = Math.max(maxColumns, columnIndex + 1)
       const reference = `${columnLabel(columnIndex)}${rowIndex + 1}`
+      const number = numberAt(columnIndex, value)
       cells.push(
-        isNumericCell(value)
-          ? `<c r="${reference}"><v>${Number(value)}</v></c>`
+        number !== null
+          ? `<c r="${reference}"><v>${number}</v></c>`
           : `<c r="${reference}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(encodeXlsxEscapes(value))}</t></is></c>`,
       )
     })
@@ -276,9 +289,10 @@ export function buildWorksheetXml(rows: readonly (readonly string[])[]): string 
 }
 
 export async function csvToXlsxBuffer(csvText: string, sheetName = 'Sheet1'): Promise<Buffer> {
-  const rows = parseCsv(csvText, resolveImportDelimiter(csvText))
+  const delimiter = resolveImportDelimiter(csvText)
+  const rows = parseCsv(csvText, delimiter)
   if (rows.length === 0) throw new Error('The CSV file has no data rows.')
-  return xlsxBufferFromRows(rows, sheetName)
+  return xlsxBufferFromRows(rows, sheetName, analyzeCsvColumns(rows, delimiter).numberAt)
 }
 
 /**
@@ -291,9 +305,17 @@ export async function csvToXlsxBufferForOpen(
   csvText: string,
   sheetName = 'Sheet1',
   delimiter?: string,
-): Promise<{ buffer: Buffer; empty: boolean }> {
-  const rows = parseCsv(csvText, delimiter ?? resolveImportDelimiter(csvText))
-  return { buffer: await xlsxBufferFromRows(rows, sheetName), empty: rows.length === 0 }
+): Promise<{ buffer: Buffer; empty: boolean; report: CsvImportReport }> {
+  const split = delimiter ?? resolveImportDelimiter(csvText)
+  const rows = parseCsv(csvText, split)
+  const typing = analyzeCsvColumns(rows, split)
+  // an Excel `sep=` line is written back, so the saved file reopens the same way
+  const declared = splitSepDeclaration(csvText).delimiter === split
+  return {
+    buffer: await xlsxBufferFromRows(rows, sheetName, typing.numberAt),
+    empty: rows.length === 0,
+    report: declared ? { ...typing.report, declared: true } : typing.report,
+  }
 }
 
 /**
@@ -312,13 +334,38 @@ export async function csvToXlsxBufferForOpen(
 export function resolveImportDelimiter(csvText: string): string {
   const declared = splitSepDeclaration(csvText).delimiter
   if (declared !== undefined) return declared
-  const sniffed = sniffDelimiter(csvText)
+  const sniffed = consistentDelimiter(csvText, sniffDelimiter(csvText))
   if (sniffed === ',') return sniffed
   const sniffedRows = parseCsv(csvText, sniffed)
   if (sniffedRows.length === 0 || sniffedRows[0]!.length !== 1) return sniffed
   if (bodyRowsAgreeOnWidth(sniffedRows.slice(1))) return sniffed
   if (parseCsv(csvText, ',').every((row) => row.length === 1)) return ','
   return sniffed
+}
+
+/**
+ * Frequency alone misreads a narrow pt-BR table: `a;b` over `1,25;2,25` holds
+ * more decimal commas than semicolons. When the counted delimiter splits the
+ * sample's rows into different widths (the header has none of it) and another
+ * delimiter splits every row, header included, into the same width above one,
+ * that one is the table's (the root Farihub rule: consistent across lines).
+ */
+function consistentDelimiter(csvText: string, counted: string): string {
+  const text = splitSepDeclaration(csvText).text
+  const cut = text.length > 64 * 1024 ? text.slice(0, text.lastIndexOf('\n', 64 * 1024)) : text
+  const width = (delimiter: string): number => {
+    const rows = parseCsv(cut, delimiter)
+      .slice(0, 20)
+      .filter((row) => row.some((field) => field !== ''))
+    if (rows.length < 2) return 0
+    const first = rows[0]!.length
+    return first > 1 && rows.every((row) => row.length === first) ? first : 0
+  }
+  if (width(counted) > 0) return counted
+  for (const delimiter of DELIMITERS) {
+    if (delimiter !== counted && width(delimiter) > 0) return delimiter
+  }
+  return counted
 }
 
 const TABLE_WIDTH_AGREEMENT = 0.6
@@ -350,6 +397,7 @@ export async function blankXlsxBuffer(sheetName = 'Sheet1'): Promise<Buffer> {
 async function xlsxBufferFromRows(
   rows: readonly (readonly string[])[],
   sheetName: string,
+  numberAt?: CellNumber,
 ): Promise<Buffer> {
   validateSheetName(sheetName)
   const zip = new JSZip()
@@ -389,6 +437,6 @@ async function xlsxBufferFromRows(
   )
   zip.file('xl/theme/theme1.xml', DEFAULT_THEME_XML)
   zip.file('xl/styles.xml', MINIMAL_STYLESHEET_XML)
-  zip.file('xl/worksheets/sheet1.xml', buildWorksheetXml(rows))
+  zip.file('xl/worksheets/sheet1.xml', buildWorksheetXml(rows, numberAt))
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
 }

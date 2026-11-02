@@ -675,6 +675,9 @@ export const es = {
     'No se pudo confirmar que la tarea de la IA se deshiciera. Sigue en revisión y el archivo no se guardó.',
   appAiUndoNotConfirmed:
     'No se pudo confirmar que la tarea de la IA se deshizo por completo; revise el libro con Deshacer/Rehacer.',
+  appCsvCommaDecimal: '{name} abierto: números con coma decimal reconocidos en {count} columnas.',
+  appCsvAmbiguousKept:
+    'Mantenido como texto (ambiguo): {columns}. Valores como «{example}» encajan en ambas convenciones decimales; no se convirtió nada.',
   appAiChangesNotSaved: 'Cambios de IA aplicados (sin guardar). Deshaga con ⌘Z; guarde con ⌘S.',
   appChartUpdated: 'Gráfico actualizado.',
   appChartNotEditable: 'Este gráfico no es editable.',

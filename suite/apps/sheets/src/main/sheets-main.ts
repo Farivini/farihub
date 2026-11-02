@@ -108,6 +108,7 @@ import {
   decodeCsvBuffer,
   sheetCsvToXlsxBuffer,
 } from '@genoffice/xlsx-gateway/gateway/csv-import'
+import type { CsvImportReport } from '@genoffice/xlsx-gateway/gateway/csv-number-format'
 import {
   ensureGenofficeLogin,
   noteGskCallFailure,
@@ -1758,6 +1759,9 @@ interface SessionInfo {
   /// Digest of the original .csv at open/save time — guards the write-back
   /// against external modification, like restoreTargetSha.
   readonly csvSourceSha?: string
+  /// How the CSV was read (delimiter, decimal mark, per-column decisions):
+  /// kept across saves so the write-back and the AI context stay the same.
+  readonly csvFormat?: CsvImportReport
   /// App-owned directory containing the converted CSV/XLS copy. Removed only
   /// after the sidecar session and its independent snapshot are closed.
   readonly importTempDir?: string
@@ -2993,6 +2997,7 @@ export function registerSheetsIpc(): void {
         csvImport: prepared.csvImport,
         csvSourcePath: prepared.csvSourcePath,
         emptyCsv: prepared.emptyCsv,
+        csvFormat: prepared.csvFormat,
         importTempDir: prepared.importTempDir,
         restoreTarget: prepared.restoreTarget,
         emptySource: prepared.emptySource,
@@ -3141,6 +3146,8 @@ export function registerSheetsIpc(): void {
           suggestSaveAs: prepared.suggestSaveAs,
           csvImport: prepared.csvImport,
           csvSourcePath: prepared.csvSourcePath,
+          emptyCsv: prepared.emptyCsv,
+          csvFormat: prepared.csvFormat,
           importTempDir: prepared.importTempDir,
           restoreTarget: prepared.restoreTarget,
           emptySource: prepared.emptySource,
@@ -3703,6 +3710,7 @@ export function registerSheetsIpc(): void {
         ? {
             csvImport: true,
             csvSourcePath: session.csvSourcePath,
+            csvFormat: session.csvFormat,
             importTempDir: session.importTempDir,
           }
         : quietUnsavedNew
@@ -4788,6 +4796,7 @@ async function openWorkbookSession(
     csvImport?: boolean | undefined
     csvSourcePath?: string | undefined
     emptyCsv?: boolean | undefined
+    csvFormat?: CsvImportReport | undefined
     importTempDir?: string | undefined
     restoreTarget?: string | undefined
     emptySource?: boolean | undefined
@@ -4800,6 +4809,7 @@ async function openWorkbookSession(
     csvImport,
     csvSourcePath,
     emptyCsv,
+    csvFormat,
     importTempDir,
     restoreTarget,
     emptySource,
@@ -4848,6 +4858,7 @@ async function openWorkbookSession(
       ...(csvImport ? { csvImport } : {}),
       ...(csvSourcePath === undefined ? {} : { csvSourcePath }),
       ...(csvSourceSha === undefined ? {} : { csvSourceSha }),
+      ...(csvFormat === undefined ? {} : { csvFormat }),
       ...(importTempDir === undefined ? {} : { importTempDir }),
       ...(restoreTarget === undefined ? {} : { restoreTarget }),
       ...(restoreTargetSha === undefined ? {} : { restoreTargetSha }),
@@ -4868,6 +4879,7 @@ async function openWorkbookSession(
       ...(unsavedNew ? { unsavedNew: true } : {}),
       ...(csvSourcePath === undefined ? {} : { csvPath: csvSourcePath }),
       ...(emptyCsv ? { emptyCsv: true } : {}),
+      ...(csvFormat === undefined ? {} : { csvFormat }),
       restoredFromRecovery: restoreTarget !== undefined,
       automaticRecoveryDisabled: !allowsAutomaticWorkbookRecovery(opened.sheets),
     })
@@ -4954,6 +4966,7 @@ async function prepareWorkbookForOpen(
   csvImport?: boolean
   csvSourcePath?: string
   emptyCsv?: boolean
+  csvFormat?: CsvImportReport
   importTempDir?: string
   restoreTarget?: string
   emptySource?: boolean
@@ -5024,6 +5037,7 @@ async function prepareWorkbookForOpen(
   await mkdir(directory, { recursive: true })
   const openPath = join(directory, `${stem}.xlsx`)
   let emptyCsv = false
+  let csvFormat: CsvImportReport | undefined
   try {
     if (extension === 'csv' || extension === 'tsv') {
       const csvStat = await stat(path)
@@ -5040,6 +5054,7 @@ async function prepareWorkbookForOpen(
         extension === 'tsv' ? '\t' : undefined,
       )
       emptyCsv = converted.empty
+      csvFormat = converted.report
       await writeFile(openPath, converted.buffer)
     } else {
       await client.convertWorkbook({ path, targetPath: openPath })
@@ -5059,8 +5074,14 @@ async function prepareWorkbookForOpen(
         csvImport: true,
         csvSourcePath: path,
         ...(emptyCsv ? { emptyCsv: true } : {}),
+        ...(csvFormat === undefined ? {} : { csvFormat }),
       }
-    : { openPath, importTempDir: directory, suggestSaveAs: path.replace(/\.[^.]+$/, '.xlsx') }
+    : {
+        openPath,
+        importTempDir: directory,
+        suggestSaveAs: path.replace(/\.[^.]+$/, '.xlsx'),
+        ...(csvFormat === undefined ? {} : { csvFormat }),
+      }
 }
 
 /** shell-injected items appended to the File menu (e.g. Back to Home) */

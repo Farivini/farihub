@@ -668,6 +668,9 @@ export const ja = {
     'Undoing the AI task could not be confirmed. It stays under review and the file was not saved.',
   appAiUndoNotConfirmed:
     'Could not confirm the AI task was fully undone; check the workbook with Undo/Redo.',
+  appCsvCommaDecimal: '{name} opened: comma-decimal numbers recognized in {count} columns.',
+  appCsvAmbiguousKept:
+    'Kept as text (ambiguous): {columns}. Values like "{example}" fit both decimal conventions; nothing was converted.',
   appAiChangesNotSaved:
     'AI の変更を適用しました(未保存)。⌘Z で元に戻せます。⌘S でファイルに保存します。',
   // Floating objects / chart editing

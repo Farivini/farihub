@@ -255,6 +255,9 @@ export interface SheetsSkillDeps {
    * worksheet; docx/pdf/md from content) into the default save folder and
    * open it in a new tab (ai/create-document.ts). */
   createDocument?(request: CreateDocumentToolRequest): Promise<CreateDocumentToolOutcome>
+  /** how a workbook opened from a CSV was read: delimiter, decimal mark, which
+   * columns became numbers and which were kept as text (ambiguous or codes) */
+  importNotes?(): string | null
 }
 
 const MAX_READ_ADDRESSES = 100
@@ -745,6 +748,8 @@ export function buildWorkbookContext(deps: SheetsSkillDeps): string {
       )
     }
   }
+  const importNotes = deps.importNotes?.()
+  if (importNotes) lines.push(importNotes)
   if (info.knownAddresses.length > 0) {
     lines.push(
       `Known non-empty cells (may be incomplete): ${info.knownAddresses.slice(0, 200).join(', ')}`,

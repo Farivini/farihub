@@ -841,6 +841,30 @@ export const workbookFileSchema = z
     csvPath: z.string().min(1).optional(),
     /// The source CSV had no data rows; the renderer opens a blank grid with one notice.
     emptyCsv: z.boolean().optional(),
+    /// How the delimited source was read (csv-number-format.ts): its delimiter
+    /// and decimal mark — Save writes the CSV back in the same convention — and
+    /// per column, whether values became numbers, stayed identifiers, or were
+    /// kept as text because their reading was ambiguous (shown to the user and
+    /// to the AI).
+    csvFormat: z
+      .object({
+        delimiter: z.string().min(1).max(1),
+        declared: z.boolean().optional(),
+        decimal: z.enum([',', '.']).nullable(),
+        columns: z.array(
+          z.object({
+            column: z.number().int().nonnegative(),
+            header: z.string(),
+            kind: z.enum(['number', 'identifier', 'ambiguous', 'text', 'empty']),
+            decimal: z.enum([',', '.']).optional(),
+            decidedByFile: z.boolean().optional(),
+            numbers: z.number().int().nonnegative(),
+            keptAsText: z.number().int().nonnegative(),
+            example: z.string().optional(),
+          }),
+        ),
+      })
+      .optional(),
     /// Session opened from a restored crash-recovery copy: Save silently
     /// writes back to the original file, and the 30s recovery writer stands
     /// down (it would overwrite the copy the sidecar is streaming from).
