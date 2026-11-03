@@ -197,4 +197,29 @@ describe('native cached recalc versus live formulas', () => {
     expect(writes).toHaveLength(1)
     expect(writes[0]?.row).toBe(2)
   })
+
+  it('a value-only pin (a precedent at its cached result) takes the refreshed native value', () => {
+    const writes: { row: number; column: number; value: unknown }[] = []
+    const worksheet = {
+      getRange: (row: number, column: number) => ({
+        setValues: (value: unknown) => writes.push({ row, column, value }),
+      }),
+    }
+    // E2 is an imported formula pinned at its cached value (no live f); the user
+    // changed its input, and the native recalc now reports 42
+    applyPinnedOverlay(
+      worksheet as never,
+      new Map([
+        ['1:4', { v: 42 }],
+        ['1:8', { v: 15.3 }],
+      ]),
+      undefined,
+      { startRow: 0, endRow: 10000, startColumn: 0, endColumn: 8 },
+      new Map([
+        ['1:4', { v: 7 }],
+        ['1:8', { f: '=D2*F2', v: 15.3 }],
+      ]),
+    )
+    expect(writes).toEqual([{ row: 1, column: 4, value: [[{ v: 42 }]] }])
+  })
 })

@@ -4200,8 +4200,12 @@ export function applyPinnedOverlay(
   for (const [key, cell] of pinned) {
     // A delayed native recalc is a value-only fallback. Reapplying it over a
     // live closure cell clears f in the facade and turns edit/undo into a
-    // value-only restore. Engine-owned cells must remain authoritative.
-    if (engineOwned?.has(key)) continue
+    // value-only restore: cells whose pin owns a live formula stay
+    // authoritative. A value-only pin (a precedent pinned at its cached
+    // result, pinStreamedPrecedents) has no formula to protect — it takes the
+    // refreshed result, or its dependents would keep computing from a stale
+    // value after the user edits that precedent's own inputs.
+    if (engineOwned?.get(key)?.f !== undefined) continue
     const [rowText, columnText] = key.split(':')
     const row = Number(rowText)
     const column = Number(columnText)

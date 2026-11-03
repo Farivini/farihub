@@ -35,6 +35,8 @@ print(json.dumps([{'quantity':int(r['quantidade']), 'price':float(Decimal(r['pre
   ).stdout,
 )
 assert.equal(expected.length, 10000)
+// the last record's line value, from the independent oracle (any input CSV)
+const lastValue = expected[expected.length - 1].cents / 100
 const report = {
   provider: 'SIMULATED OpenAI-compatible HTTP provider; no real model',
   application:
@@ -294,8 +296,13 @@ try {
           'Native fill-down, with precedents already resident from the AI task; excludes source loading and model latency',
       }
     })
-    await page.waitForTimeout(1500)
-    report.manualWarmComparison.audit = await audit()
+    // The native fill recalculates asynchronously: poll the full audit instead
+    // of a fixed wait (10,000 formulas take longer than 1.5 s on slower hosts).
+    for (let waited = 0; waited < 30000; waited += 500) {
+      await page.waitForTimeout(500)
+      report.manualWarmComparison.audit = await audit()
+      if (report.manualWarmComparison.audit.errors === 0) break
+    }
     check('manualWarmFillResults', report.manualWarmComparison.audit.errors === 0)
     await page.evaluate(async () => {
       const api = window.__genofficeDebug.univerAPI
@@ -376,15 +383,17 @@ try {
       { timeout: 45000 },
     )
     await page.waitForFunction(
-      () =>
-        Number(
-          window.__genofficeDebug.univerAPI
-            .getActiveWorkbook()
-            .getActiveSheet()
-            .getRange('I10001')
-            .getValue(),
-        ) === 0.78,
-      null,
+      (want) =>
+        Math.abs(
+          Number(
+            window.__genofficeDebug.univerAPI
+              .getActiveWorkbook()
+              .getActiveSheet()
+              .getRange('I10001')
+              .getValue(),
+          ) - want,
+        ) < 1e-9,
+      lastValue,
       { timeout: 45000 },
     )
     report.auditReopened = await audit()
@@ -397,28 +406,32 @@ try {
     await page.keyboard.type('=D10001*F10001+1', { delay: 5 })
     await page.keyboard.press('Enter')
     await page.waitForFunction(
-      () =>
-        Number(
-          window.__genofficeDebug.univerAPI
-            .getActiveWorkbook()
-            .getActiveSheet()
-            .getRange('I10001')
-            .getValue(),
-        ) === 1.78,
-      null,
+      (want) =>
+        Math.abs(
+          Number(
+            window.__genofficeDebug.univerAPI
+              .getActiveWorkbook()
+              .getActiveSheet()
+              .getRange('I10001')
+              .getValue(),
+          ) - want,
+        ) < 1e-9,
+      lastValue + 1,
       { timeout: 15000 },
     )
     await page.evaluate(() => window.__genofficeDebug.univerAPI.undo())
     await page.waitForFunction(
-      () =>
-        Number(
-          window.__genofficeDebug.univerAPI
-            .getActiveWorkbook()
-            .getActiveSheet()
-            .getRange('I10001')
-            .getValue(),
-        ) === 0.78,
-      null,
+      (want) =>
+        Math.abs(
+          Number(
+            window.__genofficeDebug.univerAPI
+              .getActiveWorkbook()
+              .getActiveSheet()
+              .getRange('I10001')
+              .getValue(),
+          ) - want,
+        ) < 1e-9,
+      lastValue,
       { timeout: 15000 },
     )
     await page.waitForTimeout(1500)

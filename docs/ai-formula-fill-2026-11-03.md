@@ -132,6 +132,39 @@ Resultados brutos (incluem respostas das ferramentas e falhas esperadas do origi
 - Não foi executada a suíte inteira do monorepo, o instalador Windows ou um modelo
   real. Não houve merge.
 
+## Revisão: correções e validação independente
+
+Os dois apontamentos P1 da revisão automática foram corrigidos:
+
+- **Fórmula fixada não volta sobre uma edição da sessão.** Ao editar uma célula,
+  a fórmula guardada da abertura só é restaurada se a sessão não alterou aquela
+  célula. Um literal, uma célula apagada ou um preenchimento constante em bloco
+  registrado no diário de edições vence (`pinnedFormulaForEdit`). Sem isso, a
+  célula reabria o editor com a fórmula antiga, e o Desfazer da edição seguinte a
+  restaurava no lugar do valor digitado.
+- **Recálculo nativo atualiza as precedentes fixadas só pelo valor.** O filtro
+  novo de `applyPinnedOverlay` protege apenas as células com fórmula viva. Uma
+  precedente fixada pelo valor em cache (`pinStreamedPrecedents`) volta a receber
+  o resultado recalculado. Sem isso, editar a entrada dessa precedente deixava a
+  própria célula e as fórmulas que dependem dela com o valor antigo.
+
+O roteiro de verificação também deixou de depender do arquivo original:
+
+- o valor esperado da última linha sai do oráculo, em vez de `0.78`/`1.78` fixos;
+- a conferência do preenchimento manual espera o recálculo terminar, em vez de
+  aguardar 1,5 s fixo, curto demais em máquinas mais lentas.
+
+Validação independente, com um CSV **sintético** de 10.000 linhas no mesmo formato
+(`;`, BOM, vírgula decimal, 3% de quantidades negativas), diferente do arquivo
+original:
+
+- na `main`, 9.887 fórmulas erradas, fonte alterada e Rejeitar deixando uma fórmula;
+- com esta PR, as 11 verificações do roteiro passam.
+
+Também passam: o typecheck da suíte, os testes da planilha (3.887; as 3 falhas de
+`promote-file-atomically` acontecem também na `main` com usuário root) e o e2e
+Fariv.
+
 ## Reproduzir
 
 Com Node e dependências da `suite/` instalados e o sidecar compilado:

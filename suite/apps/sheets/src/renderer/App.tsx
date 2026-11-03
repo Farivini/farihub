@@ -536,6 +536,7 @@ import {
   recordSheetRename,
   recordStructuralOp,
   shiftVisualForStructuralOp,
+  pinnedFormulaForEdit,
 } from './edit-journal'
 import { shiftPinnedCells } from './formula-closure'
 import { getLang, t, aiLangDirective } from './i18n/locale'
@@ -2697,13 +2698,21 @@ export function App({
         // A cached viewport may carry only the result while the closure owns
         // the live formula. Restore that known-live text BEFORE Univer captures
         // the editor's undo before-state, or Undo restores a literal value.
-        const pinned = state.closure.pinned.get(sheetId)?.get(`${event.row}:${event.column}`)
-        if (pinned?.f) {
+        // A replacement journaled this session (literal, clear, bulk fill)
+        // wins over the pin: the old formula must not come back.
+        const pinnedFormula = pinnedFormulaForEdit(
+          state.editJournal,
+          sheetId,
+          event.row,
+          event.column,
+          state.closure.pinned.get(sheetId)?.get(`${event.row}:${event.column}`)?.f,
+        )
+        if (pinnedFormula) {
           const matrix = event.worksheet.getSheet().getCellMatrix()
           const cell = matrix.getValue(event.row, event.column) ?? {}
           // Metadata hydration only: a facade command here would restart the
           // editor while its first keystroke is being handled.
-          if (!cell.f) matrix.setValue(event.row, event.column, { ...cell, f: pinned.f })
+          if (!cell.f) matrix.setValue(event.row, event.column, { ...cell, f: pinnedFormula })
         }
         // Fully-loaded workbooks have nothing left to stream in.
         if (state.flags.preloadComplete) return

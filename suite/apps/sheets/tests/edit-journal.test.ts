@@ -44,6 +44,7 @@ import {
   toSavePageSetupStates,
   toSaveStructuralOps,
   recordCellImageAdd,
+  pinnedFormulaForEdit,
 } from '../src/renderer/edit-journal'
 
 describe('bulk constant-fill journal', () => {
@@ -1350,5 +1351,37 @@ describe('cell picture journal', () => {
       recordCellImageAdd(journal, { ...first, dataUrl: 'data:image/gif;base64,R0lGODlh' }),
     ).toEqual(first)
     expect(journal.cellImageAdds).toHaveLength(1)
+  })
+})
+
+describe('pinnedFormulaForEdit (closure-pinned cell opened for editing)', () => {
+  it('restores the pinned live formula while the session has not touched the cell', () => {
+    const journal = createEditJournal()
+    expect(pinnedFormulaForEdit(journal, 'sheet-1', 10000, 8, '=D10001*F10001')).toBe(
+      '=D10001*F10001',
+    )
+    expect(pinnedFormulaForEdit(journal, 'sheet-1', 10000, 8, undefined)).toBeNull()
+  })
+
+  it('a literal or a cleared cell journaled this session wins over the pin', () => {
+    const journal = createEditJournal()
+    recordSetRangeValues(journal, 'sheet-1', { 10000: { 8: { v: 5 } } })
+    expect(pinnedFormulaForEdit(journal, 'sheet-1', 10000, 8, '=D10001*F10001')).toBeNull()
+    recordSetRangeValues(journal, 'sheet-1', { 9999: { 8: { v: null } } })
+    expect(pinnedFormulaForEdit(journal, 'sheet-1', 9999, 8, '=D10000*F10000')).toBeNull()
+  })
+
+  it('a constant bulk fill over the cell wins over the pin', () => {
+    const journal = createEditJournal()
+    recordBulkConstantFill(journal, {
+      sheetId: 'sheet-1',
+      startRow: 1,
+      endRow: 10000,
+      startColumn: 8,
+      endColumn: 8,
+      value: 0,
+    } as never)
+    expect(pinnedFormulaForEdit(journal, 'sheet-1', 500, 8, '=D501*F501')).toBeNull()
+    expect(pinnedFormulaForEdit(journal, 'sheet-1', 500, 9, '=E501')).toBe('=E501')
   })
 })
