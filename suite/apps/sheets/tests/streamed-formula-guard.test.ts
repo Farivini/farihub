@@ -5,6 +5,7 @@ import { cellKey } from '../src/renderer/formula-closure'
 import {
   carryCopyFormulasPlan,
   collectStreamedFormulaPrecedents,
+  collectFilledFormulaPrecedents,
   proposeOperations,
   streamedPinBudgetError,
   type PlanContext,
@@ -228,7 +229,7 @@ describe('proposeOperations: streaming-mode budget rejection (lazy workbook)', (
     } as unknown as LazyWorkbookState
   }
 
-  function lazyContext(state: LazyWorkbookState): PlanContext {
+  function lazyContext(state: LazyWorkbookState, sourceFormula = ''): PlanContext {
     const worksheets = new Map(
       [
         { id: 'd1', name: 'Data', rows: 20_000, columns: 6 },
@@ -240,7 +241,11 @@ describe('proposeOperations: streaming-mode budget rejection (lazy workbook)', (
           getSheetName: () => sheet.name,
           getMaxRows: () => sheet.rows,
           getMaxColumns: () => sheet.columns,
-          getRange: () => ({ getValue: () => null, getRawValue: () => null }),
+          getRange: () => ({
+            getValue: () => null,
+            getRawValue: () => null,
+            getFormula: () => sourceFormula,
+          }),
         },
       ]),
     )
@@ -286,5 +291,75 @@ describe('proposeOperations: streaming-mode budget rejection (lazy workbook)', (
     })
     expect(outcome.ok).toBe(false)
     if (!outcome.ok) expect(outcome.error).toContain('session budget')
+  })
+  it('rejects a formula fill whose shifted precedents exceed the session budget', () => {
+    const state = streamedState()
+    state.loadedRanges.set('d1', { startRow: 0, endRow: 10, startColumn: 0, endColumn: 5 })
+    const ctx = lazyContext(state, '=SUM(A2:D2)')
+    const outcome = proposeOperations(
+      ctx,
+      [{ op: 'fill_range', sheetId: 'd1', source: 'E2', target: 'E2:E20000' }],
+      'Fill every data row',
+    )
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.error).toContain('session budget')
+    expect(ctx.autoApplySafePlan).not.toHaveBeenCalled()
+  })
+
+  it('cost-checks a source formula supplied in the same batch before any mutation', () => {
+    const state = streamedState()
+    state.loadedRanges.set('d1', { startRow: 0, endRow: 10, startColumn: 0, endColumn: 5 })
+    const ctx = lazyContext(state)
+    const outcome = proposeOperations(
+      ctx,
+      [
+        { op: 'set_formula', sheetId: 'd1', address: 'E2', formula: '=SUM(A$2:A$10001)' },
+        { op: 'fill_range', sheetId: 'd1', source: 'E2', target: 'E2:E10001' },
+      ],
+      'Create and fill formula',
+    )
+    expect(outcome.ok).toBe(false)
+    expect(ctx.autoApplySafePlan).not.toHaveBeenCalled()
+  })
+})
+
+describe('filled formula reference collection', () => {
+  it('pins both operands through the last of 10,000 data rows, reading the seed once', () => {
+    const read = vi.fn(() => '=D2*F2')
+    const needs = new Map<string, Set<number>>()
+    const state = { closure: { pinned: new Map() } } as unknown as LazyWorkbookState
+    expect(
+      collectFilledFormulaPrecedents(
+        state,
+        'd1',
+        { startRow: 1, endRow: 1, startColumn: 4, endColumn: 4 },
+        { startRow: 1, endRow: 10000, startColumn: 4, endColumn: 4 },
+        read,
+        sheets,
+        needs,
+      ),
+    ).toBeNull()
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(needs.get('d1')?.size).toBe(20000)
+    expect(needs.get('d1')?.has(cellKey(10000, 3))).toBe(true)
+    expect(needs.get('d1')?.has(cellKey(10000, 5))).toBe(true)
+  })
+
+  it('preserves anchored and qualified references while shifting each relative row', () => {
+    const needs = new Map<string, Set<number>>()
+    const state = { closure: { pinned: new Map() } } as unknown as LazyWorkbookState
+    collectFilledFormulaPrecedents(
+      state,
+      'd1',
+      { startRow: 1, endRow: 1, startColumn: 4, endColumn: 4 },
+      { startRow: 1, endRow: 10000, startColumn: 4, endColumn: 4 },
+      () => '=D2*$F$2+Small!$A$1',
+      sheets,
+      needs,
+    )
+    expect(needs.get('d1')?.size).toBe(10001)
+    expect(needs.get('small1')?.size).toBe(1)
+    expect(needs.get('d1')?.has(cellKey(1, 5))).toBe(true)
+    expect(needs.get('d1')?.has(cellKey(10000, 5))).toBe(false)
   })
 })

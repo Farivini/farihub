@@ -12,6 +12,8 @@ import type { CellFormatState, CellScalar } from '@genoffice/xlsx-gateway/domain
 import { planFileTableRegistrations } from '../file-tables'
 import { toSelectionFormat } from '../selection-format'
 import { lazyCellReader } from '../univer-sync'
+import { plainCellValue } from '../edit-journal'
+import { indexedFormulaText } from '../formula-view'
 import { lazySheetScreenExtent, type LazyWorkbookState, type UniverRuntime } from '../univer-state'
 import type { ActiveSheetInfo, FrozenSelection } from './tools'
 import { NO_REDACTIONS, placeholderSource, type RedactionIndex } from './redact'
@@ -390,7 +392,23 @@ export function getActiveSheetInfo(
       knownAddresses: [],
       loadedRange,
       sheets: workbook.getSheets().map((sheet) => {
-        const extent = lazySheetScreenExtent(state, sheet.getSheetId())
+        const fileExtent = lazySheetScreenExtent(state, sheet.getSheetId())
+        // File streaming bounds must stay file-sized, but the AI's data view
+        // must also include columns/rows written since open. Otherwise a new
+        // calculated column is immediately invisible to read_range/context.
+        let rows = fileExtent?.rows ?? 0
+        let columns = fileExtent?.columns ?? 0
+        for (const entry of state.editJournal.cells?.get(sheet.getSheetId())?.values() ?? []) {
+          if (!entry.formula && !(entry.hasValue && entry.value != null)) continue
+          rows = Math.max(rows, entry.row + 1)
+          columns = Math.max(columns, entry.column + 1)
+        }
+        for (const fill of state.editJournal.bulkConstantFills?.get(sheet.getSheetId()) ?? []) {
+          if (fill.value == null) continue
+          rows = Math.max(rows, fill.endRow + 1)
+          columns = Math.max(columns, fill.endColumn + 1)
+        }
+        const extent = fileExtent || rows || columns ? { rows, columns } : null
         const meta = state.file.sheets.find((candidate) => candidate.id === sheet.getSheetId())
         const oversized = (meta?.sourceXmlBytes ?? 0) > MAX_PATCH_ENTRY_BYTES
         return {
@@ -472,6 +490,41 @@ export function readCells(
       sheetId === undefined ? workbook?.getActiveSheet() : workbook?.getSheetBySheetId(sheetId)
     if (!worksheet) return result
     const targetId = sheetId ?? worksheet.getSheetId()
+    // Bulk formula verification/save reads a whole calculated column locally.
+    // Avoid constructing 10,000 range facades on every calculation poll. Shared
+    // formulas/rich text retain the general reader below; writes from fill_range
+    // have explicit f and si=null, so this fast path has identical provenance.
+    if (addresses.length >= 256) {
+      const first = parseAddress(addresses[0]!)
+      const contiguous = addresses.every((address, index) => {
+        const at = parseAddress(address)
+        return at.column === first.column && at.row === first.row + index
+      })
+      if (contiguous) {
+        const range = worksheet.getRange(first.row, first.column, addresses.length, 1)
+        const raw = range.getCellDatas()
+        if (
+          raw.every((row) => typeof row[0]?.f === 'string' && row[0].f.length > 0) &&
+          raw.length === addresses.length
+        ) {
+          const values = range.getValues()
+          for (let index = 0; index < addresses.length; index += 1) {
+            const address = addresses[index]!
+            const withheld = redactions.labelAt(targetId, first.row + index, first.column)
+            const cell = raw[index]![0]!
+            result[address] =
+              withheld !== null
+                ? { value: placeholderSource(withheld) }
+                : {
+                    value: (values[index]?.[0] ?? null) as CellScalar,
+                    formula: cell.f!,
+                    rawValue: plainCellValue(cell.v, cell.t) as CellScalar | undefined,
+                  }
+          }
+          return result
+        }
+      }
+    }
     const reader = lazyCellReader(worksheet)
     for (const address of addresses) {
       // All three fields, not just the rendered value: `formula` is the cell's
@@ -487,11 +540,18 @@ export function readCells(
         continue
       }
       const cell = reader(address)
+      const at = parseAddress(address)
+      // Cache-only imported cells deliberately have no grid f. Their original
+      // formula still belongs in the AI view; the index rejects overwritten
+      // cells and unreliable coordinates after structural changes.
+      const formula =
+        cell.formula ||
+        (state.formulaText && indexedFormulaText(state, targetId, at.row, at.column))
       // `value` is the rendered text and `rawValue` the model value behind it;
       // machine-facing callers (the MCP bridge, the save pipeline) need the
       // latter — see modelCellValue in univer-sync.ts.
-      result[address] = cell.formula
-        ? { value: cell.value, formula: cell.formula, rawValue: cell.rawValue }
+      result[address] = formula
+        ? { value: cell.value, formula, rawValue: cell.rawValue }
         : { value: cell.value, rawValue: cell.rawValue }
     }
     return result

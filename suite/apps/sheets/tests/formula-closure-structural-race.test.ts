@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { activateFormulaClosure } from '../src/renderer/univer-sync'
+import { activateFormulaClosure, applyPinnedOverlay } from '../src/renderer/univer-sync'
 import type { LazyWorkbookState } from '../src/renderer/univer-state'
 
 interface PatchCall {
@@ -117,6 +117,42 @@ describe('activateFormulaClosure structural-edit race', () => {
     expect(state.closure.pinned.get('sheet-2')?.get('0:0')).toEqual({ v: 2 })
   })
 
+  it('publishes the first band before awaiting the next read of the same sheet', async () => {
+    const state = closureState()
+    Object.assign(state.file, { sheets: [{ ...sheetMeta('sheet-1', 'Alpha'), rowCount: 20000 }] })
+    let reads = 0
+    ;(globalThis as { window?: unknown }).window = {
+      desktopApi: {
+        readWorkbookFormulas: async () => ({
+          truncated: false,
+          indexingComplete: true,
+          cells: [{ row: 0, column: 3, formula: 'SUM(A1:A20000)' }],
+          sharedGroups: [],
+        }),
+        readWorkbookRange: async ({ range }: { range: { startRow: number } }) => {
+          reads += 1
+          if (reads === 2)
+            expect(state.closure.pinned.get('sheet-1')?.get('0:3')).toEqual({
+              f: 'SUM(A1:A20000)',
+              v: 40000,
+            })
+          return {
+            cells:
+              range.startRow === 0
+                ? [{ row: 0, column: 3, formula: 'SUM(A1:A20000)', value: 40000 }]
+                : [],
+            rows: [],
+            merges: [],
+            hyperlinks: [],
+          }
+        },
+      },
+    }
+    await activateFormulaClosure(stubRuntime([]) as never, { current: state }, () => undefined)
+    expect(reads).toBeGreaterThan(1)
+    expect(state.closure.status).toBe('active')
+  })
+
   it('gives up and drops all pins when a structural edit lands during an install read', async () => {
     const state = closureState()
     const patches: PatchCall[] = []
@@ -137,5 +173,28 @@ describe('activateFormulaClosure structural-edit race', () => {
     expect(state.closure.status).toBe('unavailable')
     expect(patches).toHaveLength(1)
     expect(state.closure.pinned.size).toBe(0)
+  })
+})
+
+describe('native cached recalc versus live formulas', () => {
+  it('never overwrites engine-owned cells when a native recalc completes later', () => {
+    const writes: { row: number; column: number; value: unknown }[] = []
+    const worksheet = {
+      getRange: (row: number, column: number) => ({
+        setValues: (value: unknown) => writes.push({ row, column, value }),
+      }),
+    }
+    applyPinnedOverlay(
+      worksheet as never,
+      new Map([
+        ['1:8', { v: 15.3 }],
+        ['2:8', { v: 6.36 }],
+      ]),
+      undefined,
+      { startRow: 0, endRow: 10000, startColumn: 0, endColumn: 8 },
+      new Map([['1:8', { f: '=D2*F2', v: 15.3 }]]),
+    )
+    expect(writes).toHaveLength(1)
+    expect(writes[0]?.row).toBe(2)
   })
 })

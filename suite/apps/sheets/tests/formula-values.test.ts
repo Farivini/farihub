@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CellState } from '@genoffice/xlsx-gateway/domain/workbook.types'
 import {
   clearVerifiedFormulaValues,
@@ -23,6 +23,20 @@ describe('formulaTargetsFromOps', () => {
       { op: 'set_formula', sheetId: 's1', address: 'C1', formula: 'A1' },
     ]
     expect(formulaTargetsFromOps(ops)).toEqual([{ sheetId: 's1', address: 'B1' }])
+  })
+  it('verifies every formula in a 10,000-row fill without repeating the source read', () => {
+    const source = vi.fn(() => '=D2*F2')
+    const targets = formulaTargetsFromOps(
+      [
+        { op: 'set_formula', sheetId: 's', address: 'I2', formula: '=D2*F2' },
+        { op: 'fill_range', sheetId: 's', source: 'I2', target: 'I2:I10001' },
+      ],
+      source,
+    )
+    expect(targets).toHaveLength(10000)
+    expect(targets[0]).toEqual({ sheetId: 's', address: 'I2' })
+    expect(targets.at(-1)).toEqual({ sheetId: 's', address: 'I10001' })
+    expect(source).toHaveBeenCalledTimes(1)
   })
 })
 

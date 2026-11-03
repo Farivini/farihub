@@ -8,6 +8,7 @@ import {
 } from '@genoffice/xlsx-gateway/domain/workbook-dsl'
 import {
   columnLabel,
+  parseAddress,
   parseRange,
   rangeCellCount,
   formatAddress,
@@ -72,9 +73,8 @@ export interface FrozenSelection {
 
 export interface ActiveSheetInfo {
   readonly mode: 'demo' | 'lazy' | 'none'
-  /** lazy mode only: the file is too large for a full load — cached values
-   * stream in per viewport, and the live formula engine never sees the whole
-   * data (formula writes over the file's sheets are gated) */
+  /** lazy mode only: cached file values stream in per viewport, and the live formula engine never sees the whole
+   * data; formula writes load their precedents within the session budget. */
   readonly streaming?: boolean | undefined
   readonly sheetId: string
   readonly sheetName: string
@@ -203,6 +203,9 @@ export type CreateDocumentToolOutcome =
   | { ok: false; error: string }
 
 export interface SheetsSkillDeps {
+  /** Verify locally computed formula results for save caching; never sends the
+   * expanded target list through the model. */
+  verifyWrittenFormulas?(operations: readonly WorkbookOperation[]): Promise<unknown>
   getActiveSheetInfo(): ActiveSheetInfo
   /** Ensure a lazy workbook range is present in Univer before reading it. */
   ensureRangeLoaded?(range: RangeBounds, sheetId?: string): boolean | Promise<boolean>
@@ -210,7 +213,7 @@ export interface SheetsSkillDeps {
   readCells(
     addresses: readonly string[],
     sheetId?: string,
-  ): Record<string, { value: CellScalar; formula?: string }>
+  ): Record<string, { value: CellScalar; formula?: string; rawValue?: CellScalar | undefined }>
   /** per-cell explicit formatting; cells with no explicit format are omitted */
   readFormats(addresses: readonly string[], sheetId?: string): Record<string, CellFormatState>
   /** formatted report of a sheet's feature state (filters, CF, DV, names, visuals, …) */
@@ -686,7 +689,7 @@ export function buildWorkbookContext(deps: SheetsSkillDeps): string {
     info.mode === 'demo'
       ? `Mode: demo workbook, current revision=${info.revision}`
       : info.streaming
-        ? 'Mode: imported file in LARGE-FILE STREAMING MODE — the file is too big for a full load, so the grid ' +
+        ? 'Mode: imported file in STREAMING MODE — the grid ' +
           'materializes the viewed region on demand. Consequences: (1) formulas you write stay live — their ' +
           'referenced file cells are loaded into the engine automatically — but only within a session budget of ' +
           '~50,000 referenced cells; batches beyond it are rejected: compute with aggregate_range and write static ' +
@@ -800,17 +803,30 @@ function escapeCellText(text: string): string {
     .replace(/\n/g, '\\n')
 }
 
-function formatCellScalar(cell: { value: CellScalar; formula?: string | undefined }): string {
+function formatCellScalar(cell: {
+  value: CellScalar
+  formula?: string | undefined
+  rawValue?: CellScalar | undefined
+}): string {
+  // A formatted/narrow column can hide precision. Keep its human-readable
+  // display (dates/units), but expose the actual numeric value for arithmetic.
+  const display = cell.value
+  const raw = cell.rawValue
+  const value = typeof raw === 'number' || typeof raw === 'boolean' ? raw : display
+  const label =
+    value !== display && display !== null && String(value) !== String(display)
+      ? `${escapeCellText(String(value))} [display: ${escapeCellText(String(display))}]`
+      : escapeCellText(String(value))
   // Formula cells prefer the value (the AI reasons from computed values, with
   // the formula as provenance); when the value isn't computed yet, give only the
   // formula
   if (cell.formula) {
-    return cell.value === null || cell.value === undefined
+    return value === null || value === undefined
       ? escapeCellText(cell.formula)
-      : `${escapeCellText(String(cell.value))} (${escapeCellText(cell.formula)})`
+      : `${label} (${escapeCellText(cell.formula)})`
   }
-  if (cell.value === null) return '(empty)'
-  return escapeCellText(String(cell.value))
+  if (value === null) return '(empty)'
+  return label
 }
 
 function formatPlanSummary(plan: ChangePlan): string {
@@ -906,7 +922,7 @@ export function executeWorkbookTool(
             const cell = cells[formatAddress(row, column)]
             columns.push(
               cell
-                ? cell.value === null
+                ? cell.value === null && cell.rawValue == null
                   ? escapeCellText(cell.formula ?? '')
                   : formatCellScalar(cell)
                 : '',
@@ -1422,16 +1438,44 @@ export function executeWorkbookTool(
           const lines: string[] = []
           const redactions = deps.redactions?.() ?? NO_REDACTIONS
           for (const [cellSheetId, addresses] of bySheet) {
-            const cells = deps.readCells(addresses, cellSheetId)
             const prefix = bySheet.size > 1 ? `${sheetNames.get(cellSheetId) ?? cellSheetId}!` : ''
-            for (const addr of addresses) {
-              const raw = cells[addr]?.value
-              const v =
-                raw === null || raw === undefined
-                  ? raw
-                  : modelCellValueAt(redactions, cellSheetId, addr, raw)
+            for (const addr of [...new Set(addresses)]) {
+              // Distant fill corners cannot share one 2,000-cell read box.
+              // Materialize and verify each sample before the next load can
+              // evict it; the fixed delay alone often observed an empty tail.
+              const at = parseAddress(addr)
+              const loaded = await deps.ensureRangeLoaded?.(
+                {
+                  startRow: at.row,
+                  endRow: at.row,
+                  startColumn: at.column,
+                  endColumn: at.column,
+                },
+                cellSheetId,
+              )
+              if (loaded === false) {
+                lines.push(`${prefix}${addr} = (not verified: could not load cell)`)
+                continue
+              }
+              const deadline = Date.now() + 4_000
+              let cell = deps.readCells([addr], cellSheetId)[addr]
+              while (
+                cell?.formula &&
+                cell.value == null &&
+                cell.rawValue == null &&
+                Date.now() < deadline
+              ) {
+                await new Promise((resolve) => setTimeout(resolve, 50))
+                cell = deps.readCells([addr], cellSheetId)[addr]
+              }
+              const raw = cell?.value
+              const value = raw == null ? raw : modelCellValueAt(redactions, cellSheetId, addr, raw)
               lines.push(
-                `${prefix}${addr} = ${v === null || v === undefined ? '(still computing; verify with read_cells)' : String(v)}`,
+                `${prefix}${addr} = ${
+                  cell && (value != null || cell.rawValue != null)
+                    ? formatCellScalar({ ...cell, value: value ?? null })
+                    : '(still computing; verify with read_cells)'
+                }`,
               )
             }
           }
@@ -1451,8 +1495,11 @@ export function executeWorkbookTool(
         })()
       }
       if (!outcome.applied) return finish()
-      return outcome.applied.then((applied) => {
-        if (applied.ok) return finish(applied.notices)
+      return outcome.applied.then(async (applied) => {
+        if (applied.ok) {
+          await deps.verifyWrittenFormulas?.(operations)
+          return finish(applied.notices)
+        }
         const reason = applied.reason ?? 'unknown reason'
         return fail(
           t('aiToolPropose'),

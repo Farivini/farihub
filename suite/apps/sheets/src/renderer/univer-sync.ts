@@ -1570,6 +1570,10 @@ export async function activateFormulaClosure(
     const sheetMeta = state.file.sheets.find((candidate) => candidate.id === sheetId)
     if (!worksheet || !sheetMeta) continue
     const pinned = new Map<string, PinnedClosureCell>()
+    // Publish each installed band immediately. A viewport read can finish
+    // while the next native read is awaiting: without these pins it replaces
+    // already-live formulas with cache-only cells, breaking edit/undo on reopen.
+    state.closure.pinned.set(sheetId, pinned)
     for (const range of closureFetchRanges(cells)) {
       let result
       try {
@@ -2786,7 +2790,7 @@ async function runFormulaRecalc(
       journalSuppression.active = true
       loadAutoHeightSuppression.active = true
       try {
-        applyPinnedOverlay(worksheet, overlay, undefined, loaded)
+        applyPinnedOverlay(worksheet, overlay, undefined, loaded, state.closure.pinned.get(sheetId))
       } finally {
         journalSuppression.active = false
         loadAutoHeightSuppression.active = false
@@ -3091,7 +3095,8 @@ async function remeasureWrapRowsAcrossSheet(
         // Kept resident like any installed window: session edits win.
         const kept = { ...range, endRow: Math.min(range.endRow, frozenRows - 1) }
         const overlay = state.recalc.overlay.get(sheetId)
-        if (overlay?.size) applyPinnedOverlay(worksheet, overlay, undefined, kept)
+        if (overlay?.size)
+          applyPinnedOverlay(worksheet, overlay, undefined, kept, state.closure.pinned.get(sheetId))
         applyJournalOverlay(worksheet, state.editJournal, kept)
       }
     }
@@ -4170,7 +4175,8 @@ function patchWorksheetRange(
       // incremental date chain recomputed from an emptied anchor shows year
       // 1900). The journal overlay still runs after so
       // user edits always win.
-      if (recalcOverlay?.size) applyPinnedOverlay(worksheet, recalcOverlay, previousRange, range)
+      if (recalcOverlay?.size)
+        applyPinnedOverlay(worksheet, recalcOverlay, previousRange, range, pinned)
       if (journal) applyJournalOverlay(worksheet, journal, range)
     })
   } finally {
@@ -4179,11 +4185,12 @@ function patchWorksheetRange(
   }
 }
 
-function applyPinnedOverlay(
+export function applyPinnedOverlay(
   worksheet: UniverWorksheet,
   pinned: ReadonlyMap<string, PinnedClosureCell>,
   previousRange: IRange | undefined,
   range: IRange,
+  engineOwned?: ReadonlyMap<string, PinnedClosureCell>,
 ): void {
   const covers = (candidate: IRange, row: number, column: number): boolean =>
     row >= candidate.startRow &&
@@ -4191,6 +4198,10 @@ function applyPinnedOverlay(
     column >= candidate.startColumn &&
     column <= candidate.endColumn
   for (const [key, cell] of pinned) {
+    // A delayed native recalc is a value-only fallback. Reapplying it over a
+    // live closure cell clears f in the facade and turns edit/undo into a
+    // value-only restore. Engine-owned cells must remain authoritative.
+    if (engineOwned?.has(key)) continue
     const [rowText, columnText] = key.split(':')
     const row = Number(rowText)
     const column = Number(columnText)

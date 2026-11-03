@@ -7,13 +7,14 @@
  * returning "ok" while `read_sheet` shows nothing is indistinguishable from a
  * silent failure — an agent can conclude the edit did not take.
  *
- * In-app callers never meet this: the user watches the cell fill in. So the
- * MCP path closes the gap here, polling the addressed cells until the engine has
- * written their values and reporting them alongside the apply result. Polling
+ * Both the built-in AI and MCP path close the gap here: poll the addressed
+ * cells until the engine has written their values, then remember the verified
+ * formula texts so saving can persist numeric caches as well as editable formulas. Polling
  * (rather than waiting on the engine's calculationEnd event) keeps it precise:
  * a batch of plain values triggers no recalculation at all, and must not hold
  * the response for a timeout that will never be met.
  */
+import { formatAddress, parseRange } from '@genoffice/xlsx-gateway/domain/cell-address'
 import type { CellState } from '@genoffice/xlsx-gateway/domain/workbook.types'
 import { EXCEL_ERROR_LITERALS, modelCellValue } from './univer-sync'
 
@@ -32,17 +33,61 @@ export interface FormulaValue {
 }
 
 /**
- * The cells a batch is expected to leave holding a computed value: the
- * `set_formula` ops. Plain `set_cell` writes are readable immediately and need
- * no wait; conditional-format and data-validation formulas are rules, not cell
- * values, and are skipped.
+ * Formula targets of explicit writes, plus all formula-bearing tiles of a
+ * fill when its source reader is provided. The source pattern is read once;
+ * the expanded list stays local and is never serialized into model context.
+ * Plain values and formatting/validation rules need no calculation wait.
  */
-export function formulaTargetsFromOps(ops: readonly unknown[]): FormulaTarget[] {
+export function formulaTargetsFromOps(
+  ops: readonly unknown[],
+  readFormula?: (sheetId: string, address: string) => string | null,
+): FormulaTarget[] {
   const targets: FormulaTarget[] = []
   const seen = new Set<string>()
   for (const raw of ops) {
     if (!raw || typeof raw !== 'object') continue
-    const op = raw as { op?: unknown; sheetId?: unknown; address?: unknown; formula?: unknown }
+    const op = raw as {
+      op?: unknown
+      sheetId?: unknown
+      address?: unknown
+      formula?: unknown
+      source?: unknown
+      target?: unknown
+      sourceSheetId?: unknown
+    }
+    if (
+      op.op === 'fill_range' &&
+      readFormula &&
+      typeof op.sheetId === 'string' &&
+      typeof op.source === 'string' &&
+      typeof op.target === 'string'
+    ) {
+      const src = parseRange(op.source)
+      const dst = parseRange(op.target)
+      const height = src.endRow - src.startRow + 1
+      const width = src.endColumn - src.startColumn + 1
+      const sourceId = typeof op.sourceSheetId === 'string' ? op.sourceSheetId : op.sheetId
+      const seeds: { row: number; column: number }[] = []
+      for (let row = src.startRow; row <= src.endRow; row += 1) {
+        for (let column = src.startColumn; column <= src.endColumn; column += 1) {
+          if (readFormula(sourceId, formatAddress(row, column)))
+            seeds.push({ row: row - src.startRow, column: column - src.startColumn })
+        }
+      }
+      for (let row = dst.startRow; row <= dst.endRow; row += height) {
+        for (let column = dst.startColumn; column <= dst.endColumn; column += width) {
+          for (const seed of seeds) {
+            const address = formatAddress(row + seed.row, column + seed.column)
+            const key = `${op.sheetId}!${address}`
+            if (!seen.has(key)) {
+              seen.add(key)
+              targets.push({ sheetId: op.sheetId, address })
+            }
+          }
+        }
+      }
+      continue
+    }
     if (op.op !== 'set_formula') continue
     if (typeof op.sheetId !== 'string' || typeof op.address !== 'string') continue
     if (typeof op.formula !== 'string' || !op.formula.startsWith('=')) continue
@@ -115,7 +160,7 @@ export async function awaitFormulaValues(
 }
 
 /**
- * Formula cells this session has seen the engine settle on, keyed
+ * Formula cells the built-in AI or MCP saw the engine settle on, keyed
  * `sheetId!address`, with the formula text that was settled.
  *
  * The save path refuses to cache a formula it has not seen a value for (the
