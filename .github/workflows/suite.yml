@@ -18,7 +18,12 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: suite-${{ github.ref }}
+  # A label event gets its own group (per label): adding `instalador` or any other label
+  # must not cancel the tests and e2e still running for the same commit. A new push still
+  # cancels the previous run of the PR.
+  group: >-
+    suite-${{ github.ref }}-${{ github.event.action == 'labeled' &&
+    format('label-{0}', github.event.label.name) || 'run' }}
   cancel-in-progress: true
 defaults:
   run:
