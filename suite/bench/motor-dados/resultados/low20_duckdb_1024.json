@@ -1,0 +1,26 @@
+{
+ "engine": "duckdb",
+ "limit_mb": 1024,
+ "results": {
+  "acumulado_por_regional": {
+   "s": 17.488,
+   "pico_mb": 1146,
+   "ok": true
+  },
+  "ordenar_base_inteira": {
+   "s": 7.358,
+   "pico_mb": 1162,
+   "ok": true
+  },
+  "procv_50mil_produtos": {
+   "s": 3.352,
+   "pico_mb": 422,
+   "ok": true
+  },
+  "dinamica_regional_mes": {
+   "s": 0.252,
+   "pico_mb": 330,
+   "ok": true
+  }
+ }
+}

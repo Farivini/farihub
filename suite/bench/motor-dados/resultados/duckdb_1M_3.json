@@ -1,0 +1,91 @@
+{
+ "engine": "duckdb",
+ "csv": "vendas_1M.csv",
+ "results": {
+  "importar_csv": {
+   "s": 0.26,
+   "pico_mb": 254
+  },
+  "gravar_parquet": {
+   "s": 0.317,
+   "pico_mb": 465,
+   "tamanho_mb": 16.2
+  },
+  "abrir_e_tela_inicio": {
+   "s": 0.013,
+   "pico_mb": 457
+  },
+  "abrir_e_tela_meio": {
+   "s": 0.012,
+   "pico_mb": 450
+  },
+  "direto_no_arquivo_dinamica": {
+   "s": 0.029,
+   "pico_mb": 450
+  },
+  "carregar_parquet": {
+   "s": 0.084,
+   "pico_mb": 455
+  },
+  "coluna_calculada": {
+   "s": 0.087,
+   "pico_mb": 454
+  },
+  "dinamica_regional_mes": {
+   "s": 0.025,
+   "pico_mb": 455
+  },
+  "acumulado_por_regional": {
+   "s": 0.305,
+   "pico_mb": 531
+  },
+  "pareto_abc": {
+   "s": 0.043,
+   "pico_mb": 462
+  },
+  "procv_50mil_produtos": {
+   "s": 0.091,
+   "pico_mb": 456
+  },
+  "filtrar_e_ordenar_top1000": {
+   "s": 0.017,
+   "pico_mb": 457
+  },
+  "ordenar_base_inteira": {
+   "s": 0.156,
+   "pico_mb": 495
+  },
+  "perfil_para_ia": {
+   "s": 0.167,
+   "pico_mb": 517
+  },
+  "tela_no_meio_da_memoria": {
+   "s": 0.004,
+   "pico_mb": 469
+  },
+  "exportar_csv_ptbr": {
+   "s": 0.592,
+   "pico_mb": 542
+  }
+ },
+ "checks": {
+  "auto_tipos": {
+   "data": "VARCHAR",
+   "codigo_produto": "VARCHAR",
+   "preco_unitario": "VARCHAR"
+  },
+  "linhas": 1000000,
+  "soma_valor": 8836780656.58,
+  "coluna_calculada": 8836780656.58,
+  "dinamica_grupos": 192,
+  "dinamica_soma": 8836780656.58,
+  "acumulado_regional_total": 8836780656.58,
+  "pareto": {
+   "A": 32275,
+   "B": 11140,
+   "C": 6585
+  },
+  "procv_margem": 2990984404.04,
+  "export_csv_ptbr": "convertido na consulta (sem opcao nativa)"
+ }
+}

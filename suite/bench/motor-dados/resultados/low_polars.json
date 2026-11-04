@@ -1,0 +1,26 @@
+{
+ "engine": "polars",
+ "limit_mb": 0,
+ "results": {
+  "acumulado_por_regional": {
+   "s": 1.987,
+   "pico_mb": 1578,
+   "ok": true
+  },
+  "ordenar_base_inteira": {
+   "s": 1.265,
+   "pico_mb": 1427,
+   "ok": true
+  },
+  "procv_50mil_produtos": {
+   "s": 1.024,
+   "pico_mb": 997,
+   "ok": true
+  },
+  "dinamica_regional_mes": {
+   "s": 0.12,
+   "pico_mb": 698,
+   "ok": true
+  }
+ }
+}
