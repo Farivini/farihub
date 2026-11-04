@@ -38,6 +38,7 @@ struct Engine {
     db: Connection,
     columns: Vec<String>,
     calculated: Option<(String, String, String)>,
+    factor: Option<f64>,
 }
 impl Engine {
     fn new(dir: &Path, memory_mb: u64) -> Result<Self> {
@@ -52,6 +53,7 @@ impl Engine {
             db,
             columns: Vec::new(),
             calculated: None,
+            factor: None,
         })
     }
     fn rows(&self, sql: &str) -> Result<Vec<Vec<Value>>> {
@@ -69,12 +71,18 @@ impl Engine {
     }
     fn view(&self) -> String {
         match &self.calculated {
-            Some((name, left, right)) => format!(
-                "(SELECT *, {}*{} AS {} FROM base)",
-                ident(left),
-                ident(right),
-                ident(name)
-            ),
+            Some((name, left, right)) => {
+                let rhs = self
+                    .factor
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| ident(right));
+                format!(
+                    "(SELECT *, {}*{} AS {} FROM base)",
+                    ident(left),
+                    rhs,
+                    ident(name)
+                )
+            }
             None => "base".into(),
         }
     }
@@ -118,6 +126,7 @@ impl Engine {
                 }
                 self.db.execute_batch(&format!("CREATE OR REPLACE TABLE base AS SELECT row_number() OVER ()-1 AS __fariv_id, {} FROM raw; DROP TABLE raw;",expr.join(",")))?;
                 self.calculated = None;
+                self.factor = None;
                 Ok(
                     json!({"columns":self.columns,"rows":self.rows("SELECT count(*) FROM base")?[0][0],"version":self.rows("SELECT version()")?[0][0]}),
                 )
@@ -144,16 +153,25 @@ impl Engine {
             }
             "calculate" => {
                 let left = string(req, "left")?.to_owned();
-                let right = string(req, "right")?.to_owned();
+                let factor = req.get("factor").and_then(Value::as_f64);
+                if req.get("factor").is_some() && !factor.is_some_and(f64::is_finite) {
+                    return Err("Invalid finite factor".into());
+                }
+                let right = if factor.is_some() {
+                    String::new()
+                } else {
+                    string(req, "right")?.to_owned()
+                };
                 let name = string(req, "name")?.to_owned();
                 if !self.columns.contains(&left)
-                    || !self.columns.contains(&right)
+                    || (factor.is_none() && !self.columns.contains(&right))
                     || self.columns.contains(&name)
                     || name == "__fariv_id"
                 {
                     return Err("Invalid calculated column".into());
                 }
                 self.calculated = Some((name.clone(), left, right));
+                self.factor = factor;
                 let r = self.rows(&format!(
                     "SELECT count(*),sum({}),min({}),max({}) FROM {}",
                     ident(&name),
@@ -172,7 +190,7 @@ impl Engine {
                 std::fs::write(
                     format!("{path}.json"),
                     serde_json::to_vec(
-                        &json!({"columns":self.columns,"calculated":self.calculated}),
+                        &json!({"columns":self.columns,"calculated":self.calculated,"factor":self.factor}),
                     )?,
                 )?;
                 Ok(json!({"saved":true,"bytes":std::fs::metadata(path)?.len()}))
@@ -182,6 +200,7 @@ impl Engine {
                 let meta: Value = serde_json::from_slice(&std::fs::read(format!("{path}.json"))?)?;
                 self.columns = serde_json::from_value(meta["columns"].clone())?;
                 self.calculated = serde_json::from_value(meta["calculated"].clone())?;
+                self.factor = meta.get("factor").and_then(Value::as_f64);
                 self.db.execute_batch(&format!(
                     "CREATE OR REPLACE TABLE base AS SELECT * FROM read_parquet({});",
                     literal(path)
@@ -268,6 +287,34 @@ mod tests {
         let rows = engine.handle(&json!({"op":"read","offset":0,"limit":3}))?;
         assert_eq!(rows["rows"][1][0], "0008");
         assert!((rows["rows"][1][3].as_f64().unwrap() + 2.4).abs() < 1e-10);
+        drop(engine);
+        std::fs::remove_dir_all(dir)?;
+        Ok(())
+    }
+
+    #[test]
+    fn constant_factor_and_missing_balance_survive_reopen() -> Result<()> {
+        let dir = std::env::temp_dir().join(format!("fariv-bank-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir)?;
+        let csv = dir.join("source.csv");
+        std::fs::write(
+            &csv,
+            "TransactionID,CustomerID,CustAccountBalance,TransactionAmount (INR)\nT1,C00001,,25.15\nT2,C00002,0,0\n",
+        )?;
+        let mut engine = Engine::new(&dir, 128)?;
+        engine.handle(&json!({"op":"open","path":csv,"delimiter":",","decimal":".","numericColumns":["CustAccountBalance","TransactionAmount (INR)"]}))?;
+        let calc=engine.handle(&json!({"op":"calculate","left":"TransactionAmount (INR)","factor":2,"name":"ensaio_x2"}))?;
+        assert!((calc["sum"].as_f64().unwrap() - 50.30).abs() < 1e-10);
+        let p = dir.join("base.parquet");
+        engine.handle(&json!({"op":"save","path":p}))?;
+        engine.factor = None;
+        engine.handle(&json!({"op":"reopen","path":p}))?;
+        let r = engine.handle(&json!({"op":"read","offset":0,"limit":2}))?;
+        assert_eq!(r["rows"][0][1], "C00001");
+        assert!(r["rows"][0][2].is_null());
+        assert_eq!(r["rows"][1][2], 0.0);
+        assert!((r["rows"][0][4].as_f64().unwrap() - 50.30).abs() < 1e-10);
+        assert!(engine.handle(&json!({"op":"calculate","left":"TransactionAmount (INR)","factor":"invalid","name":"bad"})).is_err());
         drop(engine);
         std::fs::remove_dir_all(dir)?;
         Ok(())

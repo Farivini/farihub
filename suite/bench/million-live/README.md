@@ -60,3 +60,20 @@ python3 bench/million-live/generate-varied.py /tmp/varied_1000000.csv
 Para repetir a base original, preservar o cabeçalho uma vez e repetir os 10 mil registros cem vezes. O SHA-256 esperado está nas evidências. O CSV original e seu pacote não são redistribuídos aqui.
 
 Um resultado positivo exige: processo sem erro, base com 1 milhão de registros, zero divergências no oráculo e zero divergências nos trechos pintados. Isso não basta para aprovar o produto: ainda faltam as integrações e verificações descritas no relatório. Não executar compiladores, oráculos ou outros benchmarks simultaneamente às medições.
+
+## Base enviada com 1.048.567 transações
+
+O quarto argumento opcional de `live.mjs` é um JSON de cenário. `scenarios/bank.json` declara as duas colunas numéricas da base enviada e uma multiplicação técnica por 2. Sem esse argumento, o cenário anterior continua quantidade × preço.
+
+```bash
+LD_LIBRARY_PATH=/tmp/fariv-libduckdb FARIV_TEST_XVFB=/caminho/Xvfb ELECTRON_TEST_EXECUTABLE=/caminho/electron \
+  node --import tsx bench/million-live/live.mjs /caminho/bank_transactions.csv /tmp/fariv-bank-run \
+  /tmp/fariv-million-linked/release/fariv-million-live bench/million-live/scenarios/bank.json
+python3 bench/million-live/oracle-bank.py /caminho/bank_transactions.csv /tmp/fariv-bank-run/audit.csv /tmp/fariv-bank-run/oracle.json
+FARIV_TEST_XVFB=/caminho/Xvfb ELECTRON_TEST_EXECUTABLE=/caminho/electron \
+  node bench/million-live/normal-open.mjs /caminho/bank_transactions.csv /tmp/fariv-bank-normal
+```
+
+O último roteiro confirma a rejeição por tamanho no menu normal existente; não testa uma importação bem-sucedida. O oráculo bancário compara todos os campos e a coluna técnica em todas as linhas, preservando vazios; os números usam tolerância absoluta de 1e-8, não igualdade decimal exata. Rodar o oráculo somente depois de encerrar a medição da interface.
+
+[Relatório da base enviada](../../../docs/teste-base-bancaria-2026-11-04.md) e [evidências sem dados brutos](results/2026-11-04/bank). Os arquivos brutos produzidos pelo driver, incluindo `audit.csv`, `evidence.json` e screenshot, podem conter dados de clientes: não os publicar. Os JSONs publicados neste diretório foram reduzidos a medidas, contagens e hash da entrada. Não redistribuir o CSV enviado.

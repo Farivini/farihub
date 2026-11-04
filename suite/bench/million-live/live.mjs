@@ -12,7 +12,13 @@ import { createHash } from 'node:crypto'
 import { parseCsv, sniffDelimiter } from '../../packages/xlsx-gateway/src/gateway/csv-import.ts'
 import { analyzeCsvColumns } from '../../packages/xlsx-gateway/src/gateway/csv-number-format.ts'
 
-const [input, out, binary] = process.argv.slice(2).map((x) => resolve(x))
+const [input, out, binary, scenarioFile] = process.argv.slice(2).map((x) => resolve(x))
+const scenario = scenarioFile ? JSON.parse(await readFile(scenarioFile, 'utf8')) : {}
+const calculation = scenario.calculation ?? {
+  left: 'quantidade',
+  right: 'preco_unitario_gbp',
+  name: 'valor_linha',
+}
 await mkdir(out, { recursive: true })
 const f = await open(input, 'r')
 const sample = Buffer.alloc(256 * 1024)
@@ -199,18 +205,16 @@ async function paint(result, meta) {
         .getRange(0, 0, 1, meta.columns.length + 1)
         .setValues([['Linha da fonte', ...meta.columns]])
       if (result.rows.length)
-        sheet
-          .getRange(1, 0, result.rows.length, result.rows[0].length + 1)
-          .setValues(
-            result.rows.map((r, i) =>
-              [result.offset + i + 2, ...r].map((v) => ({
-                v,
-                t: typeof v === 'string' ? 1 : 2,
-                f: null,
-                si: null,
-              })),
-            ),
-          )
+        sheet.getRange(1, 0, result.rows.length, result.rows[0].length + 1).setValues(
+          result.rows.map((r, i) =>
+            [result.offset + i + 2, ...r].map((v) => ({
+              v,
+              t: typeof v === 'string' ? 1 : 2,
+              f: null,
+              si: null,
+            })),
+          ),
+        )
       window.__millionPrevious = {
         start: 1,
         rows: result.rows.length,
@@ -349,7 +353,7 @@ try {
   )
   // This experiment has a declared arithmetic schema. Mixed identifier columns
   // remain text; production's per-cell mixed typing is deliberately not claimed.
-  const numericColumns = ['quantidade', 'preco_unitario_gbp']
+  const numericColumns = scenario.numericColumns ?? ['quantidade', 'preco_unitario_gbp']
   report.appliedNumericSchema = numericColumns
   const meta = (
     await stage('import', async () => {
@@ -359,7 +363,7 @@ try {
         path: input,
         delimiter,
         numericColumns,
-        decimal: typing.report.decimal ?? '.',
+        decimal: scenario.decimal ?? typing.report.decimal ?? '.',
       }).then((r) => {
         nativeDone = true
         return r
@@ -439,14 +443,9 @@ try {
         displayedSourceRow: displayed,
       }
     })
-  const calculation = await stage('calculate', async () => {
+  const calculationResult = await stage('calculate', async () => {
     let nativeDone = false
-    const pending = request({
-      op: 'calculate',
-      left: 'quantidade',
-      right: 'preco_unitario_gbp',
-      name: 'valor_linha',
-    }).then((r) => {
+    const pending = request({ ...calculation, op: 'calculate' }).then((r) => {
       nativeDone = true
       return r
     })
@@ -456,7 +455,7 @@ try {
     const inputOverlapped = !nativeDone
     return { ...(await pending), inputProbeMs, inputCompletedBeforeEngine: inputOverlapped }
   })
-  meta.columns.push('valor_linha')
+  meta.columns.push(calculation.name)
   await stage('calculated-viewport', async () => {
     const r = await request({ op: 'read', offset: meta.rows - 100, limit: 100 })
     await paint(r.result, meta)
@@ -470,7 +469,7 @@ try {
     return r
   })
   await stage('audit-export', () => request({ op: 'audit', path: join(out, 'audit.csv') }))
-  report.calculation = calculation
+  report.calculation = calculationResult
   await page.screenshot({ path: join(out, 'million.png') })
 } catch (e) {
   report.failure = String(e)

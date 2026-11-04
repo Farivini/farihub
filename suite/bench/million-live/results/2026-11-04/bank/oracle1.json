@@ -1,0 +1,13 @@
+{
+  "rows": 1048567,
+  "rowsWithErrors": 0,
+  "cellsChecked": 10485670,
+  "columnsWithErrors": {},
+  "extraRows": false,
+  "sourceNumericBlanks": {
+    "TransactionAmount (INR)": 0,
+    "CustAccountBalance": 2369
+  },
+  "numericBlankMismatches": 0,
+  "sourceSha256": "2a15a0742aa766b797049572d4c56956a259381eab270ea2e7d195d2536ec7b6"
+}

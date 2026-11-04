@@ -1,0 +1,9 @@
+{
+  "numericColumns": ["CustAccountBalance", "TransactionAmount (INR)"],
+  "decimal": ".",
+  "calculation": {
+    "left": "TransactionAmount (INR)",
+    "factor": 2,
+    "name": "ensaio_valor_x2"
+  }
+}

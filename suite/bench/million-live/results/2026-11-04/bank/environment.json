@@ -1,0 +1,18 @@
+{
+  "date": "2026-11-04",
+  "platform": "Linux x86_64",
+  "memoryCgroupLimitBytes": 8589934592,
+  "cpuQuota": "800000/100000",
+  "duckdb": "2.0.0 official shared library",
+  "rust": "1.99.1",
+  "electronTestRuntime": "38.0.0",
+  "electronProductionDependency": "43.8.3",
+  "duckdbThreads": 2,
+  "duckdbMemoryLimit": "512MB",
+  "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n",
+  "nativeTests": "2 passed",
+  "buildMode": "release --locked --no-default-features; DUCKDB_LIB_DIR official shared library",
+  "sharedLibraryArchiveSha256": "993ad89e7dfca66cd6da994c2cad090c2fc160ddf9f550498a098ab4bb13cfb1",
+  "sourceRawDataPublished": false,
+  "measuredRunsConcurrentWithCompilersOrOracles": false
+}
