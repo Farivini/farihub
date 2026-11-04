@@ -1,0 +1,8 @@
+{
+  "kind": "Production open path; no source edits",
+  "bytes": 67564190,
+  "platform": "linux",
+  "sourceCommit": "24dafbd81376cfc5af51cb315fbb7fe55b523eff",
+  "rejectedBySizeLimit": true,
+  "observedMessage": "O arquivo excede o limite de tamanho"
+}
