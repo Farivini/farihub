@@ -204,19 +204,25 @@ function assertUniversalVisionOcr() {
 // Intel dmg, where every workbook open fails. Runs from beforePack, dual-arch
 // mac packs only.
 function assertUniversalSidecar() {
-  const sidecar = join(__dirname, '../sheets/native/xlsx-engine/target/release/xlsx-sidecar')
-  if (!existsSync(sidecar)) {
-    throw new Error(
-      `mac extraResources source missing: ${sidecar} (run "npm run native:build:universal -w @genoffice/sheets" first)`,
-    )
-  }
-  const archs = execFileSync('lipo', ['-archs', sidecar], { encoding: 'utf8' }).trim().split(/\s+/)
-  for (const want of ['x86_64', 'arm64']) {
-    if (!archs.includes(want)) {
+  // the data engine ships beside the sidecar and needs the same fat build
+  for (const rel of [
+    '../sheets/native/xlsx-engine/target/release/xlsx-sidecar',
+    '../sheets/native/data-engine/target/release/data-engine',
+  ]) {
+    const binary = join(__dirname, rel)
+    if (!existsSync(binary)) {
       throw new Error(
-        `xlsx-sidecar is [${archs.join(', ')}] but both mac arch packages ship it — ` +
-          'run "npm run native:build:universal -w @genoffice/sheets" before packaging mac',
+        `mac extraResources source missing: ${binary} (run "npm run native:build:universal -w @genoffice/sheets" first)`,
       )
+    }
+    const archs = execFileSync('lipo', ['-archs', binary], { encoding: 'utf8' }).trim().split(/\s+/)
+    for (const want of ['x86_64', 'arm64']) {
+      if (!archs.includes(want)) {
+        throw new Error(
+          `${rel.split('/').pop()} is [${archs.join(', ')}] but both mac arch packages ship it — ` +
+            'run "npm run native:build:universal -w @genoffice/sheets" before packaging mac',
+        )
+      }
     }
   }
 }

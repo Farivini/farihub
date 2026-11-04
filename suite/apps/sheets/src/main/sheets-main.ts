@@ -3151,10 +3151,29 @@ export function registerSheetsIpc(): void {
     if (!existsSync(validated)) throw new Error('Workbook file not found.')
     const ext = validated.slice(validated.lastIndexOf('.') + 1).toLowerCase()
     if (!WORKBOOK_EXTS.has(ext)) throw new Error(`Unsupported workbook: ${ext}`)
-    const priorSession = [...sessionFor(event).sessions.values()].find(
+    const entry = sessionFor(event)
+    const priorSession = [...entry.sessions.values()].find(
       (session) => session.path === validated || session.restoreTarget === validated,
     )
-    return openSelectedWorkbook(event, validated, priorSession?.password)
+    // A large base re-opens by re-importing its source; the session it
+    // replaces still holds the engine's copy, so release it once the new one
+    // is open (the renderer adopts the new session id).
+    const priorLarge = [...entry.sessions.entries()].filter(
+      ([, session]) => session.largeTable?.sourcePath === validated,
+    )
+    const result = await openSelectedWorkbook(event, validated, priorSession?.password)
+    if (result !== null && !('passwordRequired' in result)) {
+      for (const [sessionId, session] of priorLarge) {
+        if (sessionId === result.sessionId || !entry.sessions.delete(sessionId)) continue
+        await cleanupSessionResources({
+          tempRoot: app.getPath('temp'),
+          snapshotPath: session.snapshotPath,
+          importTempDir: session.importTempDir,
+          closeSidecar: () => closeSessionBackends(entry.client, sessionId, session),
+        })
+      }
+    }
+    return result
   })
 
   // Merge sources: same open pipeline as selectWorkbook, but multi-select,
@@ -5007,8 +5026,11 @@ async function openWorkbookSession(
       ...(largeTable === undefined
         ? {}
         : {
-            // the shell is a temp copy: the tab and status show the user's file
+            // the shell is a temp copy: the tab, the status and a crash
+            // re-open (recoverSidecarSession reopens file.path) use the
+            // user's file, which re-imports it through the engine
             name: basename(largeTable.sourcePath),
+            path: largeTable.sourcePath,
             readOnly: true,
             largeTable: {
               rows: largeTable.rows,
