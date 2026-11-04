@@ -216,6 +216,16 @@ const desktopApi: DesktopApi = {
     )
     return parseFindCellsResult(result)
   },
+  async largeTableColumnEdge(request) {
+    const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.largeTableColumnEdge, {
+      sessionId: request.sessionId,
+      column: request.column,
+      row: request.row,
+      down: request.down,
+    })
+    if (!isNonnegativeInteger(result)) throw new Error('Invalid column edge.')
+    return result
+  },
   async readWorkbookRowOutline(request) {
     const validatedRequest = parseFormulaCellsRequest(request)
     const result: unknown = await ipcRenderer.invoke(
@@ -917,6 +927,28 @@ function parseCsvFormat(input: unknown): NonNullable<WorkbookFile['csvFormat']> 
   }
 }
 
+function parseLargeTable(input: unknown): Pick<WorkbookFile, 'largeTable'> | undefined {
+  if (input === undefined) return undefined
+  if (
+    !isRecord(input) ||
+    !isPositiveInteger(input.rows) ||
+    !isNonnegativeInteger(input.columns) ||
+    typeof input.sourcePath !== 'string' ||
+    input.sourcePath.length === 0 ||
+    !isNonnegativeInteger(input.importMs)
+  ) {
+    throw new Error('Invalid large table metadata.')
+  }
+  return {
+    largeTable: {
+      rows: input.rows,
+      columns: input.columns,
+      sourcePath: input.sourcePath,
+      importMs: input.importMs,
+    },
+  }
+}
+
 function parseWorkbookFile(input: unknown): WorkbookFile {
   if (!isRecord(input)) throw new Error('Invalid workbook response.')
   const {
@@ -1262,6 +1294,7 @@ function parseWorkbookFile(input: unknown): WorkbookFile {
     ...(emptyCsv === undefined ? {} : { emptyCsv }),
     ...(input.csvFormat === undefined ? {} : { csvFormat: parseCsvFormat(input.csvFormat) }),
     ...(restoredFromRecovery === undefined ? {} : { restoredFromRecovery }),
+    ...(parseLargeTable(input.largeTable) ?? {}),
     ...(themeColors === undefined ? {} : { themeColors: themeColors as string[] }),
     ...(parsedThemeFonts === undefined ? {} : { themeFonts: parsedThemeFonts }),
     ...(typeof input.normalFontName === 'string' && input.normalFontName !== ''

@@ -389,7 +389,20 @@ function getExpandFocusCell(
   }
 }
 
-export function registerExcelJumpNav(runtime: UniverRuntime): void {
+/// A large base (data engine) holds most rows outside the grid's loaded
+/// window, so a vertical jump asks the engine where the run of filled or empty
+/// cells ends instead of walking the window. Null: walk the grid as usual.
+export type RemoteColumnEdge = (
+  sheetId: string,
+  column: number,
+  row: number,
+  down: boolean,
+) => Promise<number> | null
+
+export function registerExcelJumpNav(
+  runtime: UniverRuntime,
+  remoteColumnEdge?: RemoteColumnEdge,
+): void {
   const injector = runtime.univer.__getInjector()
   const commandService = injector.get(ICommandService)
   const shortcutService = injector.get(IShortcutService)
@@ -406,6 +419,33 @@ export function registerExcelJumpNav(runtime: UniverRuntime): void {
       if (!selection) return false
       const { direction } = params
       const { range, primary } = selection
+      const remote = verticalRemoteEdge(worksheet.getSheetId(), selection, direction)
+      if (remote) {
+        const commandService = accessor.get(ICommandService)
+        return remote.then(({ row, column }) =>
+          commandService.executeCommand(SetSelectionsOperation.id, {
+            unitId: workbook.getUnitId(),
+            subUnitId: worksheet.getSheetId(),
+            selections: [
+              {
+                range: { startRow: row, endRow: row, startColumn: column, endColumn: column },
+                primary: {
+                  startRow: row,
+                  endRow: row,
+                  startColumn: column,
+                  endColumn: column,
+                  actualRow: row,
+                  actualColumn: column,
+                  isMerged: false,
+                  isMergedMainCell: false,
+                },
+              },
+            ],
+            type: SelectionMoveType.MOVE_END,
+            reveal: true,
+          }),
+        )
+      }
       const startRange = getStartRange(range, primary, direction)
       const next = findNextGapRange(startRange, direction, worksheet)
       const destRange = getCellAtRowCol(next.startRow, next.startColumn, worksheet)
@@ -447,6 +487,42 @@ export function registerExcelJumpNav(runtime: UniverRuntime): void {
       if (!selection) return false
       const { direction } = params
       const { range: startRange, primary } = selection
+      const remote = verticalRemoteEdge(subUnitId, selection, direction)
+      if (remote && primary) {
+        const commandService = accessor.get(ICommandService)
+        // Ctrl+Shift+Up/Down: from the anchor to the jump target, same columns
+        return remote.then(({ row }) => {
+          const anchorRow = primary.actualRow
+          const extended: IRange = {
+            startRow: Math.min(anchorRow, row),
+            endRow: Math.max(anchorRow, row),
+            startColumn: startRange.startColumn,
+            endColumn: startRange.endColumn,
+            rangeType: RANGE_TYPE.NORMAL,
+          }
+          const applied = commandService.syncExecuteCommand(SetSelectionsOperation.id, {
+            unitId,
+            subUnitId,
+            type: SelectionMoveType.MOVE_END,
+            selections: [{ range: extended, primary }],
+            reveal: true,
+          })
+          if (applied) {
+            commandService.syncExecuteCommand(ScrollToCellOperation.id, {
+              unitId,
+              subUnitId,
+              range: {
+                startRow: row,
+                endRow: row,
+                startColumn: primary.actualColumn,
+                endColumn: primary.actualColumn,
+                rangeType: RANGE_TYPE.NORMAL,
+              },
+            })
+          }
+          return applied
+        })
+      }
       const destRange = !checkIfShrink(selection, direction, worksheet)
         ? expandToNextGapRange(startRange, direction, worksheet)
         : shrinkToNextGapRange(
@@ -488,6 +564,33 @@ export function registerExcelJumpNav(runtime: UniverRuntime): void {
       }
       return applied
     },
+  }
+
+  // The far end of the selection moves on Ctrl+Shift; the active cell on Ctrl.
+  function verticalRemoteEdge(
+    sheetId: string,
+    selection: ISelectionWithStyle,
+    direction: Direction,
+  ): Promise<{ row: number; column: number }> | null {
+    if (!remoteColumnEdge) return null
+    if (direction !== Direction.UP && direction !== Direction.DOWN) return null
+    const column = selection.primary?.actualColumn ?? selection.range.startColumn
+    const down = direction === Direction.DOWN
+    const range = selection.range
+    const anchorRow = selection.primary?.actualRow ?? range.startRow
+    // when extending, walk from the moving edge, not from the anchor
+    const from =
+      range.startRow === range.endRow
+        ? anchorRow
+        : down
+          ? range.endRow === anchorRow
+            ? range.startRow
+            : range.endRow
+          : range.startRow === anchorRow
+            ? range.endRow
+            : range.startRow
+    const edge = remoteColumnEdge(sheetId, column, from, down)
+    return edge === null ? null : edge.then((row) => ({ row, column }))
   }
 
   // registrations live for the app lifetime (one workbook per window)

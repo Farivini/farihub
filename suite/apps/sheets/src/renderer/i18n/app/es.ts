@@ -490,6 +490,10 @@ export const es = {
   appSheetAddFailed: 'No se puede agregar una hoja.',
   appFormatCopied: 'Formato copiado — seleccione las celdas de destino para aplicarlo.',
   appProtectionNeedsFile: 'Abra primero un archivo XLSX — la protección se guarda en el archivo.',
+  appLargeTableReadOnly:
+    'Esta base grande es de solo lectura en esta versión: editar, dar formato y guardar llegarán en la próxima etapa.',
+  appLargeTableOpened:
+    '{name}: {rows} filas abiertas con el motor de bases grandes, solo lectura. Editar y guardar llegarán en la próxima etapa.',
   appProtectionNeedsIndexed:
     'La protección requiere que esta hoja esté totalmente indexada — inténtelo de nuevo en un momento.',
   appProtectedWithPassword:

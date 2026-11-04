@@ -23,6 +23,7 @@ import {
 import { refreshCsvDigest } from './csv-digest'
 import { createServer } from 'node:http'
 import { basename, dirname, isAbsolute, join } from 'node:path'
+import { availableParallelism, totalmem } from 'node:os'
 
 import {
   app,
@@ -104,11 +105,17 @@ import {
 } from '@genoffice/ai-provider'
 import { shutdownCodexAppServers } from '@genoffice/ai-provider/codex-app-server'
 import {
+  csvTextEncoding,
   csvToXlsxBufferForOpen,
   decodeCsvBuffer,
+  resolveImportDelimiter,
   sheetCsvToXlsxBuffer,
+  splitSepDeclaration,
 } from '@genoffice/xlsx-gateway/gateway/csv-import'
-import type { CsvImportReport } from '@genoffice/xlsx-gateway/gateway/csv-number-format'
+import {
+  decideCsvColumns,
+  type CsvImportReport,
+} from '@genoffice/xlsx-gateway/gateway/csv-number-format'
 import {
   ensureGenofficeLogin,
   noteGskCallFailure,
@@ -167,6 +174,7 @@ import {
   workbookExportPdfRequestSchema,
   printerInfoSchema,
   workbookRangeRequestSchema,
+  largeTableColumnEdgeRequestSchema,
   workbookRangeResultSchema,
   workbookSaveEditsAbortSchema,
   workbookSaveEditsBeginSchema,
@@ -192,6 +200,8 @@ import {
   cleanupSessionResources,
 } from './temp-files'
 import { XlsxSidecarClient } from './xlsx-sidecar-client'
+import { DataEngineClient, DataEngineError } from './data-engine-client'
+import { largeTableRangeResult, largeTableFindResult, type LargeTableSession } from './large-table'
 import { sessionAfterRename } from './session-rename'
 
 /**
@@ -220,6 +230,7 @@ const tMain = createI18n({
     errImageTooLarge: '图片超过 5MB 上限',
     errUnreadable: '无法读取',
     errFileTooLarge: '文件超过大小上限',
+    errLargeTableReadOnly: '这个大型数据表在此版本中为只读：编辑和保存将在下一阶段提供。',
     errParseFailed: '文件解析失败',
     errImageNoText: '图片附件不提供文本,已作为图像随用户消息发送,直接看图即可',
     errNotImage: '不是支持的图片类型',
@@ -283,6 +294,8 @@ const tMain = createI18n({
     errImageTooLarge: 'image exceeds the 5MB limit',
     errUnreadable: 'cannot be read',
     errFileTooLarge: 'File exceeds the size limit',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'Failed to parse file',
     errImageNoText: 'Image attachments have no text; the image is sent along with the user message',
     errNotImage: 'not a supported image type',
@@ -351,6 +364,8 @@ const tMain = createI18n({
     errImageTooLarge: 'hình ảnh vượt quá giới hạn 5MB',
     errUnreadable: 'không thể đọc được',
     errFileTooLarge: 'Tệp vượt quá giới hạn kích thước',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'Không thể phân tích tệp',
     errImageNoText:
       'Tệp đính kèm hình ảnh không có văn bản; hình ảnh được gửi cùng với tin nhắn của người dùng',
@@ -421,6 +436,8 @@ const tMain = createI18n({
     errImageTooLarge: 'görsel 5MB sınırını aşıyor',
     errUnreadable: 'okunamıyor',
     errFileTooLarge: 'Dosya boyut sınırını aşıyor',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'Dosya ayrıştırılamadı',
     errImageNoText: 'Görsel eklerin metni yoktur; görsel kullanıcı mesajıyla birlikte gönderilir',
     errNotImage: 'desteklenen bir görsel türü değil',
@@ -491,6 +508,8 @@ const tMain = createI18n({
     errImageTooLarge: '画像が 5MB の上限を超えています',
     errUnreadable: '読み取れません',
     errFileTooLarge: 'ファイルがサイズ上限を超えています',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'ファイルの解析に失敗しました',
     errImageNoText:
       '画像添付にはテキストがありません。画像はユーザー メッセージと一緒に送信されるため、そのまま画像をご確認ください',
@@ -562,6 +581,8 @@ const tMain = createI18n({
     errImageTooLarge: '이미지가 5MB 제한을 초과했습니다',
     errUnreadable: '읽을 수 없습니다',
     errFileTooLarge: '파일이 크기 제한을 초과했습니다',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: '파일을 구문 분석하지 못했습니다',
     errImageNoText:
       '이미지 첨부에는 텍스트가 없습니다. 이미지는 사용자 메시지와 함께 전송되므로 이미지를 직접 확인하세요',
@@ -633,6 +654,8 @@ const tMain = createI18n({
     errImageTooLarge: "l'image dépasse la limite de 5 Mo",
     errUnreadable: 'illisible',
     errFileTooLarge: 'Le fichier dépasse la taille limite',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: "Échec de l'analyse du fichier",
     errImageNoText:
       "Les images jointes n'ont pas de texte ; l'image est envoyée avec le message de l'utilisateur",
@@ -705,6 +728,8 @@ const tMain = createI18n({
     errImageTooLarge: 'Bild überschreitet das Limit von 5 MB',
     errUnreadable: 'kann nicht gelesen werden',
     errFileTooLarge: 'Datei überschreitet die Größenbeschränkung',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'Datei konnte nicht analysiert werden',
     errImageNoText:
       'Bildanlagen enthalten keinen Text; das Bild wird zusammen mit der Benutzernachricht gesendet',
@@ -776,6 +801,8 @@ const tMain = createI18n({
     errImageTooLarge: 'la imagen supera el límite de 5 MB',
     errUnreadable: 'no se puede leer',
     errFileTooLarge: 'El archivo supera el límite de tamaño',
+    errLargeTableReadOnly:
+      'Esta base grande es de solo lectura en esta versión: editar y guardar llegarán en la próxima etapa.',
     errParseFailed: 'No se pudo analizar el archivo',
     errImageNoText:
       'Las imágenes adjuntas no tienen texto; la imagen se envía junto con el mensaje del usuario',
@@ -847,6 +874,8 @@ const tMain = createI18n({
     errImageTooLarge: 'รูปภาพเกินขีดจำกัด 5MB',
     errUnreadable: 'อ่านไม่ได้',
     errFileTooLarge: 'ไฟล์มีขนาดเกินขีดจำกัด',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'แยกวิเคราะห์ไฟล์ไม่สำเร็จ',
     errImageNoText:
       'รูปภาพแนบไม่มีข้อความ รูปภาพจะถูกส่งไปพร้อมข้อความของผู้ใช้ ให้ดูที่รูปภาพโดยตรง',
@@ -917,6 +946,8 @@ const tMain = createI18n({
     errImageTooLarge: 'gambar melebihi batas 5MB',
     errUnreadable: 'tidak dapat dibaca',
     errFileTooLarge: 'File melebihi batas ukuran',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'Gagal mengurai file',
     errImageNoText: 'Lampiran gambar tidak memiliki teks; gambar dikirim bersama pesan pengguna',
     errNotImage: 'bukan jenis gambar yang didukung',
@@ -985,6 +1016,8 @@ const tMain = createI18n({
     errImageTooLarge: 'изображение превышает лимит 5 МБ',
     errUnreadable: 'не удаётся прочитать',
     errFileTooLarge: 'Файл превышает предельный размер',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'Не удалось разобрать файл',
     errImageNoText:
       'Вложенные изображения не содержат текста; изображение отправляется вместе с сообщением пользователя',
@@ -1055,6 +1088,8 @@ const tMain = createI18n({
     errImageTooLarge: 'الصورة تتجاوز الحد البالغ 5 ميغابايت',
     errUnreadable: 'تعذّرت قراءته',
     errFileTooLarge: 'الملف يتجاوز حد الحجم',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'فشل تحليل الملف',
     errImageNoText: 'مرفقات الصور لا تحتوي على نص؛ تُرسل الصورة مع رسالة المستخدم',
     errNotImage: 'نوع صورة غير مدعوم',
@@ -1122,6 +1157,8 @@ const tMain = createI18n({
     errImageTooLarge: 'a imagem excede o limite de 5MB',
     errUnreadable: 'não é possível ler',
     errFileTooLarge: 'O arquivo excede o limite de tamanho',
+    errLargeTableReadOnly:
+      'Esta base grande está aberta só para leitura nesta versão: editar e salvar chegam na próxima etapa.',
     errParseFailed: 'Falha ao analisar o arquivo',
     errImageNoText:
       'Anexos de imagem não têm texto; a imagem é enviada junto com a mensagem do usuário',
@@ -1192,6 +1229,8 @@ const tMain = createI18n({
     errImageTooLarge: "l'immagine supera il limite di 5 MB",
     errUnreadable: 'impossibile leggere',
     errFileTooLarge: 'Il file supera il limite di dimensione',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'Impossibile analizzare il file',
     errImageNoText:
       "Gli allegati immagine non hanno testo; l'immagine viene inviata insieme al messaggio dell'utente",
@@ -1263,6 +1302,8 @@ const tMain = createI18n({
     errImageTooLarge: 'obraz przekracza limit 5 MB',
     errUnreadable: 'nie można odczytać',
     errFileTooLarge: 'Plik przekracza limit rozmiaru',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'Nie udało się przeanalizować pliku',
     errImageNoText:
       'Załączniki graficzne nie zawierają tekstu; obraz jest wysyłany razem z wiadomością użytkownika',
@@ -1333,6 +1374,8 @@ const tMain = createI18n({
     errImageTooLarge: 'obrázek překračuje limit 5 MB',
     errUnreadable: 'nelze přečíst',
     errFileTooLarge: 'Soubor překračuje limit velikosti',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'Soubor se nepodařilo zpracovat',
     errImageNoText:
       'Obrázkové přílohy neobsahují text; obrázek se odesílá spolu se zprávou uživatele',
@@ -1403,6 +1446,8 @@ const tMain = createI18n({
     errImageTooLarge: 'afbeelding overschrijdt de limiet van 5 MB',
     errUnreadable: 'kan niet worden gelezen',
     errFileTooLarge: 'Bestand overschrijdt de maximale grootte',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'Kan bestand niet parseren',
     errImageNoText:
       'Afbeeldingsbijlagen bevatten geen tekst; de afbeelding wordt samen met het gebruikersbericht verzonden',
@@ -1474,6 +1519,8 @@ const tMain = createI18n({
     errImageTooLarge: 'imej melebihi had 5MB',
     errUnreadable: 'tidak dapat dibaca',
     errFileTooLarge: 'Fail melebihi had saiz',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'Gagal menghurai fail',
     errImageNoText: 'Lampiran imej tiada teks; imej dihantar bersama mesej pengguna',
     errNotImage: 'bukan jenis imej yang disokong',
@@ -1544,6 +1591,8 @@ const tMain = createI18n({
     errImageTooLarge: 'התמונה חורגת מהמגבלה של 5MB',
     errUnreadable: 'לא ניתן לקרוא',
     errFileTooLarge: 'הקובץ חורג ממגבלת הגודל',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'ניתוח הקובץ נכשל',
     errImageNoText: 'קבצים מצורפים מסוג תמונה אינם מכילים טקסט; התמונה נשלחת יחד עם הודעת המשתמש',
     errNotImage: 'סוג תמונה שאינו נתמך',
@@ -1609,6 +1658,8 @@ const tMain = createI18n({
     errImageTooLarge: 'छवि 5MB की सीमा से अधिक है',
     errUnreadable: 'पढ़ा नहीं जा सकता',
     errFileTooLarge: 'फ़ाइल आकार सीमा से अधिक है',
+    errLargeTableReadOnly:
+      'This large base is read-only in this version: editing and saving come in the next stage.',
     errParseFailed: 'फ़ाइल पार्स करने में विफल',
     errImageNoText: 'छवि अनुलग्नक में टेक्स्ट नहीं होता; छवि उपयोगकर्ता संदेश के साथ भेजी जाती है',
     errNotImage: 'समर्थित छवि प्रकार नहीं है',
@@ -1679,6 +1730,7 @@ const tMain = createI18n({
     errImageTooLarge: '圖片超過 5MB 上限',
     errUnreadable: '無法讀取',
     errFileTooLarge: '檔案超過大小上限',
+    errLargeTableReadOnly: '這個大型資料表在此版本中為唯讀：編輯和儲存將在下一階段提供。',
     errParseFailed: '檔案解析失敗',
     errImageNoText: '圖片附件不提供文字,已作為影像隨使用者訊息傳送,直接看圖即可',
     errNotImage: '不是支援的圖片類型',
@@ -1778,6 +1830,10 @@ interface SessionInfo {
   /// recovery copy, this session still needs its own crash-recovery copy,
   /// keyed by the original.
   readonly emptySource?: boolean
+  /// A delimited file past the regular import limit, held by the data engine
+  /// (DuckDB): every cell read and find goes there, the XLSX session is only
+  /// an empty shell carrying the sheet's metadata, and the base is read-only.
+  readonly largeTable?: LargeTableSession
 }
 
 // ---- runtime configuration (paths differ when bundled into the shell) ----
@@ -3002,6 +3058,7 @@ export function registerSheetsIpc(): void {
         restoreTarget: prepared.restoreTarget,
         emptySource: prepared.emptySource,
         unsavedNew: prepared.unsavedNew,
+        largeTable: prepared.largeTable,
         password,
       })
     } catch (error) {
@@ -3023,7 +3080,7 @@ export function registerSheetsIpc(): void {
           tempRoot: app.getPath('temp'),
           snapshotPath: session.snapshotPath,
           importTempDir: session.importTempDir,
-          closeSidecar: () => entry.client.close(result.sessionId),
+          closeSidecar: () => closeSessionBackends(entry.client, result.sessionId, session),
         })
       }
       return null
@@ -3121,7 +3178,8 @@ export function registerSheetsIpc(): void {
             tempRoot: app.getPath('temp'),
             snapshotPath: session.snapshotPath,
             importTempDir: session.importTempDir,
-            closeSidecar: () => entry.client.close(sessionId),
+            closeSidecar: () =>
+              closeSessionBackends(entry.client, sessionId, entry.sessions.get(sessionId)),
           })
         }
       }
@@ -3152,6 +3210,7 @@ export function registerSheetsIpc(): void {
           restoreTarget: prepared.restoreTarget,
           emptySource: prepared.emptySource,
           unsavedNew: prepared.unsavedNew,
+          largeTable: prepared.largeTable,
         })
         opened.push(result as { sessionId: string })
         if (event.sender.isDestroyed()) break
@@ -3191,9 +3250,20 @@ export function registerSheetsIpc(): void {
   ipcMain.handle(IPC_CHANNELS.readWorkbookRange, async (event, input: unknown) => {
     const entry = sessionFor(event)
     const request = workbookRangeRequestSchema.parse(input)
-    if (!entry.sessions.has(request.sessionId)) throw new Error('Unknown workbook session.')
-    const result = await entry.client.readRange(request)
-    return workbookRangeResultSchema.parse(result)
+    const session = entry.sessions.get(request.sessionId)
+    if (!session) throw new Error('Unknown workbook session.')
+    if (session.largeTable === undefined) {
+      return workbookRangeResultSchema.parse(await entry.client.readRange(request))
+    }
+    // The shell workbook is empty and one cell wide: its answer for A1 carries
+    // the sheet-level fields; the cells of the window come from the engine.
+    const shell = await entry.client.readRange({
+      ...request,
+      range: { startRow: 0, endRow: 0, startColumn: 0, endColumn: 0 },
+    })
+    return workbookRangeResultSchema.parse(
+      await largeTableRangeResult(dataEngineClient(), session.largeTable, request, shell),
+    )
   })
 
   ipcMain.handle(IPC_CHANNELS.readWorkbookFormulas, async (event, input: unknown) => {
@@ -3207,9 +3277,28 @@ export function registerSheetsIpc(): void {
   ipcMain.handle(IPC_CHANNELS.findWorkbookCells, async (event, input: unknown) => {
     const entry = sessionFor(event)
     const request = workbookFindCellsRequestSchema.parse(input)
-    if (!entry.sessions.has(request.sessionId)) throw new Error('Unknown workbook session.')
+    const session = entry.sessions.get(request.sessionId)
+    if (!session) throw new Error('Unknown workbook session.')
+    if (session.largeTable !== undefined) {
+      return workbookFindCellsResultSchema.parse(
+        await largeTableFindResult(dataEngineClient(), session.largeTable, request),
+      )
+    }
     const result = await entry.client.findCells(request)
     return workbookFindCellsResultSchema.parse(result)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.largeTableColumnEdge, async (event, input: unknown) => {
+    const entry = sessionFor(event)
+    const request = largeTableColumnEdgeRequestSchema.parse(input)
+    const large = entry.sessions.get(request.sessionId)?.largeTable
+    if (large === undefined) throw new Error('Not a large-table session.')
+    return dataEngineClient().columnEdge({
+      sessionId: large.engineSessionId,
+      column: request.column,
+      row: request.row,
+      down: request.down,
+    })
   })
 
   ipcMain.handle(IPC_CHANNELS.readWorkbookRowOutline, async (event, input: unknown) => {
@@ -3578,6 +3667,9 @@ export function registerSheetsIpc(): void {
     const request = resolveTransferredEdits(entry, workbookSaveRequestSchema.parse(input))
     const session = entry.sessions.get(request.sessionId)
     if (!session) throw new Error('Unknown workbook session.')
+    // A large base is read-only in this version: the renderer holds only the
+    // visible window, so a save from it would write a truncated file.
+    if (session.largeTable !== undefined) throw new Error(tm('errLargeTableReadOnly'))
 
     // A CSV session's plain Save keeps the CSV identity: the xlsx save lands
     // on the temp copy and the serialized csvContent is written back to the
@@ -3834,7 +3926,7 @@ export function registerSheetsIpc(): void {
       tempRoot: app.getPath('temp'),
       snapshotPath: session.snapshotPath,
       importTempDir: session.importTempDir,
-      closeSidecar: () => entry.client.close(validatedSessionId),
+      closeSidecar: () => closeSessionBackends(entry.client, validatedSessionId, session),
     })
   })
 
@@ -4781,8 +4873,11 @@ function systemShortDate(): string {
 async function discardPreparedOpen(prepared: {
   openPath: string
   importTempDir?: string | undefined
+  largeTable?: LargeTableSession | undefined
 }): Promise<void> {
   unsavedNewWorkbooks.delete(prepared.openPath)
+  if (prepared.largeTable !== undefined)
+    await dataEngine?.close(prepared.largeTable.engineSessionId).catch(() => undefined)
   if (prepared.importTempDir !== undefined)
     await cleanupImportTempDirectory(app.getPath('temp'), prepared.importTempDir)
 }
@@ -4801,6 +4896,7 @@ async function openWorkbookSession(
     restoreTarget?: string | undefined
     emptySource?: boolean | undefined
     unsavedNew?: boolean | undefined
+    largeTable?: LargeTableSession | undefined
     password?: string | undefined
   },
 ): Promise<WorkbookFile> {
@@ -4814,6 +4910,7 @@ async function openWorkbookSession(
     restoreTarget,
     emptySource,
     unsavedNew,
+    largeTable,
     password,
   } = options ?? {}
   // Only a CFB container (the encrypted wrapper) is read into memory; a plain
@@ -4846,7 +4943,28 @@ async function openWorkbookSession(
         ? Promise.resolve(undefined)
         : sha256File(csvSourcePath).catch(() => undefined),
     ])
-    const opened = sidecarOpenResultSchema.parse(rawOpened)
+    const parsedOpen = sidecarOpenResultSchema.parse(rawOpened)
+    // A large base opens on an empty shell workbook: its one sheet takes the
+    // base's real extent, so the grid streams it like a large .xlsx.
+    const opened =
+      largeTable === undefined
+        ? parsedOpen
+        : {
+            ...parsedOpen,
+            sheets: parsedOpen.sheets.map((sheet, index) =>
+              index === 0
+                ? {
+                    ...sheet,
+                    rowCount: Math.max(1, largeTable.rows),
+                    columnCount: Math.max(1, largeTable.columns),
+                    storedCellCount: largeTable.cells,
+                    valueCellCount: largeTable.cells,
+                    valueRowCount: largeTable.rows,
+                    valueColumnCount: largeTable.columns,
+                  }
+                : sheet,
+            ),
+          }
     sessions.set(opened.sessionId, {
       path,
       snapshotPath,
@@ -4864,6 +4982,9 @@ async function openWorkbookSession(
       ...(restoreTargetSha === undefined ? {} : { restoreTargetSha }),
       ...(emptySource ? { emptySource } : {}),
       ...(unsavedNew ? { unsavedNew } : {}),
+      ...(largeTable === undefined
+        ? {}
+        : { largeTable: { ...largeTable, sheetId: opened.sheets[0]!.id } }),
     })
     unsavedNewWorkbooks.delete(path)
     return workbookFileSchema.parse({
@@ -4881,11 +5002,28 @@ async function openWorkbookSession(
       ...(emptyCsv ? { emptyCsv: true } : {}),
       ...(csvFormat === undefined ? {} : { csvFormat }),
       restoredFromRecovery: restoreTarget !== undefined,
-      automaticRecoveryDisabled: !allowsAutomaticWorkbookRecovery(opened.sheets),
+      automaticRecoveryDisabled:
+        largeTable !== undefined || !allowsAutomaticWorkbookRecovery(opened.sheets),
+      ...(largeTable === undefined
+        ? {}
+        : {
+            // the shell is a temp copy: the tab and status show the user's file
+            name: basename(largeTable.sourcePath),
+            readOnly: true,
+            largeTable: {
+              rows: largeTable.rows,
+              columns: largeTable.columns,
+              sourcePath: largeTable.sourcePath,
+              importMs: largeTable.importMs,
+            },
+          }),
     })
   } catch (error) {
     await rm(snapshotPath, { force: true }).catch(() => undefined)
     unsavedNewWorkbooks.delete(path)
+    // the engine holds its database inside importTempDir: close it first
+    if (largeTable !== undefined)
+      await dataEngine?.close(largeTable.engineSessionId).catch(() => undefined)
     if (importTempDir !== undefined) {
       await cleanupImportTempDirectory(app.getPath('temp'), importTempDir)
     }
@@ -4971,6 +5109,7 @@ async function prepareWorkbookForOpen(
   restoreTarget?: string
   emptySource?: boolean
   unsavedNew?: boolean
+  largeTable?: LargeTableSession
 } | null> {
   // A shell-created "New spreadsheet" opens from a temp directory and has no
   // user-visible file yet: Save As produces it, and closing unsaved discards
@@ -5041,7 +5180,17 @@ async function prepareWorkbookForOpen(
   try {
     if (extension === 'csv' || extension === 'tsv') {
       const csvStat = await stat(path)
-      if (csvStat.size > MAX_DELIMITED_IMPORT_BYTES) throw new Error(tm('errFileTooLarge'))
+      if (csvStat.size > MAX_DELIMITED_IMPORT_BYTES) {
+        // the empty shell first: a failure after the import would strand the engine session
+        await writeFile(openPath, (await csvToXlsxBufferForOpen('', 'Sheet1')).buffer)
+        const largeTable = await importLargeDelimited(path, extension, directory)
+        return {
+          openPath,
+          importTempDir: directory,
+          csvFormat: largeTable.csvFormat,
+          largeTable,
+        }
+      }
       const converted = await csvToXlsxBufferForOpen(
         decodeCsvBuffer(await readFile(path), legacyCsvCharset()),
         'Sheet1',
@@ -5196,6 +5345,93 @@ function installApplicationMenu(): void {
 export function stopSheetsSidecar(): void {
   sidecar?.stop()
   sidecar = null
+  dataEngine?.stop()
+  dataEngine = null
+}
+
+// ---- large delimited files (data engine) ----
+
+let dataEngine: DataEngineClient | null = null
+
+function dataEngineClient(): DataEngineClient {
+  dataEngine ??= new DataEngineClient(resolveDataEnginePath())
+  return dataEngine
+}
+
+function resolveDataEnginePath(): string {
+  const executable = process.platform === 'win32' ? 'data-engine.exe' : 'data-engine'
+  if (process.env.FARIV_DATA_ENGINE_PATH) return process.env.FARIV_DATA_ENGINE_PATH
+  if (app.isPackaged) return join(process.resourcesPath, 'native', executable)
+  // dev: beside the sidecar's crate (native/xlsx-engine/target/release/...)
+  const nativeDir = join(dirname(resolveSidecarPath()), '..', '..', '..')
+  return join(nativeDir, 'data-engine', 'target', 'release', executable)
+}
+
+/// How much the engine may hold before it spills to disk: a quarter of the
+/// machine, 256 MB to 4 GB (2 GB on an 8 GB machine, 4 GB on 16 GB).
+function dataEngineMemoryLimitMb(): number {
+  return Math.min(4096, Math.max(256, Math.floor(totalmem() / 4 / (1024 * 1024))))
+}
+
+const LARGE_SAMPLE_BYTES = 1024 * 1024
+
+/// Imports a delimited file past the regular limit into the data engine. The
+/// delimiter, encoding and column decisions are the same functions the regular
+/// import uses (csv-import.ts / csv-number-format.ts); the engine reads the
+/// file with a port of parseCsv and counts each column's value shapes over
+/// every row, so a value deep in the file decides like it would in a small one.
+async function importLargeDelimited(
+  path: string,
+  extension: string,
+  directory: string,
+): Promise<LargeTableSession> {
+  const handle = await open(path, 'r')
+  let sample: Uint8Array
+  try {
+    const buffer = Buffer.alloc(LARGE_SAMPLE_BYTES)
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
+    sample = buffer.subarray(0, bytesRead)
+  } finally {
+    await handle.close()
+  }
+  const engine = dataEngineClient()
+  let encoding = csvTextEncoding(sample, legacyCsvCharset())
+  const sampleText = (): string => {
+    const decoded = new TextDecoder(encoding.encoding).decode(sample.subarray(encoding.skipBytes))
+    const end = Math.max(decoded.lastIndexOf('\n'), decoded.lastIndexOf('\r'))
+    return end > 0 ? decoded.slice(0, end + 1) : decoded
+  }
+  const delimiter = extension === 'tsv' ? '\t' : resolveImportDelimiter(sampleText())
+  const request = {
+    path,
+    workDir: join(directory, 'engine'),
+    delimiter,
+    memoryLimitMb: dataEngineMemoryLimitMb(),
+    threads: Math.max(1, Math.min(4, availableParallelism())),
+  }
+  let imported
+  try {
+    imported = await engine.importDelimited({ ...request, ...encoding })
+  } catch (error) {
+    if (!(error instanceof DataEngineError) || error.code !== 'NOT_UTF8') throw error
+    encoding = csvTextEncoding(sample, legacyCsvCharset(), true)
+    imported = await engine.importDelimited({ ...request, ...encoding })
+  }
+  if (imported.rows === 0) {
+    await engine.close(imported.sessionId).catch(() => undefined)
+    throw new Error('The CSV file has no data rows.')
+  }
+  const typing = decideCsvColumns(imported.counts, delimiter, imported.header)
+  const declared = splitSepDeclaration(sampleText()).delimiter === delimiter
+  return {
+    engineSessionId: imported.sessionId,
+    rows: imported.rows,
+    columns: imported.columns,
+    cells: imported.cells,
+    sourcePath: path,
+    importMs: imported.totalMs,
+    csvFormat: declared ? { ...typing.report, declared: true } : typing.report,
+  }
 }
 
 export {
@@ -5315,8 +5551,22 @@ async function closeAllSessions(entry: {
         tempRoot: app.getPath('temp'),
         snapshotPath: session.snapshotPath,
         importTempDir: session.importTempDir,
-        closeSidecar: () => entry.client.close(sessionId),
+        closeSidecar: () => closeSessionBackends(entry.client, sessionId, session),
       })
     }),
   )
+}
+
+/// Closes a session's XLSX sidecar session and, for a large base, its data
+/// engine session (DuckDB holds the database file the temp-dir cleanup removes).
+async function closeSessionBackends(
+  client: XlsxSidecarClient,
+  sessionId: string,
+  session: SessionInfo | undefined,
+): Promise<void> {
+  const large = session?.largeTable
+  await Promise.allSettled([
+    client.close(sessionId),
+    large === undefined ? Promise.resolve() : dataEngine?.close(large.engineSessionId),
+  ])
 }

@@ -473,6 +473,10 @@ export const ru = {
   appSheetAddFailed: 'Не удаётся добавить лист.',
   appFormatCopied: 'Формат скопирован — выделите целевые ячейки, чтобы применить его.',
   appProtectionNeedsFile: 'Сначала откройте файл XLSX — защита сохраняется в файл.',
+  appLargeTableReadOnly:
+    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableOpened:
+    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
   appProtectionNeedsIndexed:
     'Для защиты лист должен быть сначала полностью проиндексирован — повторите попытку чуть позже.',
   appProtectedWithPassword: 'Лист защищён паролем — введите его, чтобы снять защиту.',

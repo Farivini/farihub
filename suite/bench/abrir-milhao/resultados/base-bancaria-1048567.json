@@ -1,0 +1,174 @@
+{
+ "input": {
+  "name": "bank_transactions.csv",
+  "bytes": 67564190,
+  "sha256": "2a15a0742aa766b797049572d4c56956a259381eab270ea2e7d195d2536ec7b6"
+ },
+ "environment": {
+  "platform": "linux x64",
+  "node": "v22.22.0",
+  "cpus": 4,
+  "totalMemGiB": 16
+ },
+ "stages": {
+  "openToFirstCellMs": 2507,
+  "notice": "bank_transactions.csv: 1.048.568 linhas abertas pelo motor de bases grandes, só para leitura. Editar e salvar chegam na próxima etapa.\n×",
+  "oracleMs": 4020,
+  "ctrlEndMs": 18,
+  "ctrlHomeMs": 62,
+  "ctrlDownMs": 103,
+  "gotoMiddleMs": 16,
+  "wheel60Ms": 5826,
+  "sessionKnown": true,
+  "fullCompareMs": 315059,
+  "findAllMs": 12308
+ },
+ "frames": {
+  "last": 22088.7,
+  "mark": "after",
+  "byMark": {
+   "idle": 16.700000000000273,
+   "open": 233.40000000000055,
+   "settle": 133.30000000000018,
+   "ctrlEnd": 100.09999999999854,
+   "ctrlHome": 50.099999999998545,
+   "ctrlDown": 50,
+   "goto": 66.60000000000036,
+   "wheel": 116.70000000000073
+  },
+  "over100": {
+   "open": 2,
+   "settle": 1,
+   "ctrlEnd": 1,
+   "wheel": 1
+  },
+  "over300": {}
+ },
+ "memory": {
+  "beforeOpen": {
+   "totalMiB": 513,
+   "byName": {
+    "electron": 509,
+    "xlsx-sidecar": 4
+   }
+  },
+  "afterOpen": {
+   "totalMiB": 724,
+   "byName": {
+    "electron": 582,
+    "xlsx-sidecar": 6,
+    "data-engine": 135
+   }
+  },
+  "peakDuringUse": {
+   "totalMiB": 867,
+   "byName": {
+    "electron": 723,
+    "xlsx-sidecar": 6,
+    "data-engine": 138
+   }
+  },
+  "peak": {
+   "totalMiB": 1588,
+   "byName": {
+    "electron": 1444,
+    "xlsx-sidecar": 6,
+    "data-engine": 138
+   }
+  }
+ },
+ "checks": {
+  "oraculos_concordam_texto_bruto": {
+   "passed": true,
+   "python": 1048568,
+   "importacaoAtual": 1048568
+  },
+  "grade_com_todas_as_linhas": {
+   "passed": true,
+   "grade": 1048568,
+   "base": 1048568
+  },
+  "ctrl_end_ultima_celula": {
+   "passed": true,
+   "cell": {
+    "row": 1048567,
+    "column": 8,
+    "value": "<omitido>"
+   },
+   "esperado": {
+    "row": 1048567,
+    "column": 8,
+    "value": "<omitido>"
+   }
+  },
+  "ctrl_home": {
+   "passed": true,
+   "cell": {
+    "row": 0,
+    "column": 0,
+    "value": "<omitido>"
+   }
+  },
+  "ctrl_seta_baixo": {
+   "passed": true,
+   "cell": {
+    "row": 1048567,
+    "column": 0,
+    "value": "<omitido>"
+   },
+   "esperado": "<omitido>"
+  },
+  "caixa_de_nome_meio": {
+   "passed": true,
+   "cell": {
+    "row": 524284,
+    "column": 2,
+    "value": "<omitido>"
+   }
+  },
+  "tela_do_meio_igual": {
+   "passed": true,
+   "celulas": 225,
+   "divergencias": 0,
+   "primeiras": []
+  },
+  "edicao_recusada": {
+   "passed": true,
+   "a2": "T1"
+  },
+  "salvar_recusado_com_aviso": {
+   "passed": true,
+   "trecho": "Esta base grande está aberta só para leitura nesta versão: editar, formatar e salvar chegam na próxima etapa."
+  },
+  "todas_as_celulas_iguais_a_importacao_atual": {
+   "passed": true,
+   "comparadas": 9437112,
+   "divergencias": 0,
+   "primeiras": []
+  },
+  "busca_mesma_contagem": {
+   "passed": true,
+   "busca": "MUMBAI",
+   "achados": 135113,
+   "esperado": "<omitido>"
+  }
+ },
+ "oracle": {
+  "rows": 1048568,
+  "columns": 9,
+  "delimiter": ",",
+  "columnKinds": [
+   "TransactionID:text",
+   "CustomerID:text",
+   "CustomerDOB:text",
+   "CustGender:text",
+   "CustLocation:number",
+   "CustAccountBalance:number.",
+   "TransactionDate:text",
+   "TransactionTime:number",
+   "TransactionAmount (INR):number."
+  ]
+ },
+ "failures": [],
+ "nota": "Valores de células da base enviada foram omitidos; ficam posições, contagens, tempos e o hash do arquivo."
+}

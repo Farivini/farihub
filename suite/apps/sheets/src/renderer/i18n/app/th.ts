@@ -437,6 +437,10 @@ export const th = {
   appSheetAddFailed: 'เพิ่มแผ่นงานไม่ได้',
   appFormatCopied: 'คัดลอกรูปแบบแล้ว — เลือกเซลล์เป้าหมายเพื่อนำไปใช้',
   appProtectionNeedsFile: 'เปิดไฟล์ XLSX ก่อน — การป้องกันจะถูกบันทึกลงไฟล์',
+  appLargeTableReadOnly:
+    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableOpened:
+    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
   appProtectionNeedsIndexed: 'การป้องกันต้องรอให้แผ่นงานนี้ทำดัชนีเสร็จก่อน — ลองใหม่อีกสักครู่',
   appProtectedWithPassword: 'แผ่นงานนี้ป้องกันด้วยรหัสผ่าน — ป้อนรหัสผ่านเพื่อยกเลิกการป้องกัน',
   appProtectionWillWrite: 'เปิดการป้องกันแผ่นงานแล้ว และจะถูกเขียนลงไฟล์เมื่อบันทึก',

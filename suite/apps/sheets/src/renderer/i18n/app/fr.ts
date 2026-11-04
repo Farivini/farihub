@@ -507,6 +507,10 @@ export const fr = {
   appFormatCopied: "Format copié — sélectionnez les cellules cibles pour l'appliquer.",
   appProtectionNeedsFile:
     "Ouvrez d'abord un fichier XLSX — la protection est enregistrée dans le fichier.",
+  appLargeTableReadOnly:
+    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableOpened:
+    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
   appProtectionNeedsIndexed:
     "La protection nécessite que cette feuille soit d'abord entièrement indexée — réessayez dans un instant.",
   appProtectedWithPassword:

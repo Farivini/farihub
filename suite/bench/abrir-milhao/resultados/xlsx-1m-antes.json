@@ -1,0 +1,35 @@
+{
+ "input": "large-1m.xlsx",
+ "stages": {
+  "openToFirstCellMs": 6871,
+  "sheet": {
+   "rows": 1000000,
+   "columns": 26,
+   "a1": "h0"
+  },
+  "ctrlEnd": {
+   "row": 999999,
+   "column": 8,
+   "value": null
+  },
+  "ctrlEndWaitMs": 2847
+ },
+ "frames": {
+  "max": 1333.2999999999993,
+  "over100": 8,
+  "over300": 3,
+  "last": 27222.6,
+  "mark": "wheel",
+  "byMark": {
+   "idle": 9.299999999988358,
+   "open": 1333.2999999999993,
+   "ctrlEnd": 300.1000000000022,
+   "ctrlHome": 150,
+   "wheel": 166.6999999999971
+  }
+ },
+ "checks": {},
+ "memoryBeforeOpenMiB": 422,
+ "memoryPeakMiB": 669,
+ "memoryAfterMiB": 669
+}

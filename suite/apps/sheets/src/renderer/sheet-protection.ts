@@ -426,6 +426,14 @@ export function installSheetProtectionGuard(
         ? workbook?.getSheetBySheetId(params.subUnitId)
         : workbook?.getActiveSheet()
     if (!state || !worksheet) return
+    // A large base (data engine) is read-only in this version: the grid holds
+    // only the visible window of it, and saving it back is not supported yet.
+    if (state.file.largeTable !== undefined) {
+      if (event.id === 'sheet.operation.set-cell-edit-visible' && params.visible !== true) return
+      event.cancel = true
+      deps.notify(t('appLargeTableReadOnly'))
+      return
+    }
     const protection = effectiveSheetProtection(state, worksheet.getSheetId())
     // Unknown until the sheet is indexed: fail closed rather than let edits
     // land on what may turn out to be a protected sheet.

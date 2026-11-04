@@ -1,0 +1,8 @@
+# Same as native/xlsx-engine/.cargo/config.toml: statically link the MSVC CRT
+# so data-engine.exe runs on a clean Windows install (no VC++ redistributable).
+# Passed explicitly with --config (cargo runs from apps/sheets).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

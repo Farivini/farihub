@@ -459,6 +459,10 @@ export const hi = {
   appSheetAddFailed: 'शीट नहीं जोड़ी जा सकी।',
   appFormatCopied: 'स्वरूपण की प्रतिलिपि बनाई गई — लागू करने के लिए लक्ष्य सेल चुनें।',
   appProtectionNeedsFile: 'पहले एक XLSX फ़ाइल खोलें — सुरक्षा फ़ाइल में सहेजी जाती है।',
+  appLargeTableReadOnly:
+    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableOpened:
+    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
   appProtectionNeedsIndexed:
     'सुरक्षा के लिए पहले इस शीट का अनुक्रमण पूरा होना चाहिए — थोड़ी देर बाद फिर प्रयास करें।',
   appProtectedWithPassword:

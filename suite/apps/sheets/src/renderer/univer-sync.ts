@@ -1,4 +1,5 @@
 import { keepActiveSheet } from './sheet-focus'
+import { installTableFilterFastPath } from './load-perf-patches'
 /**
  * Univer runtime synchronization helpers for the sheets renderer.
  *
@@ -485,6 +486,9 @@ export function loadWorkbookSkeleton(runtime: UniverRuntime | null, file: Workbo
   clearUnitUndoHistory(runtime, `file-${file.sha256}`)
   setWorkbookMdw(measureNormalFontMdw(file))
   setSystemShortDate(file.shortDateFormat ?? DEFAULT_SHORT_DATE)
+  // the row-height pass of a million-row sheet asks the table plugin about
+  // every row; make that answer cheap before the sheet is laid out
+  installTableFilterFastPath(runtime.univer.__getInjector())
   const created = runtime.univerAPI.createWorkbook({
     id: `file-${file.sha256}`,
     name: file.name,

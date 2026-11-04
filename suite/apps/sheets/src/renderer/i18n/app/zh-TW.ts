@@ -402,6 +402,8 @@ export const zhTW = {
   appSheetAddFailed: '無法新增工作表。',
   appFormatCopied: '格式已複製——選取目標儲存格即可套用。',
   appProtectionNeedsFile: '請先開啟 XLSX 檔案——保護設定會儲存進檔案。',
+  appLargeTableReadOnly: '這個大型資料表在此版本中為唯讀：編輯、格式和儲存將在下一階段提供。',
+  appLargeTableOpened: '{name}：{rows} 列由大型資料引擎開啟，唯讀。編輯和儲存將在下一階段提供。',
   appProtectionNeedsIndexed: '保護設定需要該工作表先完成索引——請稍後再試。',
   appProtectedWithPassword: '此工作表有密碼保護——請輸入密碼以取消保護。',
   appProtectionWillWrite: '工作表保護已開啟，儲存時寫入檔案。',

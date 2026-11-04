@@ -442,6 +442,10 @@ export const en = {
   appSheetAddFailed: 'Unable to add a sheet.',
   appFormatCopied: 'Format copied — select the target cells to apply it.',
   appProtectionNeedsFile: 'Open an XLSX file first — protection saves into the file.',
+  appLargeTableReadOnly:
+    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableOpened:
+    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
   appProtectionNeedsIndexed:
     'Protection needs this sheet fully indexed first — try again in a moment.',
   appProtectedWithPassword: 'This sheet is protected with a password — enter it to unprotect.',

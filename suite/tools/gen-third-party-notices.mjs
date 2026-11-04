@@ -201,17 +201,31 @@ function repoOf(pkg) {
   return url ? url.replace(/^git\+/, '').replace(/\.git$/, '') : null
 }
 
-/** Rust crates statically linked into xlsx-sidecar */
+/** Rust crates statically linked into xlsx-sidecar and data-engine (DuckDB included) */
 function rustCrates() {
-  const target = join(ROOT, 'apps/sheets/native/xlsx-engine/Cargo.toml')
+  const manifests = ['xlsx-engine', 'data-engine'].map((dir) =>
+    join(ROOT, `apps/sheets/native/${dir}/Cargo.toml`),
+  )
   try {
-    const raw = execFileSync(
-      'cargo',
-      ['metadata', '--format-version', '1', '--manifest-path', target],
-      { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] },
+    const seen = new Set()
+    const packages = manifests.flatMap(
+      (target) =>
+        JSON.parse(
+          execFileSync('cargo', ['metadata', '--format-version', '1', '--manifest-path', target], {
+            encoding: 'utf8',
+            maxBuffer: 64 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'ignore'],
+          }),
+        ).packages,
     )
-    return JSON.parse(raw)
-      .packages.filter((p) => p.name !== 'xlsx-sidecar')
+    return packages
+      .filter((p) => p.name !== 'xlsx-sidecar' && p.name !== 'data-engine')
+      .filter((p) => {
+        const key = `${p.name}@${p.version}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
       .map((p) => ({
         name: p.name,
         version: p.version,
@@ -258,10 +272,10 @@ for (const [name, { dir, pkg }] of resolved) {
 }
 
 const crates = rustCrates()
-out += hr(`2. Rust crates (xlsx-sidecar native component, statically linked)`)
+out += hr(`2. Rust crates (xlsx-sidecar and data-engine native components, statically linked)`)
 if (crates === null) {
   out += '\ncargo metadata unavailable at generation time; see'
-  out += ' apps/sheets/native/xlsx-engine/Cargo.lock for the full crate list.\n'
+  out += ' apps/sheets/native/{xlsx-engine,data-engine}/Cargo.lock for the full crate list.\n'
 } else {
   out += `\n${crates.length} crates, all under permissive terms:\n\n`
   for (const c of crates) out += `  ${c.name} ${c.version}  —  ${c.spdx}\n    ${c.url}\n`

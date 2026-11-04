@@ -93,3 +93,19 @@ o navegador e o resto abertos, previsibilidade vale mais que alguns segundos.
   arquivo da pessoa.
 - **HyperFormula:** licença GPL ou comercial paga. **IronCalc** como motor principal: 192 funções na
   versão 0.5, sem matrizes dinâmicas.
+
+## Atualização na integração (04/11/2026)
+
+Ao ligar o motor ao aplicativo ([relatório](../abrir-base-grande-2026-11-04.md)), três pontos
+mudaram em relação ao texto acima:
+
+- **Processo próprio, não o sidecar de XLSX.** O motor é `native/data-engine`, um segundo processo
+  Rust. Se ele travar, não derruba as planilhas comuns, e o sidecar de XLSX continua compilando em
+  segundos. O DuckDB em C++ fica só no binário novo.
+- **Banco em memória com transbordo para o disco**, em vez de um arquivo DuckDB. Carregar 1 milhão
+  de linhas leva 0,3 s em memória e 1,5 s num arquivo. O teto de memória e a pasta de transbordo
+  continuam valendo.
+- **Leitura do CSV pelo leitor do aplicativo, não pelo do DuckDB.** O leitor do DuckDB recusa CSV
+  irregular, e um arquivo grande tem de abrir exatamente como um pequeno. Por isso o motor usa uma
+  cópia linha por linha do `parseCsv`, conta os formatos de cada coluna na mesma passada e grava uma
+  cópia normalizada que o DuckDB carrega com vários núcleos.

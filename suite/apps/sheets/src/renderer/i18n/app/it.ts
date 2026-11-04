@@ -490,6 +490,10 @@ export const it = {
   appSheetAddFailed: 'Impossibile aggiungere un foglio.',
   appFormatCopied: 'Formato copiato — seleziona le celle di destinazione per applicarlo.',
   appProtectionNeedsFile: 'Apri prima un file XLSX — la protezione viene salvata nel file.',
+  appLargeTableReadOnly:
+    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableOpened:
+    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
   appProtectionNeedsIndexed:
     "La protezione richiede prima l'indicizzazione completa di questo foglio — riprova tra poco.",
   appProtectedWithPassword:
