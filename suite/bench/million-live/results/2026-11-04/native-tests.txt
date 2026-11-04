@@ -1,0 +1,9 @@
+   Compiling fariv-million-live v0.1.0 (/workspace/scratch/7c346d22c694/farihub/suite/bench/million-live)
+    Finished `release` profile [optimized] target(s) in 3.73s
+     Running unittests src/main.rs (/tmp/farihub-million-linked/release/deps/fariv_million_live-48f968a6a893139d)
+
+running 1 test
+test tests::locale_identifiers_negative_values_and_saved_definition ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+

@@ -1,0 +1,22 @@
+{
+  "os": "Linux 6.18.57",
+  "node": "24.22.1",
+  "electron": "38.0.0 (production dependency is 43.8.3, not validated)",
+  "sourceCommit": "24dafbd81376cfc5af51cb315fbb7fe55b523eff",
+  "cgroupMemoryMax": "8589934592",
+  "cgroupCpuMax": "800000 100000",
+  "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n",
+  "duckdbMemoryLimitMb": 512,
+  "duckdbThreads": 2,
+  "nativeLibrary": {
+    "version": "2.0.0",
+    "asset": "duckdb-shared-libs-linux-amd64.tar.gz",
+    "url": "https://github.com/duckdb/duckdb/releases/download/v2.0.0/duckdb-shared-libs-linux-amd64.tar.gz",
+    "releaseDigest": "sha256:993ad89e7dfca66cd6da994c2cad090c2fc160ddf9f550498a098ab4bb13cfb1",
+    "sha256": "993ad89e7dfca66cd6da994c2cad090c2fc160ddf9f550498a098ab4bb13cfb1",
+    "librarySha256": "1f425596ada498cf1703d98768ba833d79254394c3581e5022b270ec7c2dee07",
+    "linking": "official prebuilt shared library; bundled source build intentionally stopped after partial compilation, not validated"
+  },
+  "productionMilestoneComplete": false,
+  "llmUsedInCandidate": false
+}
