@@ -135,7 +135,16 @@ export function proposeOperations(
         ranges.push(range)
         pendingBulkWrites.set(sheetId, ranges)
       }
-      for (const operation of expandToPrimitiveOps(batch.operations, reader)) {
+      const primitives = [...expandToPrimitiveOps(batch.operations, reader)]
+      // The executor fills ranges before committing single-cell changes. Resolve
+      // a source written in this batch exactly as it will at apply time.
+      const staged = new Map<string, string | null>()
+      for (const op of primitives) {
+        if (op.op === 'set_formula' || op.op === 'set_cell' || op.op === 'clear_cell') {
+          staged.set(`${op.sheetId}:${op.address}`, op.op === 'set_formula' ? op.formula : null)
+        }
+      }
+      for (const operation of primitives) {
         if (operation.op === 'fill_range') {
           recordPendingWrite(operation.sheetId, parseRange(operation.target))
         } else if (operation.op === 'copy_range') {
@@ -517,7 +526,31 @@ export function proposeOperations(
             const sourceBounds = parseRange(operation.source)
             // The source must already be in the grid: its real contents are
             // copied (and its formulas cost-checked) synchronously here.
-            if (!lazyRangeEditable(state, sourceSheetId, sourceBounds)) {
+            const sourceFormula = (row: number, column: number): string | null => {
+              const address = formatAddress(row, column)
+              const key = `${sourceSheetId}:${address}`
+              return staged.has(key)
+                ? (staged.get(key) ?? null)
+                : sourceSheet.getRange(address).getFormula() || null
+            }
+            let fullyStaged = true
+            for (
+              let row = sourceBounds.startRow;
+              row <= sourceBounds.endRow && fullyStaged;
+              row += 1
+            ) {
+              for (
+                let column = sourceBounds.startColumn;
+                column <= sourceBounds.endColumn;
+                column += 1
+              ) {
+                if (!staged.has(`${sourceSheetId}:${formatAddress(row, column)}`)) {
+                  fullyStaged = false
+                  break
+                }
+              }
+            }
+            if (!fullyStaged && !lazyRangeEditable(state, sourceSheetId, sourceBounds)) {
               return {
                 ok: false,
                 error:
@@ -537,7 +570,7 @@ export function proposeOperations(
                 column <= sourceBounds.endColumn;
                 column += 1
               ) {
-                const formula = sourceSheet.getRange(formatAddress(row, column)).getFormula()
+                const formula = sourceFormula(row, column)
                 if (!formula) continue
                 const costError = fillFormulaCostError(
                   formula,
@@ -549,6 +582,19 @@ export function proposeOperations(
                 )
                 if (costError) return { ok: false, error: costError }
               }
+            }
+            const refSheets = streamedRefSheets()
+            if (refSheets && !state.flags.preloadComplete) {
+              const error = collectFilledFormulaPrecedents(
+                state,
+                operation.sheetId,
+                sourceBounds,
+                bounds,
+                sourceFormula,
+                refSheets,
+                streamedNeeds,
+              )
+              if (error) return { ok: false, error }
             }
           }
           continue
@@ -1201,6 +1247,45 @@ export function collectStreamedFormulaPrecedents(
       }
     }
   }
+}
+
+/** Collect the references of EVERY shifted formula, without expanding the
+ * change plan into thousands of cell operations or repeatedly reading facades.
+ * The same preflight is used by the AI planner and the apply executor. */
+export function collectFilledFormulaPrecedents(
+  state: LazyWorkbookState,
+  sheetId: string,
+  source: RangeBounds,
+  target: RangeBounds,
+  readFormula: (row: number, column: number) => string | null,
+  sheets: readonly StreamedRefSheet[],
+  needs: Map<string, Set<number>>,
+): string | null {
+  const formulas: { row: number; column: number; formula: string }[] = []
+  for (let row = source.startRow; row <= source.endRow; row += 1) {
+    for (let column = source.startColumn; column <= source.endColumn; column += 1) {
+      const formula = readFormula(row, column)
+      if (formula) formulas.push({ row, column, formula })
+    }
+  }
+  const height = source.endRow - source.startRow + 1
+  const width = source.endColumn - source.startColumn + 1
+  for (let row = target.startRow; row <= target.endRow; row += height) {
+    for (let column = target.startColumn; column <= target.endColumn; column += width) {
+      for (const cell of formulas) {
+        collectStreamedFormulaPrecedents(
+          offsetFormulaRefs(cell.formula, row - source.startRow, column - source.startColumn),
+          sheetId,
+          sheets,
+          needs,
+          state.closure.pinned,
+        )
+        const error = streamedPinBudgetError(state, needs)
+        if (error) return error
+      }
+    }
+  }
+  return null
 }
 
 /**

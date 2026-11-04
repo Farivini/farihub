@@ -536,6 +536,7 @@ import {
   recordSheetRename,
   recordStructuralOp,
   shiftVisualForStructuralOp,
+  pinnedFormulaForEdit,
 } from './edit-journal'
 import { shiftPinnedCells } from './formula-closure'
 import { getLang, t, aiLangDirective } from './i18n/locale'
@@ -2125,8 +2126,23 @@ export function App({
     )
   }
 
+  async function verifyWrittenFormulas(ops: readonly WorkbookOperation[]) {
+    const read = (addresses: readonly string[], sheetId: string) =>
+      readCellsImpl(readContext(), [...addresses], sheetId)
+    const targets = formulaTargetsFromOps(
+      ops,
+      (sheetId, address) => read([address], sheetId)[address]?.formula ?? null,
+    )
+    const values = await awaitFormulaValues(targets, read)
+    for (const cell of values) {
+      rememberFormulaValue(cell.sheetId, cell.address, { formula: cell.formula ?? '' })
+    }
+    return values
+  }
+
   function sheetsSkillDeps(): SheetsSkillDeps {
     return {
+      verifyWrittenFormulas,
       getActiveSheetInfo,
       importNotes: () => {
         const format = lazyWorkbookRef.current?.file.csvFormat
@@ -2678,6 +2694,25 @@ export function App({
           event.cancel = true
           setMessage(t('appPivotCellNoEdit'))
           return
+        }
+        // A cached viewport may carry only the result while the closure owns
+        // the live formula. Restore that known-live text BEFORE Univer captures
+        // the editor's undo before-state, or Undo restores a literal value.
+        // A replacement journaled this session (literal, clear, bulk fill)
+        // wins over the pin: the old formula must not come back.
+        const pinnedFormula = pinnedFormulaForEdit(
+          state.editJournal,
+          sheetId,
+          event.row,
+          event.column,
+          state.closure.pinned.get(sheetId)?.get(`${event.row}:${event.column}`)?.f,
+        )
+        if (pinnedFormula) {
+          const matrix = event.worksheet.getSheet().getCellMatrix()
+          const cell = matrix.getValue(event.row, event.column) ?? {}
+          // Metadata hydration only: a facade command here would restart the
+          // editor while its first keystroke is being handled.
+          if (!cell.f) matrix.setValue(event.row, event.column, { ...cell, f: pinnedFormula })
         }
         // Fully-loaded workbooks have nothing left to stream in.
         if (state.flags.preloadComplete) return
@@ -5117,6 +5152,15 @@ export function App({
     if ((window as unknown as Record<string, unknown>).__genofficeDebugHooks === true) {
       ;(window as unknown as Record<string, unknown>).__genofficeDebug = {
         univerAPI: univerRef.current?.univerAPI,
+        // Exercise the actual AI reader, including cache-only formula metadata.
+        readCells: (addresses: string[], sheetId?: string) =>
+          readCellsImpl(readContext(), addresses, sheetId),
+        formulaState: () => ({
+          closure: lazyWorkbookRef.current?.closure.status,
+          pinned: lazyWorkbookRef.current?.closure.pinned.get(
+            univerRef.current?.univerAPI.getActiveWorkbook()?.getActiveSheet()?.getSheetId() ?? '',
+          )?.size,
+        }),
         findReplaceService: univerRef.current?.univer.__getInjector().get(IFindReplaceService),
         // ground truth for typing-into-the-adopted-spare failures: the
         // shortcut gate is these context bits plus the focused unit, and a
@@ -5608,17 +5652,7 @@ export function App({
       // asynchronously, so an immediate read of the cells this batch targeted
       // would show null and an agent could read that as a failed edit. Report
       // the computed values with the result (see formula-values.ts).
-      const targets = formulaTargetsFromOps(ops)
-      if (targets.length === 0) return outcome
-      const values = await awaitFormulaValues(targets, (addresses, sheetId) =>
-        readCellsImpl(readContext(), [...addresses], sheetId),
-      )
-      // Remember which cells settled so the next save can write a real cached
-      // <v> for them (the overlay skips the very cells a batch just wrote); the
-      // value itself is read live at save time, see formula-values.ts.
-      for (const cell of values) {
-        rememberFormulaValue(cell.sheetId, cell.address, { formula: cell.formula ?? '' })
-      }
+      const values = await verifyWrittenFormulas(ops)
       return { ...outcome, formulaValues: values }
     },
     saveTo: async (path, overwrite) => handleSave('save-as', true, { path, overwrite }),

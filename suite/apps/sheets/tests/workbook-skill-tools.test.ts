@@ -7,7 +7,10 @@ import {
   type SheetsSkillDeps,
   type ToolExecution,
 } from '../src/renderer/ai/tools'
-import { getActiveSheetInfo } from '../src/renderer/ai/workbook-readers'
+import {
+  getActiveSheetInfo,
+  readCells as readWorkbookCells,
+} from '../src/renderer/ai/workbook-readers'
 import type { ChangePlan } from '@genoffice/xlsx-gateway/domain/workbook.types'
 
 function call(name: string, input: Record<string, unknown>) {
@@ -307,6 +310,25 @@ describe('getActiveSheetInfo: lazy extents after structural ops', () => {
   it('matches the file extent when no structural ops ran', () => {
     const info = getActiveSheetInfo(lazyReadContext(new Map()))
     expect(info.sheets[0]).toMatchObject({ id: 'sh1', rows: 100, columns: 8 })
+  })
+  it('keeps appended calculated columns visible and removes their extent after rejection', () => {
+    const ctx = lazyReadContext(new Map())
+    const state = ctx.lazyWorkbookRef.current!
+    Object.assign(state.editJournal, {
+      cells: new Map([
+        [
+          'sh1',
+          new Map([
+            ['1:8', { row: 1, column: 8, formula: '=D2*F2', hasValue: false }],
+            ['10000:8', { row: 10000, column: 8, formula: '=D10001*F10001', hasValue: false }],
+            ['20000:50', { row: 20000, column: 50, hasValue: false, format: { bold: true } }],
+          ]),
+        ],
+      ]),
+    })
+    expect(getActiveSheetInfo(ctx).sheets[0]).toMatchObject({ rows: 10001, columns: 9 })
+    state.editJournal.cells.clear()
+    expect(getActiveSheetInfo(ctx).sheets[0]).toMatchObject({ rows: 100, columns: 8 })
   })
 })
 
@@ -1299,5 +1321,79 @@ describe('executeWorkbookTool: unknown tool', () => {
   it('fails closed on an unrecognized tool name', () => {
     const result = execSync(call('delete_everything', {}), fakeDeps())
     expect(result.isError).toBe(true)
+  })
+})
+
+describe('numeric provenance for the AI', () => {
+  it('reports full precision alongside localized display and formula text', () => {
+    const deps = fakeDeps({
+      readCells: () => ({
+        A1: { value: '0,333333', rawValue: 1 / 3, formula: '=1/3' },
+        B1: { value: '1.234,57', rawValue: 1234.56789 },
+        C1: { value: '2011-12-09', rawValue: 40886 },
+      }),
+    })
+    const output = execSync(call('read_cells', { addresses: ['A1', 'B1', 'C1'] }), deps).output
+    expect(output).toContain('0.3333333333333333 [display: 0,333333] (=1/3)')
+    expect(output).toContain('1234.56789 [display: 1.234,57]')
+    expect(output).toContain('40886 [display: 2011-12-09]')
+  })
+})
+
+describe('calculated-column local verification', () => {
+  it('reads 10,000 explicit formulas as one grid block, preserving numeric precision', () => {
+    const addresses = Array.from({ length: 10000 }, (_, i) => `I${i + 2}`)
+    const raw = addresses.map((_, i) => [{ f: `=D${i + 2}*F${i + 2}`, v: 1 / 3 }])
+    const range = { getCellDatas: () => raw, getValues: () => raw.map(() => ['0.333333']) }
+    const getRange = vi.fn(() => range)
+    const worksheet = { getSheetId: () => 's', getRange }
+    const ctx = {
+      univerRef: {
+        current: { univerAPI: { getActiveWorkbook: () => ({ getActiveSheet: () => worksheet }) } },
+      },
+      lazyWorkbookRef: { current: {} },
+      adapterRef: { current: {} },
+    } as unknown as Parameters<typeof readWorkbookCells>[0]
+    const cells = readWorkbookCells(ctx, addresses)
+    expect(getRange).toHaveBeenCalledTimes(1)
+    expect(cells.I10001).toEqual({ value: '0.333333', rawValue: 1 / 3, formula: '=D10001*F10001' })
+    Object.assign(ctx, {
+      redactionIndexRef: {
+        current: { labelAt: (_sheet: string, row: number) => (row === 2 ? 'private' : null) },
+      },
+    })
+    const masked = readWorkbookCells(ctx, addresses)
+    expect(masked.I3).not.toHaveProperty('formula')
+    expect(masked.I3).not.toHaveProperty('rawValue')
+  })
+})
+
+describe('cache-only file formula visibility', () => {
+  it('reports indexed formula text and never resurrects a formula overwritten this session', () => {
+    const worksheet = {
+      getSheetId: () => 's',
+      getRange: () => ({
+        getFormula: () => '',
+        getValue: () => 0.78,
+        getCellDatas: () => [[{ v: 0.78 }]],
+      }),
+    }
+    const entries = new Map()
+    const ctx = {
+      univerRef: {
+        current: { univerAPI: { getActiveWorkbook: () => ({ getActiveSheet: () => worksheet }) } },
+      },
+      lazyWorkbookRef: {
+        current: {
+          formulaText: new Map([['s', new Map([['10000:8', '=D10001*F10001']])]]),
+          sharedFormulaGroups: new Map(),
+          editJournal: { cells: new Map([['s', entries]]), structuralOps: new Map() },
+        },
+      },
+      adapterRef: { current: {} },
+    } as unknown as Parameters<typeof readWorkbookCells>[0]
+    expect(readWorkbookCells(ctx, ['I10001']).I10001?.formula).toBe('=D10001*F10001')
+    entries.set('10000:8', { hasValue: true, value: 0.78, formula: null })
+    expect(readWorkbookCells(ctx, ['I10001']).I10001?.formula).toBeUndefined()
   })
 })

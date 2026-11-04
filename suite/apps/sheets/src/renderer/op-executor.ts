@@ -51,12 +51,15 @@ import { refreshPivotTables } from './pivot-actions'
 import {
   carryCopyFormulasPlan,
   collectStreamedFormulaPrecedents,
+  collectFilledFormulaPrecedents,
+  streamedPinBudgetError,
   lazyGateFailure,
   streamedRefSheetList,
   structuralDeleteFormulaError,
   type StreamedRefSheet,
 } from './plan-operations'
-import { aiBulkUndoGate, journalSuppression } from './univer-state'
+import { aiBulkUndoGate, journalSuppression, loadAutoHeightSuppression } from './univer-state'
+import { isPlainArithmeticFormula } from './formula-cached-fallback'
 import { isVeryHiddenSheet } from './very-hidden-sheets'
 import { effectiveSheetProtection, mergeSheetProtectionAllow } from './sheet-protection'
 import {
@@ -394,6 +397,58 @@ async function applyChangePlanNow(
         throw new Error(t('appProtectionNeedsIndexed'))
       }
     }
+    // Pin all shifted precedents BEFORE the first write. Loading full-width
+    // target windows only kept neighbors until the next viewport eviction and
+    // missed absolute/cross-sheet references entirely.
+    if (!state.formulaMode && !state.flags.preloadComplete) {
+      const needs = new Map<string, Set<number>>()
+      const sheets = streamedRefSheetList(state, workbook)
+      const staged = new Map(
+        plan.cellChanges.map((change) => [
+          `${change.sheetId}:${change.address}`,
+          change.after.formula ?? null,
+        ]),
+      )
+      for (const change of plan.cellChanges) {
+        if (change.after.formula)
+          collectStreamedFormulaPrecedents(
+            change.after.formula,
+            change.sheetId,
+            sheets,
+            needs,
+            state.closure.pinned,
+          )
+      }
+      for (const op of plannedOps) {
+        if (op.op !== 'fill_range') continue
+        const sourceId = op.sourceSheetId ?? op.sheetId
+        const sourceSheet = workbook.getSheetBySheetId(sourceId)
+        if (!sourceSheet) throw new Error(`Unknown sheet: ${sourceId}`)
+        const error = collectFilledFormulaPrecedents(
+          state,
+          op.sheetId,
+          parseRange(op.source),
+          parseRange(op.target),
+          (row, column) => {
+            const address = formatAddress(row, column)
+            const key = `${sourceId}:${address}`
+            return staged.has(key)
+              ? (staged.get(key) ?? null)
+              : sourceSheet.getRange(address).getFormula() || null
+          },
+          sheets,
+          needs,
+        )
+        if (error) throw new Error(error)
+      }
+      const budgetError = streamedPinBudgetError(state, needs)
+      if (budgetError) throw new Error(budgetError)
+      if (needs.size > 0 && !(await pinStreamedPrecedents(runtime, lazyWorkbookRef, needs))) {
+        throw new Error(
+          'The cells referenced by the formulas could not be loaded — no formulas were written; retry after indexing completes.',
+        )
+      }
+    }
   } catch (error: unknown) {
     const reason = error instanceof Error ? error.message : t('appCannotReadImage')
     setMessage(reason)
@@ -450,37 +505,15 @@ async function applyChangePlanNow(
     }
     for (const op of plannedOps) await executeOp(op, run)
     setPendingEdits(journalSize(state.editJournal))
-    // Streaming mode: formulas in this batch may reference file cells the
-    // engine does not hold — load & pin them first so the formulas compute
-    // correctly and survive eviction (propose checked the session budget).
-    if (!state.formulaMode) {
-      const streamedNeeds = new Map<string, Set<number>>()
-      let refSheets: StreamedRefSheet[] | undefined
-      for (const change of plan.cellChanges) {
-        if (!change.after.formula) continue
-        refSheets ??= streamedRefSheetList(state, workbook)
-        collectStreamedFormulaPrecedents(
-          change.after.formula,
-          change.sheetId,
-          refSheets,
-          streamedNeeds,
-          state.closure.pinned,
-        )
-      }
-      if (
-        streamedNeeds.size > 0 &&
-        !(await pinStreamedPrecedents(runtime, lazyWorkbookRef, streamedNeeds))
-      ) {
-        throw new Error(
-          'The cells referenced by the formulas could not be loaded from the streamed workbook — ' +
-            'the formulas were not written; retry in a moment.',
-        )
-      }
-    }
     for (const change of plan.cellChanges) {
       const range = sheetById(change.sheetId).getRange(change.address)
-      if (change.after.formula) range.setFormula(change.after.formula)
-      else if (change.after.value === null) range.clearContent()
+      if (change.after.formula) {
+        // A same-batch fill already wrote its staged seed. Writing it again
+        // creates a second before-state for the same cell in Univer's merged
+        // undo item, resurrecting the seed when the task is rejected/undone.
+        if (range.getFormula() === change.after.formula) continue
+        range.setFormula(change.after.formula)
+      } else if (change.after.value === null) range.clearContent()
       else {
         // Explicit f/si null mirrors the cell editor: overwriting a formula
         // cell with a value must clear the formula (in Univer and journal).
@@ -882,6 +915,15 @@ async function executeOp(op: PlannedOp, run: OpRun): Promise<void> {
     // (e.g. a date) would save without its number format, showing raw
     // serials. Those fills take the chunked path, which carries t/s.
     const fillCarriesStyle = sourceCells[0]?.[0]?.s != null
+    // A bare arithmetic formula cannot introduce wrapped text or a larger
+    // font. Preserve imported row heights rather than doing 10,000 canvas
+    // height measurements for a numeric column (styled/text fills keep autofit).
+    const numericFormulaFill = sourceCells.every((row) =>
+      row.every(
+        (cell) =>
+          cell.s === null && cell.formula !== null && isPlainArithmeticFormula(cell.formula),
+      ),
+    )
     if (
       lazyState &&
       !fillWritesFormulas &&
@@ -1031,17 +1073,25 @@ async function executeOp(op: PlannedOp, run: OpRun): Promise<void> {
           }
           matrix.push(matrixRow)
         }
-        targetSheet
-          .getRange(
-            chunk.startRow,
-            chunk.startColumn,
-            chunk.endRow - chunk.startRow + 1,
-            chunk.endColumn - chunk.startColumn + 1,
-          )
-          .setValues(matrix)
+        const previousHeightGate = loadAutoHeightSuppression.active
+        if (numericFormulaFill) loadAutoHeightSuppression.active = true
+        try {
+          targetSheet
+            .getRange(
+              chunk.startRow,
+              chunk.startColumn,
+              chunk.endRow - chunk.startRow + 1,
+              chunk.endColumn - chunk.startColumn + 1,
+            )
+            .setValues(matrix)
+        } finally {
+          loadAutoHeightSuppression.active = previousHeightGate
+        }
       },
       setMessage,
-      { neighborColumns: fillWritesFormulas },
+      // Formula precedents are pinned by preflight, including off-row and
+      // cross-sheet refs. Only load the target for its undo before-values.
+      { neighborColumns: false },
     )
   } else if (op.op === 'copy_range') {
     // Copy one block once: the source is read chunk by chunk (loading

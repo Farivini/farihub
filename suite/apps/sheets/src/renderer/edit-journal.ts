@@ -1896,6 +1896,24 @@ export function journalCellContentAt(
   return fill.found ? { found: true, value: fill.value, formula: null } : fill
 }
 
+/// The formula an edit of a closure-pinned cell should start from. The pin
+/// holds the live formula as the file had it; a cached viewport may carry only
+/// its result, so the editor needs the formula restored before Univer records
+/// its undo before-state. But once this session replaced or cleared the cell
+/// (a cell entry or a constant bulk fill in the journal), the journal is the
+/// cell's content and the pinned formula must not come back.
+export function pinnedFormulaForEdit(
+  journal: EditJournal,
+  sheetId: string,
+  row: number,
+  column: number,
+  pinnedFormula: string | undefined,
+): string | null {
+  if (pinnedFormula === undefined) return null
+  if (journalCellContentAt(journal, sheetId, row, column).found) return null
+  return pinnedFormula
+}
+
 /// Ingests a `sheet.mutation.set-range-values` payload. Returns the entries
 /// that were recorded. `resolveSharedFormula` materializes shared-formula
 /// followers (`si` with no `f` — tiled paste / fill) into a concrete formula
