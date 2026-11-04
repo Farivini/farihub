@@ -1,7 +1,41 @@
 name: Farcel
-on: [push, pull_request, workflow_dispatch]
+# The Farihub web app at the repository root (src/, native/, vendor/, tests/). It does not
+# depend on suite/ or docs/, so changes there no longer run it; a branch push runs once,
+# through its PR, and `push` covers main.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'native/**'
+      - 'vendor/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'vite.config.ts'
+      - '.github/workflows/technical-proof.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'native/**'
+      - 'vendor/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'vite.config.ts'
+      - '.github/workflows/technical-proof.yml'
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: farcel-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   aggregation:
     strategy:
@@ -22,6 +56,7 @@ jobs:
         with:
           name: technical-proof-${{ matrix.os }}
           path: reports/*.json
+          retention-days: 7
   app:
     strategy:
       matrix:
