@@ -39,11 +39,17 @@ fn numbers_match_typescript_cases() {
                 expected,
                 "{value:?} with {mark}"
             );
+            assert_eq!(
+                crate::numbers::parse_number_fast(value, mark),
+                expected,
+                "fast {value:?} with {mark}"
+            );
         }
     }
 }
 
 mod engine {
+    use crate::calc::GridEdits;
     use crate::{CellEdit, Command, Engine, FillEdit, NumberColumn};
     use serde_json::Value;
     use std::io::Write;
@@ -277,5 +283,206 @@ mod engine {
             })
             .unwrap_err();
         assert_eq!(error.code, "BAD_REQUEST");
+    }
+
+    fn column_text(engine: &Engine, session: &str, column: u64, rows: u64) -> Vec<Option<String>> {
+        let read = engine
+            .handle(Command::ReadRange {
+                session_id: session.into(),
+                start_row: 0,
+                end_row: rows - 1,
+                start_column: column,
+                end_column: column,
+            })
+            .unwrap();
+        let mut out = vec![None; rows as usize];
+        for row in read["rows"].as_array().unwrap() {
+            let index = row[0].as_u64().unwrap() as usize;
+            out[index] = row[1][0].as_str().map(str::to_owned);
+        }
+        out
+    }
+
+    fn span(row: u64, column: u64) -> crate::calc::Span {
+        crate::calc::Span {
+            start_row: row,
+            end_row: row,
+            start_column: column,
+            end_column: column,
+        }
+    }
+
+    fn strings(values: &[Option<&str>]) -> Vec<Option<String>> {
+        values.iter().map(|v| v.map(str::to_owned)).collect()
+    }
+
+    #[test]
+    fn calculated_columns_follow_edits_undo_and_save() {
+        let engine = Engine::default();
+        let text = "produto;qtd;preco\nA;2;1,50\nB;3;0,10\nA;;2\n";
+        let (session, _, dir) = import(&engine, text, ";");
+        let marks = || {
+            vec![
+                NumberColumn {
+                    column: 1,
+                    decimal: ",".into(),
+                },
+                NumberColumn {
+                    column: 2,
+                    decimal: ",".into(),
+                },
+            ]
+        };
+        let create = |formula: &str, column: u64| {
+            engine.handle(Command::CalcCreate {
+                session_id: session.clone(),
+                formula: formula.into(),
+                anchor_row: 1,
+                column,
+                first_row: 1,
+                last_row: 3,
+                sheet_name: "Base".into(),
+                decimal: ",".into(),
+                number_columns: marks(),
+                edits: GridEdits::default(),
+                replace_existing: false,
+            })
+        };
+        let total = create("=B2*C2", 3).unwrap();
+        assert_eq!(total["written"], 3);
+        assert_eq!(
+            column_text(&engine, &session, 3, 4),
+            strings(&[None, Some("3"), Some("0,3"), Some("0")])
+        );
+        let running = create("=SUM($D$2:D2)", 4).unwrap();
+        let running_id = running["calcId"].as_str().unwrap().to_owned();
+        assert_eq!(
+            column_text(&engine, &session, 4, 4),
+            strings(&[None, Some("3"), Some("3,3"), Some("3,3")])
+        );
+        // a column with values, and a formula over its own cells, are refused
+        assert_eq!(create("=1", 1).unwrap_err().code, "COLUMN_NOT_EMPTY");
+        assert_eq!(create("=F2+1", 5).unwrap_err().code, "CIRCULAR");
+
+        // an unsaved edit of qtd in row 3 (10): the total and the running sum follow
+        let edits: GridEdits = serde_json::from_value(serde_json::json!({
+            "cells": [{ "row": 2, "column": 1, "value": 10 }]
+        }))
+        .unwrap();
+        let refreshed = engine
+            .handle(Command::CalcRefresh {
+                session_id: session.clone(),
+                changed: vec![span(2, 1)],
+                number_columns: marks(),
+                edits: edits.clone(),
+                quick: false,
+            })
+            .unwrap();
+        assert_eq!(refreshed["refreshed"], serde_json::json!([3, 4]));
+        assert_eq!(
+            column_text(&engine, &session, 3, 4)[2].as_deref(),
+            Some("1")
+        );
+        assert_eq!(
+            column_text(&engine, &session, 4, 4)[3].as_deref(),
+            Some("4")
+        );
+
+        // Undo of the running sum empties its column; Redo brings it back
+        let set_active = |active: bool| {
+            engine
+                .handle(Command::CalcSetActive {
+                    session_id: session.clone(),
+                    calc_id: running_id.clone(),
+                    active,
+                    number_columns: marks(),
+                    edits: edits.clone(),
+                })
+                .unwrap()
+        };
+        set_active(false);
+        assert_eq!(column_text(&engine, &session, 4, 4), vec![None; 4]);
+        set_active(true);
+        assert_eq!(
+            column_text(&engine, &session, 4, 4)[3].as_deref(),
+            Some("4")
+        );
+
+        // Save, as the host runs it: formulas catch up with the journal, then
+        // the journal is written (headers, the edited qtd, a value typed over
+        // the total)
+        let saved: GridEdits = serde_json::from_value(serde_json::json!({
+            "cells": [
+                { "row": 0, "column": 3, "value": "total" },
+                { "row": 0, "column": 4, "value": "acumulado" },
+                { "row": 2, "column": 1, "value": 10 },
+                { "row": 1, "column": 3, "value": "manual" }
+            ]
+        }))
+        .unwrap();
+        engine
+            .handle(Command::CalcRefresh {
+                session_id: session.clone(),
+                changed: vec![span(0, 3), span(0, 4), span(2, 1), span(1, 3)],
+                number_columns: marks(),
+                edits: saved,
+                quick: false,
+            })
+            .unwrap();
+        let text_cell = |row: u64, column: u64, text: &str| CellEdit {
+            row,
+            column,
+            text: Some(text.into()),
+        };
+        engine
+            .handle(Command::ApplyEdits {
+                session_id: session.clone(),
+                fills: vec![],
+                cells: vec![
+                    text_cell(0, 3, "total"),
+                    text_cell(0, 4, "acumulado"),
+                    text_cell(2, 1, "10"),
+                    text_cell(1, 3, "manual"),
+                ],
+            })
+            .unwrap();
+        let out = dir.path().join("saida.csv");
+        engine
+            .handle(Command::ExportDelimited {
+                session_id: session.clone(),
+                path: out.clone(),
+                delimiter: ";".into(),
+                sep_line: false,
+            })
+            .unwrap();
+        let written = String::from_utf8(std::fs::read(&out).unwrap()[3..].to_vec()).unwrap();
+        // the running sum skips the typed text (SUM ignores text), as in Excel
+        assert_eq!(
+            written,
+            "produto;qtd;preco;total;acumulado\r\nA;2;1,50;manual;0\r\nB;10;0,10;1;1\r\nA;;2;0;1\r\n"
+        );
+        // after Save, the typed cell stays the person's on later refreshes
+        engine
+            .handle(Command::CalcRefresh {
+                session_id: session.clone(),
+                changed: vec![crate::calc::Span {
+                    start_row: 0,
+                    end_row: 3,
+                    start_column: 1,
+                    end_column: 2,
+                }],
+                number_columns: marks(),
+                edits: GridEdits::default(),
+                quick: false,
+            })
+            .unwrap();
+        assert_eq!(
+            column_text(&engine, &session, 3, 4)[1].as_deref(),
+            Some("manual")
+        );
+        assert_eq!(
+            column_text(&engine, &session, 4, 4)[1].as_deref(),
+            Some("0")
+        );
     }
 }

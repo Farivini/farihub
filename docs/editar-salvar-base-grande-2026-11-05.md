@@ -1,5 +1,8 @@
 # Editar, desfazer e salvar uma base grande
 
+> Atualização de 05/11/2026: as fórmulas chegaram na base grande como coluna calculada, digitada ou
+> pela IA. Ver [coluna calculada na base grande](coluna-calculada-base-grande-2026-11-05.md).
+
 05/11/2026. **Resultado: a base grande deixa de ser só leitura. Dá para editar valores, desfazer e
 refazer, e salvar em CSV ou XLSX. O arquivo salvo muda só nas células editadas.**
 

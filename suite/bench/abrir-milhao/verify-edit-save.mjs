@@ -3,7 +3,8 @@
  *
  * Copia o CSV para uma pasta nova (o original nunca é tocado), abre pelo
  * menu, edita pelo teclado (início, meio, fim, apagar, preencher várias
- * células), tenta uma fórmula (tem de ser recusada), desfaz e refaz, salva
+ * células), tenta uma fórmula numa coluna com dados (tem de ser recusada:
+ * a coluna calculada exige coluna vazia), desfaz e refaz, salva
  * com Ctrl+S, desfaz depois de salvar e salva de novo, e faz Salvar como
  * .xlsx. A conferência do arquivo salvo é campo a campo, contra o original
  * lido por um leitor independente (Python csv): só as células editadas mudam.
@@ -182,13 +183,14 @@ try {
   await page.keyboard.type('X')
   await page.keyboard.press('Control+Enter')
   await page.waitForTimeout(500)
-  // fórmula: recusada com aviso, célula intacta
+  // fórmula numa coluna com dados: a coluna calculada exige coluna vazia,
+  // então a fórmula é recusada com aviso e a célula fica intacta
   await goTo('E5')
   const e5Before = await raw(4, 4)
   await page.keyboard.type('=A2')
   await page.keyboard.press('Enter')
-  await page.waitForTimeout(400)
-  const formulaNotice = /Fórmulas na base grande/.test(await bodyText())
+  await page.waitForTimeout(1500)
+  const formulaNotice = /use uma coluna vazia/.test(await bodyText())
   check('formula_recusada', (await raw(4, 4)) === e5Before && formulaNotice, {
     e5: await raw(4, 4),
     aviso: formulaNotice,

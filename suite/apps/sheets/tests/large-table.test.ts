@@ -95,6 +95,8 @@ describe('large-table reads and finds through the engine', () => {
     csvFormat: typing.report,
     sheetId: 'sheet-1',
     target: { current: { path: '/tmp/base.csv', format: 'csv', size: 0, mtimeMs: 0 } },
+    calcs: { current: new Map() },
+    width: { current: 9 },
   }
 
   it('maps engine rows onto grid cells and keeps the shell fields', async () => {
@@ -211,6 +213,8 @@ describe('large-table edits', () => {
       csvFormat: ptBr,
       sheetId: 'sheet-1',
       target: { current: { path: '/b.csv', format: 'csv' as const, size: 0, mtimeMs: 0 } },
+      calcs: { current: new Map() },
+      width: { current: 9 },
     }
     const edits = largeTableEngineEdits(table, {
       edits: [
@@ -305,6 +309,8 @@ describe('large-table decimal mark per column', () => {
         csvFormat: format,
         sheetId: 's',
         target: { current: { path: '/b.csv', format: 'csv', size: 0, mtimeMs: 0 } },
+        calcs: { current: new Map() },
+        width: { current: 9 },
       },
       {
         edits: [],

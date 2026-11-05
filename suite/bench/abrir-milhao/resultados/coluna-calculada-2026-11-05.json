@@ -1,0 +1,51 @@
+{
+  "date": "2026-11-05",
+  "base": "bank_transactions.csv (1.048.567 transações; valores da base omitidos)",
+  "stages": {
+    "openMs": 3749,
+    "createMs": {
+      "J": 3239,
+      "K": 4350,
+      "L": 5155,
+      "M": 5353,
+      "N": 4799,
+      "O": 7209
+    },
+    "refreshRowMs": 2491,
+    "refreshRunningMs": 9425,
+    "saveMs": 6384,
+    "csvBytes": 114210508
+  },
+  "frames": {
+    "idle": 400,
+    "createJ": 366.6999999999971,
+    "createK": 333.40000000000146,
+    "createL": 300,
+    "createM": 1499.8999999999942,
+    "createN": 699.9000000000087,
+    "createO": 766.6000000000058,
+    "refused": 349.90000000000873,
+    "refresh": 283.29999999998836,
+    "undoCalc": 299.8999999999942,
+    "save": 300.1000000000058
+  },
+  "memory": {
+    "peakMiB": 1635
+  },
+  "checks": {
+    "colunas_na_tela": true,
+    "funcao_nao_suportada_recusada": true,
+    "recalculo_depois_de_editar": true,
+    "desfazer_edicao_refaz_calculo": true,
+    "desfazer_refazer_coluna": true,
+    "edicao_que_fica": true,
+    "csv_salvo_igual_ao_oraculo": true
+  },
+  "oracle": {
+    "rows_orig": 1048568,
+    "rows_saved": 1048568,
+    "fields": 15728520,
+    "diffs": 0
+  },
+  "failures": []
+}

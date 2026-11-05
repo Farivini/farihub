@@ -226,6 +226,14 @@ const desktopApi: DesktopApi = {
     if (!isNonnegativeInteger(result)) throw new Error('Invalid column edge.')
     return result
   },
+  async largeTableCalc(request) {
+    // the main process validates the request in full (zod)
+    const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.largeTableCalc, request)
+    if (!isRecord(result) || typeof result.ok !== 'boolean') {
+      throw new Error('Invalid calculated column result.')
+    }
+    return result as unknown as Awaited<ReturnType<DesktopApi['largeTableCalc']>>
+  },
   async readWorkbookRowOutline(request) {
     const validatedRequest = parseFormulaCellsRequest(request)
     const result: unknown = await ipcRenderer.invoke(

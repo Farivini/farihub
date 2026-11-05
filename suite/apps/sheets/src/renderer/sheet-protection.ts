@@ -14,6 +14,7 @@ import {
 import type { SheetPasswordHash } from '@genoffice/xlsx-gateway/gateway/xlsx-protection-hash'
 
 import { t } from './i18n/locale'
+import { singleFormulaCell } from './large-table-calc'
 import { journalSuppression, type LazyWorkbookState, type UniverRuntime } from './univer-state'
 import type { WorkbookRangeResult } from '../shared/desktop-api'
 
@@ -405,6 +406,9 @@ export function rangesTouchLockedCell(
 export interface SheetProtectionGuardDeps {
   readonly getState: () => LazyWorkbookState | null
   readonly notify: (message: string) => void
+  /// A formula typed into one cell of a large base: the command is vetoed and
+  /// the formula becomes a calculated column over the whole base instead.
+  readonly onLargeTableFormula?: (cell: { row: number; column: number; formula: string }) => void
 }
 
 /// Vetoes commands the active sheet's protection forbids. Loader writes run
@@ -478,6 +482,18 @@ export function installSheetProtectionGuard(
     // formatting and structure changes come with later stages.
     if (state.file.largeTable !== undefined) {
       const blocked = largeTableBlock(event.id, kind, params)
+      if (
+        blocked === 'appLargeTableNoFormulas' &&
+        event.id === 'sheet.command.set-range-values' &&
+        deps.onLargeTableFormula !== undefined
+      ) {
+        const cell = singleFormulaCell(params)
+        if (cell !== null) {
+          event.cancel = true
+          deps.onLargeTableFormula(cell)
+          return
+        }
+      }
       if (blocked !== null) {
         event.cancel = true
         deps.notify(t(blocked))

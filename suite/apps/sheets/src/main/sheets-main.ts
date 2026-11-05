@@ -176,6 +176,8 @@ import {
   printerInfoSchema,
   workbookRangeRequestSchema,
   largeTableColumnEdgeRequestSchema,
+  largeTableCalcRequestSchema,
+  largeTableCalcResultSchema,
   workbookRangeResultSchema,
   workbookSaveEditsAbortSchema,
   workbookSaveEditsBeginSchema,
@@ -205,8 +207,12 @@ import { DataEngineClient, DataEngineError } from './data-engine-client'
 import {
   largeTableColumnMark,
   largeTableEngineEdits,
+  largeTableFileNumberColumns,
   largeTableFindResult,
+  largeTableGridEdits,
+  largeTableNumberColumns,
   largeTableRangeResult,
+  type LargeTableCalc,
   type LargeTableSession,
 } from './large-table'
 import { sessionAfterRename } from './session-rename'
@@ -3426,6 +3432,103 @@ export function registerSheetsIpc(): void {
     })
   })
 
+  // Calculated columns of a large base: the engine computes the formula over
+  // every data row; the grid repaints the columns that changed.
+  ipcMain.handle(IPC_CHANNELS.largeTableCalc, async (event, input: unknown) => {
+    const entry = sessionFor(event)
+    const request = largeTableCalcRequestSchema.parse(input)
+    const session = entry.sessions.get(request.sessionId)
+    const table = session?.largeTable
+    if (session === undefined || table === undefined) throw new Error('Not a large-table session.')
+    const engine = dataEngineClient()
+    const numberColumns = largeTableFileNumberColumns(table)
+    const setCalc = (id: string, calc: LargeTableCalc): void => {
+      const next = new Map(table.calcs.current)
+      next.set(id, calc)
+      table.calcs.current = next
+    }
+    try {
+      if (request.action === 'create') {
+        // the first row is the header; the formula fills the rows below it
+        if (request.anchorRow < 1 || table.rows < 2) {
+          return largeTableCalcResultSchema.parse({ ok: false, code: 'HEADER_ROW', detail: '' })
+        }
+        const mark = largeTableColumnMark(table.csvFormat, request.column)
+        const created = await engine.calcCreate({
+          sessionId: table.engineSessionId,
+          formula: request.formula,
+          anchorRow: request.anchorRow,
+          column: request.column,
+          firstRow: 1,
+          lastRow: table.rows - 1,
+          sheetName: [...session.sheetNames.values()][0] ?? 'Sheet1',
+          decimal: mark,
+          numberColumns,
+          edits: request.edits,
+          replaceExisting: true,
+        })
+        if (created.replaced !== null) {
+          const old = table.calcs.current.get(created.replaced)
+          if (old) setCalc(created.replaced, { ...old, active: false })
+        }
+        setCalc(created.calcId, { column: request.column, mark, active: true })
+        table.width.current = Math.max(table.width.current, request.column + 1)
+        return largeTableCalcResultSchema.parse({
+          ok: true,
+          ms: created.ms,
+          refreshed: [request.column, ...created.refreshed],
+          calcId: created.calcId,
+          replaced: created.replaced,
+          rows: created.rows,
+          errors: created.errors,
+          firstErrorRow: created.firstErrorRow,
+        })
+      }
+      if (request.action === 'set-active') {
+        const calc = table.calcs.current.get(request.calcId)
+        if (calc === undefined) throw new Error('Unknown calculated column.')
+        const done = await engine.calcSetActive({
+          sessionId: table.engineSessionId,
+          calcId: request.calcId,
+          active: request.active,
+          numberColumns,
+          edits: request.edits,
+        })
+        setCalc(request.calcId, { ...calc, active: request.active })
+        return largeTableCalcResultSchema.parse({
+          ok: true,
+          ms: done.ms,
+          refreshed: [calc.column, ...done.refreshed],
+        })
+      }
+      if (![...table.calcs.current.values()].some((calc) => calc.active)) {
+        return largeTableCalcResultSchema.parse({ ok: true, ms: 0, refreshed: [] })
+      }
+      const done = await engine.calcRefresh({
+        sessionId: table.engineSessionId,
+        changed: request.changed,
+        numberColumns,
+        edits: request.edits,
+        quick: request.quick === true,
+      })
+      return largeTableCalcResultSchema.parse({
+        ok: true,
+        ms: done.ms,
+        refreshed: done.refreshed,
+        pending: done.pending === true,
+      })
+    } catch (error) {
+      if (error instanceof DataEngineError) {
+        return largeTableCalcResultSchema.parse({
+          ok: false,
+          code: error.code,
+          detail: error.message,
+        })
+      }
+      throw error
+    }
+  })
+
   ipcMain.handle(IPC_CHANNELS.readWorkbookRowOutline, async (event, input: unknown) => {
     const entry = sessionFor(event)
     const request = workbookFormulaCellsRequestSchema.parse(input)
@@ -5086,11 +5189,11 @@ async function openWorkbookSession(
                 ? {
                     ...sheet,
                     rowCount: Math.max(1, largeTable.rows),
-                    columnCount: Math.max(1, largeTable.columns),
+                    columnCount: Math.max(1, largeTable.width.current),
                     storedCellCount: largeTable.cells,
                     valueCellCount: largeTable.cells,
                     valueRowCount: largeTable.rows,
-                    valueColumnCount: largeTable.columns,
+                    valueColumnCount: largeTable.width.current,
                   }
                 : sheet,
             ),
@@ -5566,6 +5669,8 @@ async function importLargeDelimited(
     importMs: imported.totalMs,
     csvFormat: declared ? { ...typing.report, declared: true } : typing.report,
     target: { current: { path, format: 'csv', size: source.size, mtimeMs: source.mtimeMs } },
+    calcs: { current: new Map() },
+    width: { current: imported.columns },
   }
 }
 
@@ -5632,9 +5737,23 @@ async function saveLargeTable(
     }
   }
   const engine = dataEngineClient()
+  // calculated columns catch up with the journal first (a no-op when the
+  // refresh after the last edit already ran), then the journal is written
+  if ([...table.calcs.current.values()].some((calc) => calc.active)) {
+    const { edits: gridEdits, changed } = largeTableGridEdits(table, request)
+    if (changed.length > 0) {
+      await engine.calcRefresh({
+        sessionId: table.engineSessionId,
+        changed,
+        numberColumns: largeTableFileNumberColumns(table),
+        edits: gridEdits,
+      })
+    }
+  }
   const edits = largeTableEngineEdits(table, request)
   if (edits.fills.length > 0 || edits.cells.length > 0) {
-    await engine.applyEdits({ sessionId: table.engineSessionId, ...edits })
+    const applied = await engine.applyEdits({ sessionId: table.engineSessionId, ...edits })
+    table.width.current = Math.max(table.width.current, applied.columns)
   }
   const temp = join(dirname(path), `.${basename(path)}.${randomUUID()}.fariv-tmp`)
   try {
@@ -5643,12 +5762,7 @@ async function saveLargeTable(
         sessionId: table.engineSessionId,
         path: temp,
         sheetName: [...session.sheetNames.values()][0] ?? 'Sheet1',
-        numberColumns: table.csvFormat.columns
-          .filter((column) => column.kind === 'number')
-          .map((column) => ({
-            column: column.column,
-            decimal: largeTableColumnMark(table.csvFormat, column.column),
-          })),
+        numberColumns: largeTableNumberColumns(table),
       })
     } else {
       await engine.exportDelimited({

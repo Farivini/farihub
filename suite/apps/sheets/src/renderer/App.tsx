@@ -554,6 +554,7 @@ import { EncryptedWorkbookPasswordDialog } from './EncryptedWorkbookPasswordDial
 import { ChangeWorkbookPasswordDialog } from './ChangeWorkbookPasswordDialog'
 import { ToastHost } from './toast'
 import { showToast } from './toast-bus'
+import { createLargeTableCalc, installLargeTableCalc } from './large-table-calc'
 import { AdvancedFilterDialog, type AdvancedFilterColumn } from './AdvancedFilterDialog'
 import { EquationDialog } from './EquationDialog'
 import { IconsDialog } from './IconsDialog'
@@ -2455,12 +2456,25 @@ export function App({
     // Arrows on a multi-cell selection collapse to the active cell first,
     // then move one step (Excel), instead of stepping past the range edge.
     const arrowCollapseDisposable = installArrowCollapse(runtime)
+    // A formula typed into a large base becomes a calculated column over the
+    // whole base (data engine); edits of the cells it reads recompute it.
+    const largeTableCalcDeps = {
+      runtime,
+      getState: () => lazyWorkbookRef.current,
+      notify: (message: string, kind: 'success' | 'error') => {
+        setMessage(message)
+        showToast(message, kind)
+      },
+      status: (message: string) => setMessage(message),
+    }
+    const largeTableCalcDisposable = installLargeTableCalc(largeTableCalcDeps)
     const sheetProtectionDisposable = installSheetProtectionGuard(runtime, {
       getState: () => lazyWorkbookRef.current,
       notify: (message) => {
         setMessage(message)
         showToast(message, 'error')
       },
+      onLargeTableFormula: (cell) => void createLargeTableCalc(largeTableCalcDeps, cell),
     })
     const ctrlDragFillDisposable = installCtrlDragFill(runtime)
     // The grid's right-click item that withholds the selected cells from the
@@ -3889,6 +3903,7 @@ export function App({
       selectionWrapGuardDisposable.dispose()
       arrowCollapseDisposable.dispose()
       sheetProtectionDisposable.dispose()
+      largeTableCalcDisposable.dispose()
       ctrlDragFillDisposable.dispose()
       redactMenuDisposable.dispose()
       contextSubmenuReopenDisposable.dispose()

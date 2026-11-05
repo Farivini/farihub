@@ -241,3 +241,43 @@ pub fn js_number_text(number: f64) -> String {
     }
     format!("{number}")
 }
+
+/// parseNumberWithMark for the plain forms (`-1234,5`, `42`) without the
+/// regexes: a million cells read in a fraction of the time. Anything else
+/// (grouping, exponents, spaces) takes the full rules.
+pub fn parse_number_fast(raw: &str, mark: char) -> Option<f64> {
+    let bytes = raw.as_bytes();
+    let body = bytes.strip_prefix(b"-").unwrap_or(bytes);
+    let mark = mark as u8;
+    let whole = body.iter().take_while(|b| b.is_ascii_digit()).count();
+    let mut end = whole;
+    let mut fraction = 0;
+    if whole > 0 && body.get(whole) == Some(&mark) {
+        fraction = body[whole + 1..]
+            .iter()
+            .take_while(|b| b.is_ascii_digit())
+            .count();
+        end = whole + 1 + fraction;
+    }
+    if whole == 0 || end != body.len() || (end > whole && fraction == 0) {
+        return parse_number_with_mark(raw, mark as char);
+    }
+    // the same rules the full reader applies to these forms
+    if whole > 1 && body[0] == b'0' {
+        return None;
+    }
+    let significant = body[..whole]
+        .iter()
+        .chain(body.get(whole + 1..end).unwrap_or(&[]))
+        .skip_while(|b| **b == b'0')
+        .count();
+    if significant > MAX_EXACT_DIGITS {
+        return None;
+    }
+    let text = if fraction > 0 && mark != b'.' {
+        raw.replacen(mark as char, ".", 1)
+    } else {
+        raw.to_owned()
+    };
+    text.parse::<f64>().ok().filter(|n| n.is_finite())
+}

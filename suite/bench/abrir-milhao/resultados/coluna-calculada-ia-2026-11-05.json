@@ -1,0 +1,13 @@
+{
+  "date": "2026-11-05",
+  "provider": "SIMULATED OpenAI-compatible HTTP provider; no real model",
+  "base": "bank_transactions.csv (valores omitidos)",
+  "checks": {
+    "ia_coluna_inteira_na_tela": true,
+    "ia_recebe_o_aviso": true,
+    "rejeitar_tira_a_coluna": true,
+    "aceitar_mantem": true,
+    "csv_salvo": true
+  },
+  "failures": []
+}

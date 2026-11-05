@@ -4,7 +4,7 @@ import {
   type CsvImportReport,
 } from '@genoffice/xlsx-gateway/gateway/csv-number-format'
 
-import type { DataEngineClient } from './data-engine-client'
+import type { DataEngineClient, DataEngineGridEdits, DataEngineSpan } from './data-engine-client'
 
 /// Where Save writes the base, and the file's size/mtime as last read or
 /// written: a Save over a file changed elsewhere since then is refused.
@@ -13,6 +13,14 @@ export interface LargeTableTarget {
   readonly format: 'csv' | 'xlsx'
   readonly size: number
   readonly mtimeMs: number
+}
+
+/// A calculated column of the base: its results live in the engine's copy,
+/// written in the file's convention with `mark` as the decimal mark.
+export interface LargeTableCalc {
+  readonly column: number
+  readonly mark: ',' | '.'
+  readonly active: boolean
 }
 
 /// A delimited file past the regular import limit, held by the data engine.
@@ -32,6 +40,52 @@ export interface LargeTableSession {
   /// Shared by every session that holds this engine copy (a save swaps the
   /// renderer's session but keeps the base), so it is a mutable holder.
   readonly target: { current: LargeTableTarget }
+  /// Calculated columns by engine id, shared the same way.
+  readonly calcs: { current: ReadonlyMap<string, LargeTableCalc> }
+  /// Columns the grid shows: the file's, plus columns that edits or
+  /// calculated columns added (a session opened after Save takes this).
+  readonly width: { current: number }
+}
+
+/// The calculated column on `column` that is on, if any.
+export function activeLargeTableCalc(
+  table: LargeTableSession,
+  column: number,
+): LargeTableCalc | undefined {
+  for (const calc of table.calcs.current.values()) {
+    if (calc.active && calc.column === column) return calc
+  }
+  return undefined
+}
+
+/// Number columns and their marks, as the grid reads them: the file's number
+/// columns, then the calculated columns that are on.
+export function largeTableNumberColumns(
+  table: LargeTableSession,
+): { column: number; decimal: ',' | '.' }[] {
+  const out = new Map<number, ',' | '.'>()
+  for (const column of table.csvFormat.columns) {
+    if (column.kind === 'number') {
+      out.set(column.column, largeTableColumnMark(table.csvFormat, column.column))
+    }
+  }
+  for (const calc of table.calcs.current.values()) {
+    if (calc.active) out.set(calc.column, calc.mark)
+  }
+  return [...out].map(([column, decimal]) => ({ column, decimal }))
+}
+
+/// The file's own number columns (what the engine reads base values with;
+/// it knows its calculated columns itself).
+export function largeTableFileNumberColumns(
+  table: LargeTableSession,
+): { column: number; decimal: ',' | '.' }[] {
+  return table.csvFormat.columns
+    .filter((column) => column.kind === 'number')
+    .map((column) => ({
+      column: column.column,
+      decimal: largeTableColumnMark(table.csvFormat, column.column),
+    }))
 }
 
 /// A number in plain decimal digits, never in exponent form (csv-export.ts
@@ -88,6 +142,42 @@ export function largeTableEditText(
   }
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
   return value
+}
+
+/// The value edits of a save request with the values the grid holds (what a
+/// formula reads), and the cells they cover.
+export function largeTableGridEdits(
+  table: LargeTableSession,
+  request: SaveEditsLike,
+): { edits: DataEngineGridEdits; changed: DataEngineSpan[] } {
+  const onSheet = (sheetId: string) => table.sheetId === undefined || sheetId === table.sheetId
+  const fills = (request.bulkConstantFills ?? [])
+    .filter((fill) => onSheet(fill.sheetId))
+    .map(({ startRow, endRow, startColumn, endColumn, value }) => ({
+      startRow,
+      endRow,
+      startColumn,
+      endColumn,
+      value,
+    }))
+  const cells = request.edits
+    .filter((edit) => edit.writeValue && onSheet(edit.sheetId))
+    .map(({ row, column, value }) => ({ row, column, value }))
+  const changed: DataEngineSpan[] = [
+    ...fills.map(({ startRow, endRow, startColumn, endColumn }) => ({
+      startRow,
+      endRow,
+      startColumn,
+      endColumn,
+    })),
+    ...cells.map(({ row, column }) => ({
+      startRow: row,
+      endRow: row,
+      startColumn: column,
+      endColumn: column,
+    })),
+  ]
+  return { edits: { cells, fills }, changed }
 }
 
 interface SaveEditsLike {
@@ -160,7 +250,7 @@ export function largeTableEngineEdits(
   }
 }
 
-type CellValue = string | number
+type CellValue = string | number | boolean
 
 /// The value a raw field becomes in the grid — csvToXlsxBufferForOpen's rule:
 /// a number column reads the field with its decimal mark, anything that does
@@ -173,6 +263,14 @@ export function largeTableCellValue(
   const decision = format.columns[column]
   if (decision?.kind !== 'number') return raw
   return parseNumberWithMark(raw, largeTableColumnMark(format, column)) ?? raw
+}
+
+/// A calculated column's stored text as the grid shows it: a number, a
+/// logical, or the text itself (an error value stays its text).
+export function largeTableCalcValue(raw: string, mark: ',' | '.'): CellValue {
+  if (raw === 'TRUE') return true
+  if (raw === 'FALSE') return false
+  return parseNumberWithMark(raw, mark) ?? raw
 }
 
 interface RangeRequest {
@@ -203,11 +301,23 @@ export async function largeTableRangeResult(
     endColumn: range.endColumn,
   })
   const cells: { row: number; column: number; value: CellValue }[] = []
+  const calcMarks = new Map<number, ',' | '.'>()
+  for (const calc of table.calcs.current.values()) {
+    if (calc.active) calcMarks.set(calc.column, calc.mark)
+  }
   for (const [row, values] of rows) {
     values.forEach((raw, offset) => {
       if (raw === null || raw === '') return
       const column = range.startColumn + offset
-      cells.push({ row, column, value: largeTableCellValue(table.csvFormat, column, raw) })
+      const calcMark = calcMarks.get(column)
+      cells.push({
+        row,
+        column,
+        value:
+          calcMark === undefined
+            ? largeTableCellValue(table.csvFormat, column, raw)
+            : largeTableCalcValue(raw, calcMark),
+      })
     })
   }
   // the engine holds every row from the moment the import returns
@@ -243,12 +353,7 @@ export async function largeTableFindResult(
   if (request.lookIn === 'formulas_only' || (request.sheetId && request.sheetId !== sheetId)) {
     return { matches: [], complete: true, indexingComplete: true }
   }
-  const numberColumns = table.csvFormat.columns
-    .filter((column) => column.kind === 'number')
-    .map((column) => ({
-      column: column.column,
-      decimal: largeTableColumnMark(table.csvFormat, column.column),
-    }))
+  const numberColumns = largeTableNumberColumns(table)
   const page = await engine.findCells({
     sessionId: table.engineSessionId,
     query: request.query,
@@ -265,7 +370,7 @@ export async function largeTableFindResult(
       // the engine sends a number cell as its JavaScript text: read it back
       const number = Number(text)
       const isNumber =
-        table.csvFormat.columns[column]?.kind === 'number' &&
+        numberColumns.some((entry) => entry.column === column) &&
         text.trim() !== '' &&
         Number.isFinite(number) &&
         String(number) === text
