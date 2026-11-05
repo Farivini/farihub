@@ -841,6 +841,17 @@ export const workbookFileSchema = z
     csvPath: z.string().min(1).optional(),
     /// The source CSV had no data rows; the renderer opens a blank grid with one notice.
     emptyCsv: z.boolean().optional(),
+    /// A delimited file past the regular import limit, held by the data engine
+    /// (DuckDB): the grid streams it from there, and it opens read-only.
+    largeTable: z
+      .object({
+        rows: z.number().int().positive(),
+        columns: z.number().int().nonnegative(),
+        sourcePath: z.string().min(1),
+        importMs: z.number().int().nonnegative(),
+      })
+      .strict()
+      .optional(),
     /// How the delimited source was read (csv-number-format.ts): its delimiter
     /// and decimal mark — Save writes the CSV back in the same convention — and
     /// per column, whether values became numbers, stayed identifiers, or were
@@ -901,6 +912,16 @@ export const workbookFileSchema = z
     shortDateFormat: z.string().optional(),
   })
   .strict()
+
+export const largeTableColumnEdgeRequestSchema = z
+  .object({
+    sessionId: z.string().uuid(),
+    column: z.number().int().nonnegative().max(16_383),
+    row: z.number().int().nonnegative(),
+    down: z.boolean(),
+  })
+  .strict()
+export type LargeTableColumnEdgeRequest = z.infer<typeof largeTableColumnEdgeRequestSchema>
 
 export const workbookRangeRequestSchema = z
   .object({
@@ -3161,6 +3182,8 @@ export interface DesktopApi {
   readWorkbookFormulas(request: WorkbookFormulaCellsRequest): Promise<WorkbookFormulaCellsResult>
   findWorkbookCells(request: WorkbookFindCellsRequest): Promise<WorkbookFindCellsResult>
   readWorkbookRowOutline(request: WorkbookFormulaCellsRequest): Promise<WorkbookRowOutlineResult>
+  /** Ctrl+Up/Down over a large base: the row the data-edge jump lands on */
+  largeTableColumnEdge(request: LargeTableColumnEdgeRequest): Promise<number>
   recalcWorkbook(request: WorkbookRecalcRequest): Promise<WorkbookRecalcResult>
   readWorkbookMedia(request: WorkbookMediaRequest): Promise<WorkbookMediaResult>
   readPivotDefinition(request: WorkbookPivotRequest): Promise<WorkbookPivotDefinition>

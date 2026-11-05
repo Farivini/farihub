@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { nextSheetName, planFromOps } from '../src/renderer/op-executor'
+import { applyChangePlan, nextSheetName, planFromOps } from '../src/renderer/op-executor'
 
 const workbook = {
   getSheetBySheetId: (id: string) => (id === 'sh1' ? { getSheetName: () => 'Data' } : undefined),
@@ -39,5 +39,30 @@ describe('planFromOps', () => {
     expect(plan.formatChanges).toHaveLength(1)
     expect(plan.cellChanges).toHaveLength(0)
     expect(plan.transactionId).toMatch(/^ui-/)
+  })
+})
+
+describe('applyChangePlan on a large base', () => {
+  it('refuses every plan before it touches the grid or the journal', async () => {
+    const plan = planFromOps(
+      [{ op: 'fill_range', sheetId: 'sh1', source: 'A1', target: 'A1:A10' }] as never,
+      workbook,
+      'ribbon',
+    )
+    const messages: string[] = []
+    const ctx = {
+      // any access beyond the read-only check would throw on these stubs
+      runtime: null,
+      workbook: null,
+      state: { file: { largeTable: { rows: 2_000_000, columns: 9 } } },
+      lazyWorkbookRef: { current: null },
+      setMessage: (message: string) => messages.push(message),
+      setPendingEdits: () => undefined,
+    } as unknown as Parameters<typeof applyChangePlan>[1]
+    const outcome = await applyChangePlan(plan, ctx, {} as Parameters<typeof applyChangePlan>[2])
+    expect(outcome.ok).toBe(false)
+    expect(messages).toHaveLength(1)
+    expect(messages[0]).toMatch(/read-only|só para leitura|只读/)
+    expect(outcome.ok ? '' : outcome.reason).toBe(messages[0])
   })
 })

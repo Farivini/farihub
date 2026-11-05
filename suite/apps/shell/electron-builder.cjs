@@ -90,6 +90,10 @@ const winSidecarCandidates = [
 ]
 const WIN_SIDECAR =
   winSidecarCandidates.find((rel) => existsSync(join(__dirname, rel))) ?? winSidecarCandidates[0]
+// The large-table engine (DuckDB, C++): built by `native:build` on the host
+// that packages, MSVC with a static CRT on Windows (native/data-engine/.cargo).
+const WIN_DATA_ENGINE = '../sheets/native/data-engine/target/release/data-engine.exe'
+const DATA_ENGINE = '../sheets/native/data-engine/target/release/data-engine'
 
 function assertExtraResourceSources() {
   for (const rel of [
@@ -200,19 +204,25 @@ function assertUniversalVisionOcr() {
 // Intel dmg, where every workbook open fails. Runs from beforePack, dual-arch
 // mac packs only.
 function assertUniversalSidecar() {
-  const sidecar = join(__dirname, '../sheets/native/xlsx-engine/target/release/xlsx-sidecar')
-  if (!existsSync(sidecar)) {
-    throw new Error(
-      `mac extraResources source missing: ${sidecar} (run "npm run native:build:universal -w @genoffice/sheets" first)`,
-    )
-  }
-  const archs = execFileSync('lipo', ['-archs', sidecar], { encoding: 'utf8' }).trim().split(/\s+/)
-  for (const want of ['x86_64', 'arm64']) {
-    if (!archs.includes(want)) {
+  // the data engine ships beside the sidecar and needs the same fat build
+  for (const rel of [
+    '../sheets/native/xlsx-engine/target/release/xlsx-sidecar',
+    '../sheets/native/data-engine/target/release/data-engine',
+  ]) {
+    const binary = join(__dirname, rel)
+    if (!existsSync(binary)) {
       throw new Error(
-        `xlsx-sidecar is [${archs.join(', ')}] but both mac arch packages ship it — ` +
-          'run "npm run native:build:universal -w @genoffice/sheets" before packaging mac',
+        `mac extraResources source missing: ${binary} (run "npm run native:build:universal -w @genoffice/sheets" first)`,
       )
+    }
+    const archs = execFileSync('lipo', ['-archs', binary], { encoding: 'utf8' }).trim().split(/\s+/)
+    for (const want of ['x86_64', 'arm64']) {
+      if (!archs.includes(want)) {
+        throw new Error(
+          `${rel.split('/').pop()} is [${archs.join(', ')}] but both mac arch packages ship it — ` +
+            'run "npm run native:build:universal -w @genoffice/sheets" before packaging mac',
+        )
+      }
     }
   }
 }
@@ -623,6 +633,10 @@ const config = {
         from: '../sheets/native/xlsx-engine/target/release/xlsx-sidecar',
         to: 'native/xlsx-sidecar',
       },
+      {
+        from: DATA_ENGINE,
+        to: 'native/data-engine',
+      },
     ],
   },
   win: {
@@ -637,6 +651,10 @@ const config = {
       {
         from: WIN_SIDECAR,
         to: 'native/xlsx-sidecar.exe',
+      },
+      {
+        from: WIN_DATA_ENGINE,
+        to: 'native/data-engine.exe',
       },
       {
         from: 'build/shell-new',
@@ -695,6 +713,10 @@ const config = {
         from: '../sheets/native/xlsx-engine/target/release/xlsx-sidecar',
         to: 'native/xlsx-sidecar',
       },
+      {
+        from: DATA_ENGINE,
+        to: 'native/data-engine',
+      },
     ],
   },
   // Same "@genoffice/shell" problem as executableName above: the default deb
@@ -750,6 +772,12 @@ const config = {
     if (context.electronPlatformName === 'darwin' && includeMacX64) {
       assertUniversalSidecar()
       assertUniversalVisionOcr()
+    }
+    const dataEngine = context.electronPlatformName === 'win32' ? WIN_DATA_ENGINE : DATA_ENGINE
+    if (!existsSync(join(__dirname, dataEngine))) {
+      throw new Error(
+        `extraResources source missing: ${dataEngine} (run "npm run native:build -w @genoffice/sheets")`,
+      )
     }
     if (context.electronPlatformName === 'win32' && !existsSync(join(__dirname, WIN_SIDECAR))) {
       throw new Error(

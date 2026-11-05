@@ -488,6 +488,10 @@ export const ja = {
   appFormatCopied: '書式をコピーしました — 対象セルを選択すると適用されます。',
   appProtectionNeedsFile:
     '先に XLSX ファイルを開いてください。保護の設定はファイルに保存されます。',
+  appLargeTableReadOnly:
+    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableOpened:
+    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
   appProtectionNeedsIndexed:
     '保護の設定には、このシートのインデックス作成の完了が必要です — しばらくしてからお試しください。',
   appProtectedWithPassword:

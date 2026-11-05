@@ -119,7 +119,10 @@ export function parseNumberWithMark(raw: string, mark: DecimalMark): number | nu
   return null
 }
 
-interface ColumnCounts {
+/// How many values of one column have each shape (blank values do not
+/// count), plus the first example of the shapes the report quotes. The large-
+/// table engine computes the same counts natively over the whole file.
+export interface ColumnCounts {
   int: number
   comma: number
   point: number
@@ -159,6 +162,16 @@ export function analyzeCsvColumns(
     })
   }
 
+  return decideCsvColumns(counts, delimiter, rows[0] ?? [])
+}
+
+/// The column decision of analyzeCsvColumns, from the shape counts of every
+/// column and the first row (a text first row is reported as the header).
+export function decideCsvColumns(
+  counts: readonly ColumnCounts[],
+  delimiter: string,
+  header: readonly string[],
+): CsvColumnTyping {
   // the columns' own evidence first; the file's mark is what they agree on
   const own = counts.map((entry): DecimalMark | 'conflict' | null => {
     if (entry.code > 0) return null
@@ -170,7 +183,6 @@ export function analyzeCsvColumns(
   const marks = new Set(own.filter((mark): mark is DecimalMark => mark === ',' || mark === '.'))
   const fileMark: DecimalMark | null = marks.size === 1 ? [...marks][0]! : null
 
-  const header = rows[0] ?? []
   const decided: { kind: CsvColumnKind; decimal?: DecimalMark; decidedByFile?: boolean }[] =
     counts.map((entry, column) => {
       const numeric = entry.int + entry.comma + entry.point + entry.ambiguous

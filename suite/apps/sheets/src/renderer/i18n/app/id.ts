@@ -456,6 +456,10 @@ export const id = {
   appSheetAddFailed: 'Tidak dapat menambahkan lembar.',
   appFormatCopied: 'Format disalin — pilih sel target untuk menerapkannya.',
   appProtectionNeedsFile: 'Buka file XLSX dahulu — proteksi disimpan ke file.',
+  appLargeTableReadOnly:
+    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableOpened:
+    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
   appProtectionNeedsIndexed:
     'Proteksi memerlukan lembar ini terindeks penuh dahulu — coba lagi sebentar lagi.',
   appProtectedWithPassword:

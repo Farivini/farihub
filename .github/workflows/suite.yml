@@ -44,7 +44,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: suite/apps/sheets/native/xlsx-engine
+          workspaces: |
+            suite/apps/sheets/native/xlsx-engine
+            suite/apps/sheets/native/data-engine
       - uses: actions/cache@v4
         with:
           path: ~/.cache/electron
@@ -78,7 +80,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: suite/apps/sheets/native/xlsx-engine
+          workspaces: |
+            suite/apps/sheets/native/xlsx-engine
+            suite/apps/sheets/native/data-engine
       - uses: actions/cache@v4
         with:
           path: ~/.cache/electron
@@ -123,7 +127,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: suite/apps/sheets/native/xlsx-engine
+          workspaces: |
+            suite/apps/sheets/native/xlsx-engine
+            suite/apps/sheets/native/data-engine
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck -w @genoffice/shell
       # notices + build:all (with the Rust sidecar, MSVC) + electron-builder --win.

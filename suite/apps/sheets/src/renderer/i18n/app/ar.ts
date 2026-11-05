@@ -441,6 +441,10 @@ export const ar = {
   appSheetAddFailed: 'يتعذر إضافة ورقة.',
   appFormatCopied: 'نُسخ التنسيق — حدد الخلايا الهدف لتطبيقه.',
   appProtectionNeedsFile: 'افتح ملف XLSX أولاً — تُحفظ الحماية في الملف.',
+  appLargeTableReadOnly:
+    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableOpened:
+    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
   appProtectionNeedsIndexed: 'تتطلب الحماية فهرسة الورقة بالكامل أولاً — أعد المحاولة لاحقًا.',
   appProtectedWithPassword: 'هذه الورقة محمية بكلمة مرور — أدخلها لإلغاء الحماية.',
   appProtectionWillWrite: 'حماية الورقة مفعّلة وستُكتب عند الحفظ.',

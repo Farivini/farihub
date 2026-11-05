@@ -451,6 +451,10 @@ export const vi = {
   appSheetAddFailed: 'Không thể thêm trang tính.',
   appFormatCopied: 'Đã sao chép định dạng — chọn các ô đích để áp dụng.',
   appProtectionNeedsFile: 'Trước tiên hãy mở tệp XLSX — bảo vệ sẽ được lưu vào tệp.',
+  appLargeTableReadOnly:
+    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableOpened:
+    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
   appProtectionNeedsIndexed:
     'Bảo vệ yêu cầu trang tính này phải được lập chỉ mục đầy đủ trước — vui lòng thử lại sau giây lát.',
   appProtectedWithPassword:

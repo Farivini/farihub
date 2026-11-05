@@ -477,6 +477,10 @@ export const pl = {
   appSheetAddFailed: 'Nie można dodać arkusza.',
   appFormatCopied: 'Skopiowano format — zaznacz komórki docelowe, aby go zastosować.',
   appProtectionNeedsFile: 'Najpierw otwórz plik XLSX — ochrona jest zapisywana w pliku.',
+  appLargeTableReadOnly:
+    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableOpened:
+    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
   appProtectionNeedsIndexed:
     'Ochrona wymaga najpierw pełnego zaindeksowania tego arkusza — spróbuj ponownie za chwilę.',
   appProtectedWithPassword: 'Ten arkusz jest chroniony hasłem — wpisz je, aby usunąć ochronę.',

@@ -460,6 +460,10 @@ export const cs = {
   appSheetAddFailed: 'List nelze přidat.',
   appFormatCopied: 'Formát zkopírován — vyberte cílové buňky, na které ho chcete použít.',
   appProtectionNeedsFile: 'Nejprve otevřete soubor XLSX — zámek se ukládá do souboru.',
+  appLargeTableReadOnly:
+    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableOpened:
+    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
   appProtectionNeedsIndexed:
     'Zámek vyžaduje nejprve úplné indexování tohoto listu — zkuste to za chvíli znovu.',
   appProtectedWithPassword: 'Tento list je chráněn heslem – zadejte ho pro odemknutí.',

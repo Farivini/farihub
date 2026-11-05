@@ -418,6 +418,10 @@ export const he = {
   appSheetAddFailed: 'לא ניתן להוסיף גיליון.',
   appFormatCopied: 'העיצוב הועתק — בחר את תאי היעד כדי להחיל אותו.',
   appProtectionNeedsFile: 'פתח תחילה קובץ XLSX — ההגנה נשמרת לקובץ.',
+  appLargeTableReadOnly:
+    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableOpened:
+    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
   appProtectionNeedsIndexed:
     'ההגנה דורשת שגיליון זה יסיים תחילה את יצירת האינדקס — נסה שוב בעוד רגע.',
   appProtectedWithPassword: 'גיליון זה מוגן בסיסמה — הזן אותה כדי לבטל את ההגנה.',

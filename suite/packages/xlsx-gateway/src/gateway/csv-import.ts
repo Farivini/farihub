@@ -112,6 +112,48 @@ export function decodeCsvBuffer(bytes: Uint8Array, preferred?: string): string {
   return best
 }
 
+/// How decodeCsvBuffer would decode a file too large to hold as one string,
+/// decided from its first bytes: the large-table engine decodes the whole file
+/// natively with the same WHATWG encoding. `strict` asks the engine to verify
+/// that every byte is UTF-8; when it is not, the caller asks again with
+/// `utf8Failed`, and the legacy charsets are scored on the sample — the same
+/// choice decodeCsvBuffer makes, judged on the sample instead of the whole text.
+export interface CsvTextEncoding {
+  readonly encoding: string
+  readonly skipBytes: number
+  readonly strict: boolean
+}
+
+export function csvTextEncoding(
+  sample: Uint8Array,
+  preferred?: string,
+  utf8Failed = false,
+): CsvTextEncoding {
+  if (sample[0] === 0xef && sample[1] === 0xbb && sample[2] === 0xbf) {
+    return { encoding: 'utf-8', skipBytes: 3, strict: false }
+  }
+  if (sample[0] === 0xff && sample[1] === 0xfe)
+    return { encoding: 'utf-16le', skipBytes: 2, strict: false }
+  if (sample[0] === 0xfe && sample[1] === 0xff)
+    return { encoding: 'utf-16be', skipBytes: 2, strict: false }
+  const bomless = sniffUtf16WithoutBom(sample)
+  if (bomless) return { encoding: bomless, skipBytes: 0, strict: false }
+  if (!utf8Failed) return { encoding: 'utf-8', skipBytes: 0, strict: true }
+  let best = 'utf-8'
+  let bestScore = score(decode(sample, 'utf-8') ?? '')
+  const candidates = preferred ? [preferred, ...LEGACY_CHARSETS] : LEGACY_CHARSETS
+  for (const charset of ['utf-16le', 'utf-16be', ...candidates]) {
+    const candidate = decode(sample, charset)
+    if (candidate === null) continue
+    const candidateScore = score(candidate)
+    if (candidateScore > bestScore) {
+      best = charset
+      bestScore = candidateScore
+    }
+  }
+  return { encoding: best, skipBytes: 0, strict: false }
+}
+
 /// Excel's own hint line: a first line of exactly `sep=<char>` names the
 /// delimiter and is not data. Excel writes it for CSV exports in locales
 /// that use ";" and honours it on open.

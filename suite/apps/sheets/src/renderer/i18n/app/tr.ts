@@ -459,6 +459,10 @@ export const tr = {
   appSheetAddFailed: 'Sayfa eklenemiyor.',
   appFormatCopied: 'Biçim kopyalandı — uygulamak için hedef hücreleri seçin.',
   appProtectionNeedsFile: 'Önce bir XLSX dosyası açın — koruma dosyaya kaydedilir.',
+  appLargeTableReadOnly:
+    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableOpened:
+    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
   appProtectionNeedsIndexed:
     'Koruma için önce bu sayfanın tamamen dizinlenmesi gerekir — birazdan yeniden deneyin.',
   appProtectedWithPassword:

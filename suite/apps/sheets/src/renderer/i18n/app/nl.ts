@@ -486,6 +486,10 @@ export const nl = {
   appFormatCopied: 'Opmaak gekopieerd — selecteer de doelcellen om deze toe te passen.',
   appProtectionNeedsFile:
     'Open eerst een XLSX-bestand — beveiliging wordt in het bestand opgeslagen.',
+  appLargeTableReadOnly:
+    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableOpened:
+    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
   appProtectionNeedsIndexed:
     'Voor beveiliging moet dit werkblad eerst volledig geïndexeerd zijn — probeer het zo opnieuw.',
   appProtectedWithPassword:

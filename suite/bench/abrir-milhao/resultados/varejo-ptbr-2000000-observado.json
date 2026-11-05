@@ -1,0 +1,35 @@
+{
+ "input": "varejo-ptbr-2000000.csv (gerado por million-live/generate-varied.py com 2.000.000 registros)",
+ "stages": {
+  "openToFirstCellMs": 4726,
+  "sheet": {
+   "rows": 2000001,
+   "columns": 26,
+   "a1": "nota"
+  },
+  "ctrlEnd": {
+   "row": 2000000,
+   "column": 7,
+   "value": "Brasil"
+  },
+  "ctrlEndWaitMs": 2598
+ },
+ "frames": {
+  "max": 299.89999999999964,
+  "over100": 6,
+  "over300": 0,
+  "last": 17588.9,
+  "mark": "wheel",
+  "byMark": {
+   "idle": 6.90000000018631,
+   "open": 299.89999999999964,
+   "ctrlEnd": 200,
+   "ctrlHome": 200.10000000000036,
+   "wheel": 183.39999999999782
+  }
+ },
+ "checks": {},
+ "memoryBeforeOpenMiB": 468,
+ "memoryPeakMiB": 963,
+ "memoryAfterMiB": 945
+}

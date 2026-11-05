@@ -1,0 +1,108 @@
+/** Writes cases.json: inputs and what the TypeScript reader returns for them,
+ * so the Rust port is tested against the real behavior. Run from suite/:
+ *   node --import tsx apps/sheets/native/data-engine/gen-cases.ts
+ */
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { parseCsv } from '../../../../packages/xlsx-gateway/src/gateway/csv-import.ts'
+import {
+  numberShape,
+  parseNumberWithMark,
+} from '../../../../packages/xlsx-gateway/src/gateway/csv-number-format.ts'
+
+const inputs: [string, string][] = [
+  ['a;b;c\r\n1;2;3\r\n', ';'],
+  ['﻿a;b\n1;2', ';'],
+  ['sep=;\r\na;b\r\n1;2\r\n', ';'],
+  ['﻿sep=,\na,b\n', ','],
+  ['SEP=|\na|b\n', '|'],
+  ['sep=;\n', ';'],
+  ['sep=;', ';'],
+  ['se', ','],
+  ['a;"x;y";3\r\n2;"multi\nline";\r\n3\r\n4;5;6;7\r\n;;\r\n"q""uote";0012;1.234,5\r\n', ';'],
+  ['"a""b"c,d\n', ','],
+  ['ab"c",d\n', ','],
+  ['"",x\n', ','],
+  ['"""",x\n', ','],
+  ['"unterminated,x\ny\n', ','],
+  ['"ends with quote"', ','],
+  ['a\r\rb\n\nc\r\n', ','],
+  ['"cr\r\ninside",1\r\n', ','],
+  ['"cr\rinside",1\r', ','],
+  ['x\n,\n;;\n\n\n', ','],
+  ['x\n\n\ny\n\n', ','],
+  [',,\n1,,\n,,\n', ','],
+  ['\t1\t\t2\n', '\t'],
+  ['ação;€;日本\n"çã";ü\n', ';'],
+  ['', ','],
+  ['\n\n', ','],
+  ['a"b,"c"d\n', ','],
+]
+const values = [
+  '1',
+  '-1',
+  '007',
+  '12345678901',
+  '1.234',
+  '1,234',
+  '1.234,56',
+  '1,234.56',
+  '1,5',
+  '1.5',
+  '0,5',
+  '0.5',
+  '01,5',
+  '.5',
+  '-.5',
+  '1.',
+  '1e10',
+  '1E-3',
+  '-1.5e+3',
+  '+86',
+  '1 234',
+  ' 12 ',
+  ' 12 ',
+  '12,3,4',
+  '1.234.567',
+  '1,234,567',
+  '1.234.567,89',
+  '1,234,567.89',
+  '999999999999999',
+  '1234567890123456',
+  '0',
+  '-0',
+  '00',
+  'abc',
+  '',
+  ' ',
+  '1,',
+  ',5',
+  '123456789012.345',
+  '3,14159265358979',
+  '1.0e5',
+  '1.e5',
+  '0.0000001',
+  '12/05/2024',
+  '10%',
+  'R$ 10',
+  '1e400',
+  '-',
+  '--1',
+  '1-2',
+]
+const parse = inputs.map(([input, delimiter]) => ({
+  input,
+  delimiter,
+  rows: parseCsv(input, delimiter),
+}))
+const numbers = values.map((value) => ({
+  value,
+  shape: numberShape(value),
+  comma: parseNumberWithMark(value, ','),
+  point: parseNumberWithMark(value, '.'),
+}))
+writeFileSync(
+  join(import.meta.dirname, 'cases.json'),
+  JSON.stringify({ parse, numbers }, null, 1) + '\n',
+)
+console.log(parse.length, 'parse cases,', numbers.length, 'number cases')

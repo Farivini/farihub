@@ -490,6 +490,10 @@ export const pt = {
   appSheetAddFailed: 'Não foi possível adicionar a planilha.',
   appFormatCopied: 'Formato copiado — selecione as células de destino para aplicá-lo.',
   appProtectionNeedsFile: 'Abra primeiro um arquivo XLSX — a proteção é salva no arquivo.',
+  appLargeTableReadOnly:
+    'Esta base grande está aberta só para leitura nesta versão: editar, formatar e salvar chegam na próxima etapa.',
+  appLargeTableOpened:
+    '{name}: {rows} linhas abertas pelo motor de bases grandes, só para leitura. Editar e salvar chegam na próxima etapa.',
   appProtectionNeedsIndexed:
     'A proteção requer que esta planilha seja totalmente indexada primeiro — tente novamente em instantes.',
   appProtectedWithPassword: 'Esta planilha está protegida por senha — informe-a para desproteger.',

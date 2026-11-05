@@ -1,0 +1,625 @@
+{
+ "parse": [
+  {
+   "input": "a;b;c\r\n1;2;3\r\n",
+   "delimiter": ";",
+   "rows": [
+    [
+     "a",
+     "b",
+     "c"
+    ],
+    [
+     "1",
+     "2",
+     "3"
+    ]
+   ]
+  },
+  {
+   "input": "﻿a;b\n1;2",
+   "delimiter": ";",
+   "rows": [
+    [
+     "a",
+     "b"
+    ],
+    [
+     "1",
+     "2"
+    ]
+   ]
+  },
+  {
+   "input": "sep=;\r\na;b\r\n1;2\r\n",
+   "delimiter": ";",
+   "rows": [
+    [
+     "a",
+     "b"
+    ],
+    [
+     "1",
+     "2"
+    ]
+   ]
+  },
+  {
+   "input": "﻿sep=,\na,b\n",
+   "delimiter": ",",
+   "rows": [
+    [
+     "a",
+     "b"
+    ]
+   ]
+  },
+  {
+   "input": "SEP=|\na|b\n",
+   "delimiter": "|",
+   "rows": [
+    [
+     "a",
+     "b"
+    ]
+   ]
+  },
+  {
+   "input": "sep=;\n",
+   "delimiter": ";",
+   "rows": []
+  },
+  {
+   "input": "sep=;",
+   "delimiter": ";",
+   "rows": [
+    [
+     "sep=",
+     ""
+    ]
+   ]
+  },
+  {
+   "input": "se",
+   "delimiter": ",",
+   "rows": [
+    [
+     "se"
+    ]
+   ]
+  },
+  {
+   "input": "a;\"x;y\";3\r\n2;\"multi\nline\";\r\n3\r\n4;5;6;7\r\n;;\r\n\"q\"\"uote\";0012;1.234,5\r\n",
+   "delimiter": ";",
+   "rows": [
+    [
+     "a",
+     "x;y",
+     "3"
+    ],
+    [
+     "2",
+     "multi\nline",
+     ""
+    ],
+    [
+     "3"
+    ],
+    [
+     "4",
+     "5",
+     "6",
+     "7"
+    ],
+    [
+     "",
+     "",
+     ""
+    ],
+    [
+     "q\"uote",
+     "0012",
+     "1.234,5"
+    ]
+   ]
+  },
+  {
+   "input": "\"a\"\"b\"c,d\n",
+   "delimiter": ",",
+   "rows": [
+    [
+     "a\"bc",
+     "d"
+    ]
+   ]
+  },
+  {
+   "input": "ab\"c\",d\n",
+   "delimiter": ",",
+   "rows": [
+    [
+     "ab\"c\"",
+     "d"
+    ]
+   ]
+  },
+  {
+   "input": "\"\",x\n",
+   "delimiter": ",",
+   "rows": [
+    [
+     "",
+     "x"
+    ]
+   ]
+  },
+  {
+   "input": "\"\"\"\",x\n",
+   "delimiter": ",",
+   "rows": [
+    [
+     "\"",
+     "x"
+    ]
+   ]
+  },
+  {
+   "input": "\"unterminated,x\ny\n",
+   "delimiter": ",",
+   "rows": [
+    [
+     "unterminated,x\ny\n"
+    ]
+   ]
+  },
+  {
+   "input": "\"ends with quote\"",
+   "delimiter": ",",
+   "rows": [
+    [
+     "ends with quote"
+    ]
+   ]
+  },
+  {
+   "input": "a\r\rb\n\nc\r\n",
+   "delimiter": ",",
+   "rows": [
+    [
+     "a"
+    ],
+    [
+     ""
+    ],
+    [
+     "b"
+    ],
+    [
+     ""
+    ],
+    [
+     "c"
+    ]
+   ]
+  },
+  {
+   "input": "\"cr\r\ninside\",1\r\n",
+   "delimiter": ",",
+   "rows": [
+    [
+     "cr\ninside",
+     "1"
+    ]
+   ]
+  },
+  {
+   "input": "\"cr\rinside\",1\r",
+   "delimiter": ",",
+   "rows": [
+    [
+     "cr\ninside",
+     "1"
+    ]
+   ]
+  },
+  {
+   "input": "x\n,\n;;\n\n\n",
+   "delimiter": ",",
+   "rows": [
+    [
+     "x"
+    ],
+    [
+     "",
+     ""
+    ],
+    [
+     ";;"
+    ]
+   ]
+  },
+  {
+   "input": "x\n\n\ny\n\n",
+   "delimiter": ",",
+   "rows": [
+    [
+     "x"
+    ],
+    [
+     ""
+    ],
+    [
+     ""
+    ],
+    [
+     "y"
+    ]
+   ]
+  },
+  {
+   "input": ",,\n1,,\n,,\n",
+   "delimiter": ",",
+   "rows": [
+    [
+     "",
+     "",
+     ""
+    ],
+    [
+     "1",
+     "",
+     ""
+    ]
+   ]
+  },
+  {
+   "input": "\t1\t\t2\n",
+   "delimiter": "\t",
+   "rows": [
+    [
+     "",
+     "1",
+     "",
+     "2"
+    ]
+   ]
+  },
+  {
+   "input": "ação;€;日本\n\"çã\";ü\n",
+   "delimiter": ";",
+   "rows": [
+    [
+     "ação",
+     "€",
+     "日本"
+    ],
+    [
+     "çã",
+     "ü"
+    ]
+   ]
+  },
+  {
+   "input": "",
+   "delimiter": ",",
+   "rows": []
+  },
+  {
+   "input": "\n\n",
+   "delimiter": ",",
+   "rows": []
+  },
+  {
+   "input": "a\"b,\"c\"d\n",
+   "delimiter": ",",
+   "rows": [
+    [
+     "a\"b",
+     "cd"
+    ]
+   ]
+  }
+ ],
+ "numbers": [
+  {
+   "value": "1",
+   "shape": "int",
+   "comma": 1,
+   "point": 1
+  },
+  {
+   "value": "-1",
+   "shape": "int",
+   "comma": -1,
+   "point": -1
+  },
+  {
+   "value": "007",
+   "shape": "code",
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": "12345678901",
+   "shape": "code",
+   "comma": 12345678901,
+   "point": 12345678901
+  },
+  {
+   "value": "1.234",
+   "shape": "ambiguous",
+   "comma": 1234,
+   "point": 1.234
+  },
+  {
+   "value": "1,234",
+   "shape": "ambiguous",
+   "comma": 1.234,
+   "point": 1234
+  },
+  {
+   "value": "1.234,56",
+   "shape": "comma",
+   "comma": 1234.56,
+   "point": null
+  },
+  {
+   "value": "1,234.56",
+   "shape": "point",
+   "comma": null,
+   "point": 1234.56
+  },
+  {
+   "value": "1,5",
+   "shape": "comma",
+   "comma": 1.5,
+   "point": null
+  },
+  {
+   "value": "1.5",
+   "shape": "point",
+   "comma": null,
+   "point": 1.5
+  },
+  {
+   "value": "0,5",
+   "shape": "comma",
+   "comma": 0.5,
+   "point": null
+  },
+  {
+   "value": "0.5",
+   "shape": "point",
+   "comma": null,
+   "point": 0.5
+  },
+  {
+   "value": "01,5",
+   "shape": "code",
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": ".5",
+   "shape": "point",
+   "comma": null,
+   "point": 0.5
+  },
+  {
+   "value": "-.5",
+   "shape": "point",
+   "comma": null,
+   "point": -0.5
+  },
+  {
+   "value": "1.",
+   "shape": "point",
+   "comma": null,
+   "point": 1
+  },
+  {
+   "value": "1e10",
+   "shape": "point",
+   "comma": null,
+   "point": 10000000000
+  },
+  {
+   "value": "1E-3",
+   "shape": "point",
+   "comma": null,
+   "point": 0.001
+  },
+  {
+   "value": "-1.5e+3",
+   "shape": "point",
+   "comma": null,
+   "point": -1500
+  },
+  {
+   "value": "+86",
+   "shape": null,
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": "1 234",
+   "shape": null,
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": " 12 ",
+   "shape": "int",
+   "comma": 12,
+   "point": 12
+  },
+  {
+   "value": " 12 ",
+   "shape": "int",
+   "comma": 12,
+   "point": 12
+  },
+  {
+   "value": "12,3,4",
+   "shape": null,
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": "1.234.567",
+   "shape": "comma",
+   "comma": 1234567,
+   "point": null
+  },
+  {
+   "value": "1,234,567",
+   "shape": "point",
+   "comma": null,
+   "point": 1234567
+  },
+  {
+   "value": "1.234.567,89",
+   "shape": "comma",
+   "comma": 1234567.89,
+   "point": null
+  },
+  {
+   "value": "1,234,567.89",
+   "shape": "point",
+   "comma": null,
+   "point": 1234567.89
+  },
+  {
+   "value": "999999999999999",
+   "shape": "code",
+   "comma": 999999999999999,
+   "point": 999999999999999
+  },
+  {
+   "value": "1234567890123456",
+   "shape": "code",
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": "0",
+   "shape": "int",
+   "comma": 0,
+   "point": 0
+  },
+  {
+   "value": "-0",
+   "shape": "int",
+   "comma": 0,
+   "point": 0
+  },
+  {
+   "value": "00",
+   "shape": "code",
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": "abc",
+   "shape": null,
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": "",
+   "shape": null,
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": " ",
+   "shape": null,
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": "1,",
+   "shape": null,
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": ",5",
+   "shape": null,
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": "123456789012.345",
+   "shape": "point",
+   "comma": null,
+   "point": 123456789012.345
+  },
+  {
+   "value": "3,14159265358979",
+   "shape": "comma",
+   "comma": 3.14159265358979,
+   "point": null
+  },
+  {
+   "value": "1.0e5",
+   "shape": "point",
+   "comma": null,
+   "point": 100000
+  },
+  {
+   "value": "1.e5",
+   "shape": "point",
+   "comma": null,
+   "point": 100000
+  },
+  {
+   "value": "0.0000001",
+   "shape": "point",
+   "comma": null,
+   "point": 1e-7
+  },
+  {
+   "value": "12/05/2024",
+   "shape": null,
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": "10%",
+   "shape": null,
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": "R$ 10",
+   "shape": null,
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": "1e400",
+   "shape": "point",
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": "-",
+   "shape": null,
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": "--1",
+   "shape": null,
+   "comma": null,
+   "point": null
+  },
+  {
+   "value": "1-2",
+   "shape": null,
+   "comma": null,
+   "point": null
+  }
+ ]
+}

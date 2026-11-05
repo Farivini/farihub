@@ -424,7 +424,11 @@ import { resetLargeFilter } from './large-filter-state'
 import { installForceStringMarkGate, installLongTextRender } from './long-text-render'
 import { installAutofitWrapBudget } from './autofit-wrap-budget'
 import { installAutofitLinePitch } from './autofit-line-pitch'
-import { installHeaderUnhideDebounce } from './load-perf-patches'
+import {
+  installHeaderUnhideDebounce,
+  installRowFilterSkip,
+  tableFilterHidesRows,
+} from './load-perf-patches'
 import { installCopyAnimationIdle } from './copy-animation-idle'
 import { installNumberAsTextAlertSeverity } from './number-as-text-alert'
 import { installFormulaStreamHold } from './formula-stream-hold'
@@ -433,6 +437,7 @@ import { installRtlTextDirectionFix } from './rtl-text-fix'
 import { installRtlGridMirror } from './rtl-grid-mirror'
 import { installVertAlignRender } from './vert-align-render'
 import { installMultiRowAutofit } from './autofit-multi-row'
+import { SheetsFilterService } from '@univerjs/sheets-filter'
 import { registerExcelJumpNav } from './excel-jump-nav'
 import { registerEditorWordJump } from './editor-word-jump'
 import { registerExcelShortcuts } from './excel-shortcuts'
@@ -2350,6 +2355,16 @@ export function App({
     // canvas line box (Calibri 10: 12.75 pt per line, not ~10 pt).
     installAutofitLinePitch()
     installHeaderUnhideDebounce()
+    // A large base is read-only and can hold no sheet or table filter: its
+    // million-row layout pass needs no per-row "filtered?" questions.
+    installRowFilterSkip((unitId, subUnitId) => {
+      const state = lazyWorkbookRef.current
+      if (state?.file.largeTable === undefined || unitId !== `file-${state.file.sha256}`)
+        return false
+      const filters = univerRef.current?.univer.__getInjector().get(SheetsFilterService)
+      if (filters?.getFilterModel(unitId, subUnitId)) return false
+      return !tableFilterHidesRows(unitId, subUnitId)
+    })
     // The dashed border on a copied range is a per-frame animation. It must
     // not keep repainting the scene while nobody is looking at it.
     installCopyAnimationIdle()
@@ -2470,7 +2485,17 @@ export function App({
     })
     // Ctrl/Cmd+Arrow data-edge jumps must stop at formula cells even when
     // their values are empty strings or not yet materialized (cache mode).
-    registerExcelJumpNav(runtime)
+    registerExcelJumpNav(runtime, (sheetId, column, row, down) => {
+      const state = lazyWorkbookRef.current
+      if (state?.file.largeTable === undefined) return null
+      if (state.file.sheets[0]?.id !== sheetId) return null
+      return window.desktopApi.largeTableColumnEdge({
+        sessionId: state.file.sessionId,
+        column,
+        row,
+        down,
+      })
+    })
     // Ctrl+arrow (mac: Option) word jumps inside the cell editor / formula bar
     registerEditorWordJump(runtime)
     // Excel-standard keys Univer doesn't ship: worksheet-tab switching,
@@ -5152,6 +5177,7 @@ export function App({
     if ((window as unknown as Record<string, unknown>).__genofficeDebugHooks === true) {
       ;(window as unknown as Record<string, unknown>).__genofficeDebug = {
         univerAPI: univerRef.current?.univerAPI,
+        currentSessionId: () => lazyWorkbookRef.current?.file.sessionId ?? null,
         // Exercise the actual AI reader, including cache-only formula metadata.
         readCells: (addresses: string[], sheetId?: string) =>
           readCellsImpl(readContext(), addresses, sheetId),
@@ -5411,17 +5437,29 @@ export function App({
         return
       }
       setEmptyCsvNotice(selected.emptyCsv === true)
-      setCsvFormatNotice(
-        selected.emptyCsv
+      const largeTableNotice =
+        selected.largeTable === undefined
           ? null
-          : csvOpenNotice(
-              {
-                // the .csv the user opened, not the converted copy's name
-                name: selected.csvPath?.split(/[\\/]/).pop() ?? selected.name,
-                csvFormat: selected.csvFormat,
-              },
-              (key, values) => t(key, values),
-            ),
+          : t('appLargeTableOpened', {
+              name: selected.largeTable.sourcePath.split(/[\\/]/).pop() ?? selected.name,
+              rows: selected.largeTable.rows.toLocaleString(getLang()),
+            })
+      const formatNotice = selected.emptyCsv
+        ? null
+        : csvOpenNotice(
+            {
+              // the .csv the user opened, not the converted copy's name
+              name: selected.csvPath?.split(/[\\/]/).pop() ?? selected.name,
+              csvFormat: selected.csvFormat,
+            },
+            (key, values) => t(key, values),
+          )
+      setCsvFormatNotice(
+        largeTableNotice === null
+          ? formatNotice
+          : formatNotice === null
+            ? largeTableNotice
+            : `${largeTableNotice} ${formatNotice}`,
       )
       setMessage(selected.emptyCsv ? '' : t('appOpened', { name: selected.name }))
     } catch (error: unknown) {

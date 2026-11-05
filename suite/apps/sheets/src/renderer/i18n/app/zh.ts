@@ -411,6 +411,8 @@ export const zh = {
   appSheetAddFailed: '无法添加工作表。',
   appFormatCopied: '格式已复制——选中目标单元格即可应用。',
   appProtectionNeedsFile: '请先打开 XLSX 文件——保护设置会保存进文件。',
+  appLargeTableReadOnly: '这个大型数据表在此版本中为只读：编辑、格式和保存将在下一阶段提供。',
+  appLargeTableOpened: '{name}：{rows} 行由大型数据引擎打开，只读。编辑和保存将在下一阶段提供。',
   appProtectionNeedsIndexed: '保护设置需要该工作表先完成索引——稍后再试。',
   appProtectedWithPassword: '该工作表有密码保护——请输入密码以取消保护。',
   appProtectionWillWrite: '工作表保护已开启，保存时写入文件。',

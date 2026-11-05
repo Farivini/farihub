@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Build the xlsx-sidecar as a macOS universal (fat) binary for release
+// Build the xlsx-sidecar and the data engine as macOS universal (fat) binaries for release
 // packaging: compile both Apple targets and lipo-merge them into
 // native/xlsx-engine/target/release/xlsx-sidecar — the exact path the shell's
 // electron-builder mac extraResources reads, so the host-arch dev build and
@@ -29,40 +29,50 @@ if (process.platform !== 'darwin') fatal('macOS only (needs lipo)')
 const sheetsDir = join(dirname(fileURLToPath(import.meta.url)), '..')
 const TARGETS = ['x86_64-apple-darwin', 'aarch64-apple-darwin']
 
-for (const target of TARGETS) {
-  console.log(`[sidecar-universal] cargo build --target ${target}`)
+// Both native binaries ship in the mac packages: the XLSX sidecar and the
+// large-table data engine (DuckDB). Each becomes one fat binary at the path
+// electron-builder reads.
+const BINARIES = [
+  { crate: 'xlsx-engine', binary: 'xlsx-sidecar' },
+  { crate: 'data-engine', binary: 'data-engine' },
+]
+
+for (const { crate, binary } of BINARIES) {
+  for (const target of TARGETS) {
+    console.log(`[sidecar-universal] ${crate}: cargo build --target ${target}`)
+    execFileSync(
+      'cargo',
+      [
+        'build',
+        '--release',
+        '--manifest-path',
+        `native/${crate}/Cargo.toml`,
+        '--config',
+        `native/${crate}/.cargo/config.toml`,
+        '--target',
+        target,
+      ],
+      { cwd: sheetsDir, stdio: 'inherit' },
+    )
+  }
+
+  const outDir = join(sheetsDir, `native/${crate}/target/release`)
+  mkdirSync(outDir, { recursive: true })
+  const out = join(outDir, binary)
   execFileSync(
-    'cargo',
+    'lipo',
     [
-      'build',
-      '--release',
-      '--manifest-path',
-      'native/xlsx-engine/Cargo.toml',
-      '--config',
-      'native/xlsx-engine/.cargo/config.toml',
-      '--target',
-      target,
+      '-create',
+      ...TARGETS.map((t) => join(sheetsDir, `native/${crate}/target`, t, `release/${binary}`)),
+      '-output',
+      out,
     ],
-    { cwd: sheetsDir, stdio: 'inherit' },
+    { stdio: 'inherit' },
   )
-}
 
-const outDir = join(sheetsDir, 'native/xlsx-engine/target/release')
-mkdirSync(outDir, { recursive: true })
-const out = join(outDir, 'xlsx-sidecar')
-execFileSync(
-  'lipo',
-  [
-    '-create',
-    ...TARGETS.map((t) => join(sheetsDir, 'native/xlsx-engine/target', t, 'release/xlsx-sidecar')),
-    '-output',
-    out,
-  ],
-  { stdio: 'inherit' },
-)
-
-const archs = execFileSync('lipo', ['-archs', out], { encoding: 'utf8' }).trim()
-if (!archs.includes('x86_64') || !archs.includes('arm64')) {
-  fatal(`merge produced "${archs}" — expected x86_64 + arm64`)
+  const archs = execFileSync('lipo', ['-archs', out], { encoding: 'utf8' }).trim()
+  if (!archs.includes('x86_64') || !archs.includes('arm64')) {
+    fatal(`${binary}: merge produced "${archs}" — expected x86_64 + arm64`)
+  }
+  console.log(`[sidecar-universal] ${out} (${archs})`)
 }
-console.log(`[sidecar-universal] ${out} (${archs})`)

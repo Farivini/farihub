@@ -1,0 +1,172 @@
+{
+ "input": {
+  "name": "varied-1m.csv",
+  "bytes": 93234810,
+  "sha256": "61d7986bb662d225bacdb386b0f0a694dfa7cc8b20a98c54b4fda5493b16e15e"
+ },
+ "environment": {
+  "platform": "linux x64",
+  "node": "v22.22.0",
+  "cpus": 4,
+  "totalMemGiB": 16
+ },
+ "stages": {
+  "openToFirstCellMs": 2608,
+  "notice": "varied-1m.csv: 1.000.001 linhas abertas pelo motor de bases grandes, só para leitura. Editar e salvar chegam na próxima etapa. varied-1m.csv aberto: números com vírgula decimal reconhecidos em 1 colunas.\n×",
+  "oracleMs": 9274,
+  "ctrlEndMs": 138,
+  "ctrlHomeMs": 50,
+  "ctrlDownMs": 90,
+  "gotoMiddleMs": 59,
+  "wheel60Ms": 5410,
+  "sessionKnown": true,
+  "fullCompareMs": 285199,
+  "findAllMs": 77513
+ },
+ "frames": {
+  "last": 27616.3,
+  "mark": "after",
+  "byMark": {
+   "idle": 16.699999999999818,
+   "open": 183.30000000000018,
+   "settle": 116.69999999999982,
+   "ctrlEnd": 116.59999999999854,
+   "ctrlHome": 33.29999999999927,
+   "ctrlDown": 50,
+   "goto": 33.29999999999927,
+   "wheel": 116.70000000000073
+  },
+  "over100": {
+   "open": 2,
+   "settle": 1,
+   "ctrlEnd": 1,
+   "wheel": 1
+  },
+  "over300": {}
+ },
+ "memory": {
+  "beforeOpen": {
+   "totalMiB": 513,
+   "byName": {
+    "electron": 510,
+    "xlsx-sidecar": 4
+   }
+  },
+  "afterOpen": {
+   "totalMiB": 754,
+   "byName": {
+    "electron": 596,
+    "xlsx-sidecar": 6,
+    "data-engine": 151
+   }
+  },
+  "peakDuringUse": {
+   "totalMiB": 886,
+   "byName": {
+    "electron": 727,
+    "xlsx-sidecar": 6,
+    "data-engine": 152
+   }
+  },
+  "peak": {
+   "totalMiB": 1789,
+   "byName": {
+    "electron": 1581,
+    "xlsx-sidecar": 6,
+    "data-engine": 202
+   }
+  }
+ },
+ "checks": {
+  "oraculos_concordam_texto_bruto": {
+   "passed": true,
+   "python": 1000001,
+   "importacaoAtual": 1000001
+  },
+  "grade_com_todas_as_linhas": {
+   "passed": true,
+   "grade": 1000001,
+   "base": 1000001
+  },
+  "ctrl_end_ultima_celula": {
+   "passed": true,
+   "cell": {
+    "row": 1000000,
+    "column": 7,
+    "value": "United Kingdom"
+   },
+   "esperado": {
+    "row": 1000000,
+    "column": 7,
+    "value": "United Kingdom"
+   }
+  },
+  "ctrl_home": {
+   "passed": true,
+   "cell": {
+    "row": 0,
+    "column": 0,
+    "value": "nota"
+   }
+  },
+  "ctrl_seta_baixo": {
+   "passed": true,
+   "cell": {
+    "row": 1000000,
+    "column": 0,
+    "value": 7999999
+   },
+   "esperado": 1000000
+  },
+  "caixa_de_nome_meio": {
+   "passed": true,
+   "cell": {
+    "row": 500000,
+    "column": 2,
+    "value": "Produto 49999; série \"A\""
+   }
+  },
+  "tela_do_meio_igual": {
+   "passed": true,
+   "celulas": 200,
+   "divergencias": 0,
+   "primeiras": []
+  },
+  "edicao_recusada": {
+   "passed": true,
+   "a2": 7000000
+  },
+  "salvar_recusado_com_aviso": {
+   "passed": true,
+   "trecho": "Esta base grande está aberta só para leitura nesta versão: editar, formatar e salvar chegam na próxima etapa."
+  },
+  "todas_as_celulas_iguais_a_importacao_atual": {
+   "passed": true,
+   "comparadas": 8000008,
+   "divergencias": 0,
+   "primeiras": []
+  },
+  "busca_mesma_contagem": {
+   "passed": true,
+   "busca": "série",
+   "achados": 1000000,
+   "esperado": 1000000
+  }
+ },
+ "oracle": {
+  "rows": 1000001,
+  "columns": 8,
+  "delimiter": ";",
+  "columnKinds": [
+   "nota:number",
+   "produto_codigo:identifier",
+   "descricao:text",
+   "quantidade:number",
+   "data_hora:text",
+   "preco_unitario_gbp:number,",
+   "cliente_codigo:identifier",
+   "pais:text"
+  ]
+ },
+ "failures": []
+}
