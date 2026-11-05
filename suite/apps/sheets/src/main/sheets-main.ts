@@ -203,6 +203,7 @@ import {
 import { XlsxSidecarClient } from './xlsx-sidecar-client'
 import { DataEngineClient, DataEngineError } from './data-engine-client'
 import {
+  largeTableColumnMark,
   largeTableEngineEdits,
   largeTableFindResult,
   largeTableRangeResult,
@@ -5644,7 +5645,10 @@ async function saveLargeTable(
         sheetName: [...session.sheetNames.values()][0] ?? 'Sheet1',
         numberColumns: table.csvFormat.columns
           .filter((column) => column.kind === 'number')
-          .map((column) => ({ column: column.column, decimal: column.decimal ?? '.' })),
+          .map((column) => ({
+            column: column.column,
+            decimal: largeTableColumnMark(table.csvFormat, column.column),
+          })),
       })
     } else {
       await engine.exportDelimited({

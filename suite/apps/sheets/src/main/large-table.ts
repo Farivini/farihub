@@ -50,14 +50,28 @@ export function plainDecimal(value: number): string {
     : `${sign}${digits.slice(0, point)}.${digits.slice(point)}`
 }
 
+/// The decimal mark a column is read and written with. A number column keeps
+/// its own mark; an integer-only number column (no mark of its own) takes the
+/// file's, so an edited 1.5 is written and read back the same way — its
+/// existing whole numbers read identically under either mark. Text columns
+/// write numbers in the file's convention, like the CSV writer.
+export function largeTableColumnMark(format: CsvImportReport, column: number): ',' | '.' {
+  const decision = format.columns[column]
+  if (decision?.kind === 'number' && decision.decimal !== undefined) return decision.decimal
+  return format.decimal ?? '.'
+}
+
 /// The text an edited value takes in the base, in the file's own convention:
-/// a number with the file's decimal mark (as the CSV writer saves it), a
-/// boolean as Excel writes it, text as typed; null empties the cell.
+/// a number with its column's decimal mark (the mark reads and the XLSX export
+/// use for that column), a boolean as Excel writes it, text as typed; null
+/// empties the cell.
 export function largeTableEditText(
   value: string | number | boolean | null,
   format: CsvImportReport,
   numberFormat?: string | undefined,
+  column = -1,
 ): string | null {
+  const mark = column >= 0 ? largeTableColumnMark(format, column) : (format.decimal ?? '.')
   if (value === null || value === '') return null
   if (typeof value === 'number') {
     // a typed date or a formatted number keeps the text the grid shows —
@@ -65,12 +79,12 @@ export function largeTableEditText(
     if (numberFormat !== undefined && !/^general$/i.test(numberFormat.trim())) {
       const shown = numfmt.format(numberFormat, value, {
         throws: false,
-        locale: format.decimal === ',' ? 'pt-BR' : 'en-US',
+        locale: mark === ',' ? 'pt-BR' : 'en-US',
       })
       if (typeof shown === 'string' && shown !== '' && !/^#+$/.test(shown)) return shown
     }
     const text = plainDecimal(value)
-    return format.decimal === ',' ? text.replace('.', ',') : text
+    return mark === ',' ? text.replace('.', ',') : text
   }
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
   return value
@@ -115,21 +129,33 @@ export function largeTableEngineEdits(
 } {
   const onSheet = (sheetId: string) => table.sheetId === undefined || sheetId === table.sheetId
   return {
+    // a fill spans columns that may read numbers with different marks:
+    // one engine fill per column, each written in its column's convention
     fills: (request.bulkConstantFills ?? [])
       .filter((fill) => onSheet(fill.sheetId))
-      .map((fill) => ({
-        startRow: fill.startRow,
-        endRow: fill.endRow,
-        startColumn: fill.startColumn,
-        endColumn: fill.endColumn,
-        text: largeTableEditText(fill.value, table.csvFormat),
-      })),
+      .flatMap((fill) =>
+        Array.from({ length: fill.endColumn - fill.startColumn + 1 }, (_, offset) => {
+          const column = fill.startColumn + offset
+          return {
+            startRow: fill.startRow,
+            endRow: fill.endRow,
+            startColumn: column,
+            endColumn: column,
+            text: largeTableEditText(fill.value, table.csvFormat, undefined, column),
+          }
+        }),
+      ),
     cells: request.edits
       .filter((edit) => edit.writeValue && onSheet(edit.sheetId))
       .map((edit) => ({
         row: edit.row,
         column: edit.column,
-        text: largeTableEditText(edit.value, table.csvFormat, edit.style?.numberFormat),
+        text: largeTableEditText(
+          edit.value,
+          table.csvFormat,
+          edit.style?.numberFormat,
+          edit.column,
+        ),
       })),
   }
 }
@@ -146,7 +172,7 @@ export function largeTableCellValue(
 ): CellValue {
   const decision = format.columns[column]
   if (decision?.kind !== 'number') return raw
-  return parseNumberWithMark(raw, decision.decimal ?? '.') ?? raw
+  return parseNumberWithMark(raw, largeTableColumnMark(format, column)) ?? raw
 }
 
 interface RangeRequest {
@@ -219,7 +245,10 @@ export async function largeTableFindResult(
   }
   const numberColumns = table.csvFormat.columns
     .filter((column) => column.kind === 'number')
-    .map((column) => ({ column: column.column, decimal: column.decimal ?? '.' }))
+    .map((column) => ({
+      column: column.column,
+      decimal: largeTableColumnMark(table.csvFormat, column.column),
+    }))
   const page = await engine.findCells({
     sessionId: table.engineSessionId,
     query: request.query,

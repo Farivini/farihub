@@ -11,6 +11,7 @@ import {
 import { largeTableBlock } from '../src/renderer/sheet-protection'
 import {
   largeTableCellValue,
+  largeTableColumnMark,
   largeTableEditText,
   largeTableEngineEdits,
   largeTableFindResult,
@@ -250,5 +251,71 @@ describe('large-table command guard', () => {
         value: { v: 1 },
       }),
     ).toBe('appLargeTableRowLimit')
+  })
+})
+
+describe('large-table decimal mark per column', () => {
+  // pt-BR file: comma-decimal amounts, an integer-only quantity column
+  const rows = parseCsv('qtd;valor;obs\n2;1,5;a\n30;2,25;b\n', ';')
+  const typing = analyzeCsvColumns(rows, ';')
+  const format = typing.report
+
+  it('an integer-only column takes the file mark, and its values read the same', () => {
+    expect(format.decimal).toBe(',')
+    expect(format.columns[0]?.kind).toBe('number')
+    expect(format.columns[0]?.decimal).toBeUndefined()
+    expect(largeTableColumnMark(format, 0)).toBe(',')
+    for (const row of rows)
+      row.forEach((value, column) =>
+        expect(largeTableCellValue(format, column, value)).toBe(
+          typing.numberAt(column, value) ?? value,
+        ),
+      )
+  })
+
+  it('an edited number round-trips through its column (1.234 stays 1.234)', () => {
+    const text = largeTableEditText(1.234, format, undefined, 0)
+    expect(text).toBe('1,234')
+    expect(largeTableCellValue(format, 0, text!)).toBe(1.234)
+    expect(largeTableCellValue(format, 1, largeTableEditText(1234.5, format, undefined, 1)!)).toBe(
+      1234.5,
+    )
+  })
+
+  it('a file whose columns disagree writes each column in its own mark', () => {
+    const mixed = analyzeCsvColumns(parseCsv('a;b\n1,5;2.5\n', ';'), ';').report
+    expect(mixed.decimal).toBeNull()
+    expect(largeTableColumnMark(mixed, 0)).toBe(',')
+    expect(largeTableColumnMark(mixed, 1)).toBe('.')
+    expect(largeTableEditText(7.25, mixed, undefined, 0)).toBe('7,25')
+    expect(largeTableEditText(7.25, mixed, undefined, 1)).toBe('7.25')
+    expect(largeTableCellValue(mixed, 0, '7,25')).toBe(7.25)
+    expect(largeTableCellValue(mixed, 1, '7.25')).toBe(7.25)
+  })
+
+  it('a fill over several columns becomes one engine fill per column', () => {
+    const edits = largeTableEngineEdits(
+      {
+        engineSessionId: 'e',
+        rows: 10,
+        columns: 3,
+        cells: 0,
+        sourcePath: '/b.csv',
+        importMs: 0,
+        csvFormat: format,
+        sheetId: 's',
+        target: { current: { path: '/b.csv', format: 'csv', size: 0, mtimeMs: 0 } },
+      },
+      {
+        edits: [],
+        bulkConstantFills: [
+          { sheetId: 's', startRow: 1, endRow: 2, startColumn: 0, endColumn: 1, value: 0.5 },
+        ],
+      },
+    )
+    expect(edits.fills).toEqual([
+      { startRow: 1, endRow: 2, startColumn: 0, endColumn: 0, text: '0,5' },
+      { startRow: 1, endRow: 2, startColumn: 1, endColumn: 1, text: '0,5' },
+    ])
   })
 })
