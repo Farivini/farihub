@@ -29,6 +29,7 @@ import type {
   StructuralChange,
 } from '@genoffice/xlsx-gateway/domain/workbook.types'
 import { pushBulkFillUndo } from './bulk-fill-undo'
+import { createLargeTableCalc, splitLargeTablePlan } from './large-table-calc'
 import {
   journalCellContentAt,
   plainCellValue,
@@ -380,19 +381,33 @@ export function applyChangePlan(
 }
 
 async function applyChangePlanNow(
-  plan: ChangePlan,
+  requestedPlan: ChangePlan,
   ctx: OpExecutorContext,
   options: ApplyPlanOptions,
 ): Promise<ApplyOutcome> {
   const { runtime, workbook, state, lazyWorkbookRef, setMessage, setPendingEdits } = ctx
+  // A large base (data engine) takes value writes and calculated columns: a
+  // formula filled down its column runs over the whole base in the engine.
+  // Plans write through the edit journal (a constant fill never runs a
+  // guarded grid command), so the gate sits here, not only in the guard.
+  let plan = requestedPlan
+  let largeCalcs: { row: number; column: number; formula: string }[] = []
+  if (state.file.largeTable !== undefined) {
+    const split = splitLargeTablePlan(requestedPlan, parseRange)
+    if ('reason' in split) {
+      const reason = options.userFacing
+        ? t('appLargeTableAiNotYet')
+        : `${t('appLargeTableAiNotYet')} (${split.reason})`
+      setMessage(reason)
+      return { ok: false, reason }
+    }
+    plan = split.plan
+    largeCalcs = split.calcs
+  }
   const plannedOps = plan.structuralChanges.map((structural) => structural.op)
   const notices: string[] = []
   let imageData: Map<string, LoadedImage>
   try {
-    // A large base is read-only in this version. Plans write through the edit
-    // journal (a constant fill never runs a guarded grid command), so the
-    // command guard alone would let an AI change land on screen unsaveable.
-    if (state.file.largeTable !== undefined) throw new Error(t('appLargeTableReadOnly'))
     imageData = await prefetchOpImages(plannedOps)
     const spanError = await precheckStructuralDeletes(state, workbook, plannedOps)
     if (spanError) throw new Error(options.userFacing ? t('appDeleteSpanFormulas') : spanError)
@@ -531,6 +546,30 @@ async function applyChangePlanNow(
         ])
       }
       run.markApplied()
+    }
+    // Calculated columns of a large base, after the values (a header typed
+    // in the same plan lands first); each one pushes its undo step into this
+    // batch, so rejecting or undoing the task turns it off too.
+    for (const calc of largeCalcs) {
+      const outcome = await createLargeTableCalc(
+        {
+          runtime,
+          getState: () => lazyWorkbookRef.current,
+          notify: (message) => setMessage(message),
+        },
+        calc,
+      )
+      if (!outcome.ok) throw new Error(outcome.message)
+      run.markApplied()
+      const column = columnLabel(calc.column)
+      notices.push(
+        `${column}${calc.row + 1} became a calculated column of this large base: the formula fills ` +
+          `${column}2:${column}${outcome.rows + 1} (every data row, computed by the data engine); ` +
+          `${column}2 = ${JSON.stringify(outcome.first)}, ${column}${outcome.rows + 1} = ${JSON.stringify(outcome.last)}` +
+          (outcome.errors > 0 && outcome.firstErrorRow !== null
+            ? `; ${outcome.errors} rows give an error value, the first in row ${outcome.firstErrorRow + 1}`
+            : ''),
+      )
     }
     // Same facade setters as the ribbon, so the edit journal records them
     // (indent included — it lands as a pd patch in set-range-values).

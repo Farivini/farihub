@@ -490,10 +490,35 @@ export const it = {
   appSheetAddFailed: 'Impossibile aggiungere un foglio.',
   appFormatCopied: 'Formato copiato — seleziona le celle di destinazione per applicarlo.',
   appProtectionNeedsFile: 'Apri prima un file XLSX — la protezione viene salvata nel file.',
-  appLargeTableReadOnly:
-    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableNotYet:
+    'In a large base you can edit values for now: formatting, inserting or deleting rows and other structure changes come in later stages.',
+  appLargeTableNoFormulas:
+    'In a large base, a formula goes in one cell and fills the whole column. Pasting or dragging formulas over several cells does not work yet.',
+  appLargeTableRowLimit: 'In this version, a large base takes edits in its first 1,048,576 rows.',
+  appLargeTableAiNotYet:
+    'In a large base the AI can edit values and add calculated columns (a formula filled down its own column, which then covers the whole base). Formatting, structure changes and formulas in a single cell come in later stages.',
   appLargeTableOpened:
-    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
+    '{name}: {rows} rows opened by the large-base engine. You can edit values, add calculated columns (type a formula in an empty column) and save as CSV or XLSX. Formatting and inserting or deleting rows come in later stages.',
+  appLargeTableCalcRunning: 'Calculating column {column} over {rows} rows…',
+  appLargeTableCalcDone: 'Column {column} calculated over {rows} rows ({seconds} s).',
+  appLargeTableCalcErrors: '{count} rows gave an error (#DIV/0!, #N/A…); the first is row {row}.',
+  appLargeTableCalcHeader:
+    'In a large base the first row is the header: type the formula from row 2 down.',
+  appLargeTableCalcNotEmpty:
+    'The formula fills the whole column: use a column that is empty below the header.',
+  appLargeTableCalcFunction: 'The function {name} does not run over the whole base yet.',
+  appLargeTableCalcReference:
+    'The formula uses {ref}, which does not exist in this base (another sheet, a name or a table).',
+  appLargeTableCalcCircular:
+    'The formula reads its own column in the same row or below (circular reference).',
+  appLargeTableCalcApproximate:
+    '{name} with approximate match does not run over the whole base yet. Use exact match (FALSE or 0).',
+  appLargeTableCalcRange:
+    'A range that moves with the row and spans more than 256 cells does not run over the whole base yet.',
+  appLargeTableCalcSyntax: 'Invalid formula: {detail}.',
+  appLargeTableCalcFailed: 'The column could not be calculated: {detail}',
+  appLargeTableCalcRefreshing: 'Recalculating the calculated columns of the base…',
+  appLargeTableCalcRefreshed: 'Calculated columns updated ({seconds} s).',
   appProtectionNeedsIndexed:
     "La protezione richiede prima l'indicizzazione completa di questo foglio — riprova tra poco.",
   appProtectedWithPassword:

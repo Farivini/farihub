@@ -68,6 +68,7 @@ export const IPC_CHANNELS = {
   readWorkbookRowOutline: 'workbook:read-row-outline',
   /// Ctrl+Up/Down over a large base (data engine): the row the jump lands on.
   largeTableColumnEdge: 'workbook:large-table-column-edge',
+  largeTableCalc: 'workbook:large-table-calc',
   recalcWorkbook: 'workbook:recalc',
   readWorkbookMedia: 'workbook:read-media',
   readPivotDefinition: 'workbook:read-pivot-definition',

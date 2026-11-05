@@ -1,0 +1,72 @@
+{
+  "stages": {
+    "openMs": 2609,
+    "saveMs": 1825,
+    "afterSaveValues": {
+      "a2": "EDITADO_TOPO"
+    },
+    "undoAfterSaveD110": "<omitido: valor original>",
+    "saveAsXlsxMs": 11277,
+    "csvBytes": 67564202
+  },
+  "frames": {
+    "idle": 216.60000000000036,
+    "edit": 199.89999999999964,
+    "undo": 133.40000000000146,
+    "save": 216.70000000000073,
+    "undoAfterSave": 283.40000000000146,
+    "saveAs": 283.40000000000873
+  },
+  "memory": {
+    "peakMiB": 1027
+  },
+  "checks": {
+    "formula_recusada": {
+      "passed": true,
+      "e5": "<omitido: valor original intacto>",
+      "aviso": true
+    },
+    "edicoes_na_tela": {
+      "passed": true,
+      "a2": "EDITADO_TOPO",
+      "c524285": "texto no meio",
+      "ultima": 777,
+      "b10": null
+    },
+    "preencher_varias": {
+      "passed": true,
+      "d110": "X"
+    },
+    "desfazer_refazer": {
+      "passed": true,
+      "original": "<omitido: valor original>",
+      "desfeito": "<omitido: valor original>",
+      "refeito": "X"
+    },
+    "csv_salvo_so_muda_o_editado": {
+      "passed": true,
+      "rows_orig": 1048568,
+      "rows_saved": 1048568,
+      "fields": 9437112,
+      "diffs": 0,
+      "first": []
+    },
+    "desfazer_depois_de_salvar_e_salvar_de_novo": {
+      "passed": true,
+      "rows_orig": 1048568,
+      "rows_saved": 1048568,
+      "fields": 9437112,
+      "diffs": 0,
+      "first": []
+    },
+    "xlsx_salvo": {
+      "passed": true,
+      "rows": 1048568,
+      "a2": "<is><t>EDITADO_TOPO</t></is>",
+      "last": "<c r=\"I1048568\"><v>777</v></c>",
+      "bytes": 64085067
+    }
+  },
+  "failures": [],
+  "nota": "Base enviada (bank_transactions.csv, 1.048.567 transações). As edições são textos do teste; nenhum valor original da base aparece aqui."
+}

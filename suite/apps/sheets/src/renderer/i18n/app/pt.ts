@@ -490,10 +490,37 @@ export const pt = {
   appSheetAddFailed: 'Não foi possível adicionar a planilha.',
   appFormatCopied: 'Formato copiado — selecione as células de destino para aplicá-lo.',
   appProtectionNeedsFile: 'Abra primeiro um arquivo XLSX — a proteção é salva no arquivo.',
-  appLargeTableReadOnly:
-    'Esta base grande está aberta só para leitura nesta versão: editar, formatar e salvar chegam na próxima etapa.',
+  appLargeTableNotYet:
+    'Na base grande, por enquanto dá para editar valores: formatação, inserir ou excluir linhas e as demais alterações de estrutura chegam nas próximas etapas.',
+  appLargeTableNoFormulas:
+    'Na base grande, a fórmula vai numa única célula e preenche a coluna inteira. Colar ou arrastar fórmulas por várias células ainda não funciona.',
+  appLargeTableRowLimit:
+    'Nesta versão, a base grande aceita edições nas primeiras 1.048.576 linhas.',
+  appLargeTableAiNotYet:
+    'Na base grande, a IA pode editar valores e criar colunas calculadas (uma fórmula preenchida na própria coluna, que vale para a base inteira). Formatação, estrutura e fórmulas soltas numa única célula chegam nas próximas etapas.',
   appLargeTableOpened:
-    '{name}: {rows} linhas abertas pelo motor de bases grandes, só para leitura. Editar e salvar chegam na próxima etapa.',
+    '{name}: {rows} linhas abertas pelo motor de bases grandes. Dá para editar valores, criar colunas calculadas (digite a fórmula numa coluna vazia) e salvar em CSV ou XLSX. Formatação e inserir ou excluir linhas chegam nas próximas etapas.',
+  appLargeTableCalcRunning: 'Calculando a coluna {column} em {rows} linhas…',
+  appLargeTableCalcDone: 'Coluna {column} calculada em {rows} linhas ({seconds} s).',
+  appLargeTableCalcErrors:
+    '{count} linhas deram erro (#DIV/0!, #N/D…); a primeira é a linha {row}.',
+  appLargeTableCalcHeader:
+    'Na base grande, a primeira linha é o cabeçalho: digite a fórmula da linha 2 em diante.',
+  appLargeTableCalcNotEmpty:
+    'A fórmula preenche a coluna inteira: use uma coluna vazia abaixo do cabeçalho.',
+  appLargeTableCalcFunction: 'A função {name} ainda não roda na base inteira.',
+  appLargeTableCalcReference:
+    'A fórmula usa {ref}, que não existe nesta base (outra planilha, nome ou tabela).',
+  appLargeTableCalcCircular:
+    'A fórmula lê a própria coluna na mesma linha ou abaixo (referência circular).',
+  appLargeTableCalcApproximate:
+    '{name} com correspondência aproximada ainda não roda na base inteira. Use correspondência exata (FALSO ou 0).',
+  appLargeTableCalcRange:
+    'Um intervalo que anda com a linha e tem mais de 256 células ainda não roda na base inteira.',
+  appLargeTableCalcSyntax: 'Fórmula inválida: {detail}.',
+  appLargeTableCalcFailed: 'Não foi possível calcular a coluna: {detail}',
+  appLargeTableCalcRefreshing: 'Recalculando as colunas calculadas da base…',
+  appLargeTableCalcRefreshed: 'Colunas calculadas atualizadas ({seconds} s).',
   appProtectionNeedsIndexed:
     'A proteção requer que esta planilha seja totalmente indexada primeiro — tente novamente em instantes.',
   appProtectedWithPassword: 'Esta planilha está protegida por senha — informe-a para desproteger.',

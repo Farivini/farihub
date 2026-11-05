@@ -490,10 +490,37 @@ export const es = {
   appSheetAddFailed: 'No se puede agregar una hoja.',
   appFormatCopied: 'Formato copiado — seleccione las celdas de destino para aplicarlo.',
   appProtectionNeedsFile: 'Abra primero un archivo XLSX — la protección se guarda en el archivo.',
-  appLargeTableReadOnly:
-    'Esta base grande es de solo lectura en esta versión: editar, dar formato y guardar llegarán en la próxima etapa.',
+  appLargeTableNotYet:
+    'En la base grande, por ahora se pueden editar valores: el formato, insertar o eliminar filas y los demás cambios de estructura llegarán en las próximas etapas.',
+  appLargeTableNoFormulas:
+    'En una base grande, la fórmula va en una sola celda y rellena toda la columna. Pegar o arrastrar fórmulas por varias celdas todavía no funciona.',
+  appLargeTableRowLimit:
+    'En esta versión, la base grande acepta ediciones en las primeras 1.048.576 filas.',
+  appLargeTableAiNotYet:
+    'En una base grande, la IA puede editar valores y crear columnas calculadas (una fórmula rellenada en su propia columna, que vale para toda la base). El formato, la estructura y las fórmulas sueltas en una sola celda llegan en las próximas etapas.',
   appLargeTableOpened:
-    '{name}: {rows} filas abiertas con el motor de bases grandes, solo lectura. Editar y guardar llegarán en la próxima etapa.',
+    '{name}: {rows} filas abiertas por el motor de bases grandes. Puede editar valores, crear columnas calculadas (escriba la fórmula en una columna vacía) y guardar en CSV o XLSX. El formato y la inserción o eliminación de filas llegan en las próximas etapas.',
+  appLargeTableCalcRunning: 'Calculando la columna {column} en {rows} filas…',
+  appLargeTableCalcDone: 'Columna {column} calculada en {rows} filas ({seconds} s).',
+  appLargeTableCalcErrors:
+    '{count} filas dieron error (#DIV/0!, #N/A…); la primera es la fila {row}.',
+  appLargeTableCalcHeader:
+    'En una base grande, la primera fila es el encabezado: escriba la fórmula de la fila 2 en adelante.',
+  appLargeTableCalcNotEmpty:
+    'La fórmula rellena toda la columna: use una columna vacía debajo del encabezado.',
+  appLargeTableCalcFunction: 'La función {name} todavía no funciona sobre toda la base.',
+  appLargeTableCalcReference:
+    'La fórmula usa {ref}, que no existe en esta base (otra hoja, un nombre o una tabla).',
+  appLargeTableCalcCircular:
+    'La fórmula lee su propia columna en la misma fila o debajo (referencia circular).',
+  appLargeTableCalcApproximate:
+    '{name} con coincidencia aproximada todavía no funciona sobre toda la base. Use coincidencia exacta (FALSO o 0).',
+  appLargeTableCalcRange:
+    'Un rango que se mueve con la fila y abarca más de 256 celdas todavía no funciona sobre toda la base.',
+  appLargeTableCalcSyntax: 'Fórmula no válida: {detail}.',
+  appLargeTableCalcFailed: 'No se pudo calcular la columna: {detail}',
+  appLargeTableCalcRefreshing: 'Recalculando las columnas calculadas de la base…',
+  appLargeTableCalcRefreshed: 'Columnas calculadas actualizadas ({seconds} s).',
   appProtectionNeedsIndexed:
     'La protección requiere que esta hoja esté totalmente indexada — inténtelo de nuevo en un momento.',
   appProtectedWithPassword:

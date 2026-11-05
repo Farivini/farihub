@@ -76,6 +76,8 @@ export interface ActiveSheetInfo {
   /** lazy mode only: cached file values stream in per viewport, and the live formula engine never sees the whole
    * data; formula writes load their precedents within the session budget. */
   readonly streaming?: boolean | undefined
+  /** a large CSV held by the data engine (not the grid's formula engine) */
+  readonly largeBase?: boolean | undefined
   readonly sheetId: string
   readonly sheetName: string
   /** demo mode only: current revision, needed for the CAS-checked plan() call */
@@ -688,18 +690,30 @@ export function buildWorkbookContext(deps: SheetsSkillDeps): string {
     `Active sheet: ${info.sheetName} (id=${info.sheetId}${active ? dims(active) : ''})`,
     info.mode === 'demo'
       ? `Mode: demo workbook, current revision=${info.revision}`
-      : info.streaming
-        ? 'Mode: imported file in STREAMING MODE — the grid ' +
-          'materializes the viewed region on demand. Consequences: (1) formulas you write stay live — their ' +
-          'referenced file cells are loaded into the engine automatically — but only within a session budget of ' +
-          '~50,000 referenced cells; batches beyond it are rejected: compute with aggregate_range and write static ' +
-          'values instead; (2) to extract/split rows, use copy_range with filterColumn/filterValues (copies matching ' +
-          'rows as static values, reading the real file data) into a sheet created with add_sheet rows/columns sized ' +
-          'to the expected data (aggregate_range gives per-value counts) — never FILTER-formula spills; ' +
-          '(3) add_pivot, refresh_pivot, duplicate_sheet, and filter edits are unavailable on the ' +
-          "file's sheets; sort_range works, but ranges of 2000 cells or fewer must be read_range'd (loaded) first. " +
-          'Sheets added this session are fully live and exempt from all of this.'
-        : 'Mode: imported real xlsx file (some regions may still be streaming in)',
+      : info.largeBase
+        ? 'Mode: LARGE BASE held by the data engine (a CSV past the regular import limit). ' +
+          'A formula written with set_formula in a data row (row 2 or below) and filled down its own column ' +
+          'with fill_range becomes a CALCULATED COLUMN: the engine computes it for EVERY data row (rows 2..last), ' +
+          'whatever the fill targets cover — fill_range takes at most 200,000 cells, so fill in several parts or ' +
+          'just once; the tool result states the real extent. The column must be empty below its header. ' +
+          'Supported: arithmetic, comparisons, &, IF/IFERROR/IFNA/AND/OR/NOT, SUM/AVERAGE/MIN/MAX/COUNT/COUNTA, ' +
+          'SUMIF(S)/COUNTIF(S)/AVERAGEIF(S), exact VLOOKUP/XLOOKUP/MATCH(…,0), INDEX, ROUND/ROUNDUP/ROUNDDOWN/INT/' +
+          'TRUNC/ABS/MOD/POWER/SQRT, LEN/LEFT/RIGHT/MID/UPPER/LOWER/TRIM/CONCAT/SUBSTITUTE/FIND/SEARCH/VALUE, ' +
+          'IS* tests; running totals like SUM($I$2:I2) and per-group running counts like COUNTIF($B$2:B2,B2) ' +
+          'run in one pass. Other functions are refused with the reason. Value writes work; formatting, ' +
+          'structure changes and a formula in a single cell are refused — for totals use aggregate_range.'
+        : info.streaming
+          ? 'Mode: imported file in STREAMING MODE — the grid ' +
+            'materializes the viewed region on demand. Consequences: (1) formulas you write stay live — their ' +
+            'referenced file cells are loaded into the engine automatically — but only within a session budget of ' +
+            '~50,000 referenced cells; batches beyond it are rejected: compute with aggregate_range and write static ' +
+            'values instead; (2) to extract/split rows, use copy_range with filterColumn/filterValues (copies matching ' +
+            'rows as static values, reading the real file data) into a sheet created with add_sheet rows/columns sized ' +
+            'to the expected data (aggregate_range gives per-value counts) — never FILTER-formula spills; ' +
+            '(3) add_pivot, refresh_pivot, duplicate_sheet, and filter edits are unavailable on the ' +
+            "file's sheets; sort_range works, but ranges of 2000 cells or fewer must be read_range'd (loaded) first. " +
+            'Sheets added this session are fully live and exempt from all of this.'
+          : 'Mode: imported real xlsx file (some regions may still be streaming in)',
   ]
   if (active?.rows && active.columns) {
     lines.push(
@@ -1420,7 +1434,10 @@ export function executeWorkbookTool(
           const last = formatAddress(bounds.endRow, bounds.endColumn)
           if (last !== first) formulaCells.push({ sheetId: op.sheetId, address: last })
         }
-        if (formulaCells.length === 0) {
+        // A large base reports its calculated columns' results in the notes
+        // (read from the engine); loading sample windows here would evict
+        // the rows on screen.
+        if (formulaCells.length === 0 || deps.getActiveSheetInfo().largeBase) {
           return { output: base, mutated: true, summary }
         }
         return (async (): Promise<ToolExecution> => {

@@ -46,6 +46,44 @@ export interface DataEngineFindPage {
   readonly nextColumn?: number
 }
 
+export interface DataEngineSpan {
+  readonly startRow: number
+  readonly endRow: number
+  readonly startColumn: number
+  readonly endColumn: number
+}
+
+/// The grid's unsaved value edits, with the values the grid holds.
+export interface DataEngineGridEdits {
+  readonly cells: readonly {
+    readonly row: number
+    readonly column: number
+    readonly value: string | number | boolean | null
+  }[]
+  readonly fills: readonly (DataEngineSpan & {
+    readonly value: string | number | boolean | null
+  })[]
+}
+
+export interface DataEngineCalcRefreshed {
+  readonly ms: number
+  /** columns whose cells changed */
+  readonly refreshed: readonly number[]
+  /** a quick refresh left formulas that need a full pass */
+  readonly pending?: boolean
+}
+
+export interface DataEngineCalcCreated extends DataEngineCalcRefreshed {
+  readonly calcId: string
+  /** the calculated column this one replaced */
+  readonly replaced: string | null
+  readonly rows: number
+  readonly written: number
+  /** rows whose result is an error value (#DIV/0!, #N/A, …) */
+  readonly errors: number
+  readonly firstErrorRow: number | null
+}
+
 export class DataEngineError extends Error {
   constructor(
     readonly code: string,
@@ -124,6 +162,93 @@ export class DataEngineClient {
   }): Promise<number> {
     const result = (await this.request({ command: 'column_edge', ...input })) as { row: number }
     return result.row
+  }
+
+  async applyEdits(input: {
+    sessionId: string
+    fills: readonly {
+      startRow: number
+      endRow: number
+      startColumn: number
+      endColumn: number
+      text: string | null
+    }[]
+    cells: readonly { row: number; column: number; text: string | null }[]
+  }): Promise<{ columns: number }> {
+    return (await this.request({ command: 'apply_edits', ...input }, IMPORT_TIMEOUT_MS)) as {
+      columns: number
+    }
+  }
+
+  async exportDelimited(input: {
+    sessionId: string
+    path: string
+    delimiter: string
+    sepLine: boolean
+  }): Promise<{ rows: number }> {
+    return (await this.request({ command: 'export_delimited', ...input }, IMPORT_TIMEOUT_MS)) as {
+      rows: number
+    }
+  }
+
+  async exportXlsx(input: {
+    sessionId: string
+    path: string
+    sheetName: string
+    numberColumns: readonly { column: number; decimal: ',' | '.' }[]
+  }): Promise<{ rows: number }> {
+    return (await this.request({ command: 'export_xlsx', ...input }, IMPORT_TIMEOUT_MS)) as {
+      rows: number
+    }
+  }
+
+  /// A formula over every data row of a column (see calc.rs).
+  async calcCreate(input: {
+    sessionId: string
+    formula: string
+    anchorRow: number
+    column: number
+    firstRow: number
+    lastRow: number
+    sheetName: string
+    decimal: ',' | '.'
+    numberColumns: readonly { column: number; decimal: ',' | '.' }[]
+    edits: DataEngineGridEdits
+    replaceExisting: boolean
+  }): Promise<DataEngineCalcCreated> {
+    return (await this.request(
+      { command: 'calc_create', ...input },
+      IMPORT_TIMEOUT_MS,
+    )) as DataEngineCalcCreated
+  }
+
+  /// Undo (off) and Redo (on) of a calculated column.
+  async calcSetActive(input: {
+    sessionId: string
+    calcId: string
+    active: boolean
+    numberColumns: readonly { column: number; decimal: ',' | '.' }[]
+    edits: DataEngineGridEdits
+  }): Promise<DataEngineCalcRefreshed> {
+    return (await this.request(
+      { command: 'calc_set_active', ...input },
+      IMPORT_TIMEOUT_MS,
+    )) as DataEngineCalcRefreshed
+  }
+
+  /// Recomputes the formulas that read the changed cells.
+  async calcRefresh(input: {
+    sessionId: string
+    changed: readonly DataEngineSpan[]
+    numberColumns: readonly { column: number; decimal: ',' | '.' }[]
+    edits: DataEngineGridEdits
+    /** row-local formulas only; `pending` asks for a full pass */
+    quick?: boolean
+  }): Promise<DataEngineCalcRefreshed> {
+    return (await this.request(
+      { command: 'calc_refresh', ...input },
+      IMPORT_TIMEOUT_MS,
+    )) as DataEngineCalcRefreshed
   }
 
   async close(sessionId: string): Promise<void> {

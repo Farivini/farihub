@@ -571,7 +571,7 @@ export function proposeOperations(
                 column += 1
               ) {
                 const formula = sourceFormula(row, column)
-                if (!formula) continue
+                if (!formula || state.file.largeTable !== undefined) continue
                 const costError = fillFormulaCostError(
                   formula,
                   copies,
@@ -583,7 +583,9 @@ export function proposeOperations(
                 if (costError) return { ok: false, error: costError }
               }
             }
-            const refSheets = streamedRefSheets()
+            // a large base runs the filled formula in its data engine (a
+            // calculated column): no precedents load into the grid's engine
+            const refSheets = state.file.largeTable === undefined ? streamedRefSheets() : null
             if (refSheets && !state.flags.preloadComplete) {
               const error = collectFilledFormulaPrecedents(
                 state,
@@ -752,13 +754,12 @@ export function proposeOperations(
             state.file.sheets.find((sheet) => sheet.id === operation.sheetId)?.name ??
             workbook?.getSheetBySheetId(operation.sheetId)?.getSheetName() ??
             ''
-          const costError = quadraticFormulaError(
-            operation.formula,
-            hostName,
-            lazyFormulaCostSheets(state),
-          )
+          const costError =
+            state.file.largeTable === undefined
+              ? quadraticFormulaError(operation.formula, hostName, lazyFormulaCostSheets(state))
+              : null
           if (costError) return { ok: false, error: costError }
-          const refSheets = streamedRefSheets()
+          const refSheets = state.file.largeTable === undefined ? streamedRefSheets() : null
           if (refSheets) {
             collectStreamedFormulaPrecedents(
               operation.formula,

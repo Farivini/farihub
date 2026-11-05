@@ -1,0 +1,166 @@
+{
+  "input": {
+    "name": "base.csv",
+    "bytes": 67564202,
+    "sha256": "0b1b04a9f7521016e9ba08c5b07e8460bf94352b12006a99ef55286f59634327"
+  },
+  "environment": {
+    "platform": "linux x64",
+    "node": "v22.22.0",
+    "cpus": 4,
+    "totalMemGiB": 16
+  },
+  "stages": {
+    "openToFirstCellMs": 2548,
+    "notice": "base.csv: 1.048.568 linhas abertas pelo motor de bases grandes. Dá para editar valores e salvar (CSV ou XLSX); fórmulas, formatação e inserir ou excluir linhas chegam nas próximas etapas.\n×",
+    "oracleMs": 4288,
+    "ctrlEndMs": 123,
+    "ctrlHomeMs": 52,
+    "ctrlDownMs": 97,
+    "gotoMiddleMs": 79,
+    "wheel60Ms": 6699,
+    "sessionKnown": true,
+    "fullCompareMs": 389088,
+    "findAllMs": 13895
+  },
+  "frames": {
+    "last": 26120.9,
+    "mark": "after",
+    "byMark": {
+      "idle": 16.799999999999727,
+      "open": 183.39999999999964,
+      "settle": 150.09999999999945,
+      "ctrlEnd": 133.20000000000073,
+      "ctrlHome": 33.29999999999927,
+      "ctrlDown": 49.900000000001455,
+      "goto": 83.30000000000291,
+      "wheel": 183.29999999999927
+    },
+    "over100": {
+      "open": 2,
+      "settle": 1,
+      "ctrlEnd": 1,
+      "wheel": 1
+    },
+    "over300": {}
+  },
+  "memory": {
+    "beforeOpen": {
+      "totalMiB": 514,
+      "byName": {
+        "electron": 510,
+        "xlsx-sidecar": 4
+      }
+    },
+    "afterOpen": {
+      "totalMiB": 728,
+      "byName": {
+        "electron": 585,
+        "xlsx-sidecar": 6,
+        "data-engine": 136
+      }
+    },
+    "peakDuringUse": {
+      "totalMiB": 869,
+      "byName": {
+        "electron": 724,
+        "xlsx-sidecar": 6,
+        "data-engine": 139
+      }
+    },
+    "peak": {
+      "totalMiB": 1422,
+      "byName": {
+        "electron": 1273,
+        "xlsx-sidecar": 6,
+        "data-engine": 143
+      }
+    }
+  },
+  "checks": {
+    "oraculos_concordam_texto_bruto": {
+      "passed": true,
+      "python": 1048568,
+      "importacaoAtual": 1048568
+    },
+    "grade_com_todas_as_linhas": {
+      "passed": true,
+      "grade": 1048568,
+      "base": 1048568
+    },
+    "ctrl_end_ultima_celula": {
+      "passed": true,
+      "cell": {
+        "row": 1048567,
+        "column": 8,
+        "value": "<omitido>"
+      },
+      "esperado": {
+        "row": 1048567,
+        "column": 8,
+        "value": "<omitido>"
+      }
+    },
+    "ctrl_home": {
+      "passed": true,
+      "cell": {
+        "row": 0,
+        "column": 0,
+        "value": "<omitido>"
+      }
+    },
+    "ctrl_seta_baixo": {
+      "passed": true,
+      "cell": {
+        "row": 1048567,
+        "column": 0,
+        "value": "<omitido>"
+      },
+      "esperado": "<omitido>"
+    },
+    "caixa_de_nome_meio": {
+      "passed": true,
+      "cell": {
+        "row": 524284,
+        "column": 2,
+        "value": "<omitido>"
+      }
+    },
+    "tela_do_meio_igual": {
+      "passed": true,
+      "celulas": 225,
+      "divergencias": 0,
+      "primeiras": []
+    },
+    "todas_as_celulas_iguais_a_importacao_atual": {
+      "passed": true,
+      "comparadas": 9437112,
+      "divergencias": 0,
+      "primeiras": []
+    },
+    "busca_mesma_contagem": {
+      "passed": true,
+      "busca": "MUMBAI",
+      "achados": 135113,
+      "esperado": "<omitido>"
+    }
+  },
+  "oracle": {
+    "rows": 1048568,
+    "columns": 9,
+    "delimiter": ",",
+    "columnKinds": [
+      "TransactionID:text",
+      "CustomerID:text",
+      "CustomerDOB:text",
+      "CustGender:text",
+      "CustLocation:number",
+      "CustAccountBalance:number.",
+      "TransactionDate:text",
+      "TransactionTime:number",
+      "TransactionAmount (INR):number."
+    ]
+  },
+  "failures": [],
+  "nota": "CSV salvo pelo Fariv depois das edições, reaberto; as duas checagens de só leitura da versão anterior foram retiradas. Valores omitidos."
+}

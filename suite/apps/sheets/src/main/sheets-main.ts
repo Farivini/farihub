@@ -16,6 +16,7 @@ import {
   open,
   readFile,
   readdir,
+  rename,
   rm,
   stat,
   writeFile,
@@ -175,6 +176,8 @@ import {
   printerInfoSchema,
   workbookRangeRequestSchema,
   largeTableColumnEdgeRequestSchema,
+  largeTableCalcRequestSchema,
+  largeTableCalcResultSchema,
   workbookRangeResultSchema,
   workbookSaveEditsAbortSchema,
   workbookSaveEditsBeginSchema,
@@ -201,7 +204,17 @@ import {
 } from './temp-files'
 import { XlsxSidecarClient } from './xlsx-sidecar-client'
 import { DataEngineClient, DataEngineError } from './data-engine-client'
-import { largeTableRangeResult, largeTableFindResult, type LargeTableSession } from './large-table'
+import {
+  largeTableColumnMark,
+  largeTableEngineEdits,
+  largeTableFileNumberColumns,
+  largeTableFindResult,
+  largeTableGridEdits,
+  largeTableNumberColumns,
+  largeTableRangeResult,
+  type LargeTableCalc,
+  type LargeTableSession,
+} from './large-table'
 import { sessionAfterRename } from './session-rename'
 
 /**
@@ -230,7 +243,12 @@ const tMain = createI18n({
     errImageTooLarge: '图片超过 5MB 上限',
     errUnreadable: '无法读取',
     errFileTooLarge: '文件超过大小上限',
-    errLargeTableReadOnly: '这个大型数据表在此版本中为只读：编辑和保存将在下一阶段提供。',
+    errLargeTableValuesOnly:
+      '在大型数据表中，目前只保存单元格的值：插入或删除行、列和工作表将在后续阶段提供。',
+    errLargeTableXlsxRows:
+      '此数据表有 {rows} 行，而 .xlsx 每个工作表最多 1,048,576 行。请另存为 CSV。',
+    errLargeTableChangedOutside:
+      '自打开以来，该文件已在 Fariv 之外被修改。请使用“另存为”，以免丢失任何版本。',
     errParseFailed: '文件解析失败',
     errImageNoText: '图片附件不提供文本,已作为图像随用户消息发送,直接看图即可',
     errNotImage: '不是支持的图片类型',
@@ -294,8 +312,12 @@ const tMain = createI18n({
     errImageTooLarge: 'image exceeds the 5MB limit',
     errUnreadable: 'cannot be read',
     errFileTooLarge: 'File exceeds the size limit',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'Failed to parse file',
     errImageNoText: 'Image attachments have no text; the image is sent along with the user message',
     errNotImage: 'not a supported image type',
@@ -364,8 +386,12 @@ const tMain = createI18n({
     errImageTooLarge: 'hình ảnh vượt quá giới hạn 5MB',
     errUnreadable: 'không thể đọc được',
     errFileTooLarge: 'Tệp vượt quá giới hạn kích thước',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'Không thể phân tích tệp',
     errImageNoText:
       'Tệp đính kèm hình ảnh không có văn bản; hình ảnh được gửi cùng với tin nhắn của người dùng',
@@ -436,8 +462,12 @@ const tMain = createI18n({
     errImageTooLarge: 'görsel 5MB sınırını aşıyor',
     errUnreadable: 'okunamıyor',
     errFileTooLarge: 'Dosya boyut sınırını aşıyor',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'Dosya ayrıştırılamadı',
     errImageNoText: 'Görsel eklerin metni yoktur; görsel kullanıcı mesajıyla birlikte gönderilir',
     errNotImage: 'desteklenen bir görsel türü değil',
@@ -508,8 +538,12 @@ const tMain = createI18n({
     errImageTooLarge: '画像が 5MB の上限を超えています',
     errUnreadable: '読み取れません',
     errFileTooLarge: 'ファイルがサイズ上限を超えています',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'ファイルの解析に失敗しました',
     errImageNoText:
       '画像添付にはテキストがありません。画像はユーザー メッセージと一緒に送信されるため、そのまま画像をご確認ください',
@@ -581,8 +615,12 @@ const tMain = createI18n({
     errImageTooLarge: '이미지가 5MB 제한을 초과했습니다',
     errUnreadable: '읽을 수 없습니다',
     errFileTooLarge: '파일이 크기 제한을 초과했습니다',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: '파일을 구문 분석하지 못했습니다',
     errImageNoText:
       '이미지 첨부에는 텍스트가 없습니다. 이미지는 사용자 메시지와 함께 전송되므로 이미지를 직접 확인하세요',
@@ -654,8 +692,12 @@ const tMain = createI18n({
     errImageTooLarge: "l'image dépasse la limite de 5 Mo",
     errUnreadable: 'illisible',
     errFileTooLarge: 'Le fichier dépasse la taille limite',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: "Échec de l'analyse du fichier",
     errImageNoText:
       "Les images jointes n'ont pas de texte ; l'image est envoyée avec le message de l'utilisateur",
@@ -728,8 +770,12 @@ const tMain = createI18n({
     errImageTooLarge: 'Bild überschreitet das Limit von 5 MB',
     errUnreadable: 'kann nicht gelesen werden',
     errFileTooLarge: 'Datei überschreitet die Größenbeschränkung',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'Datei konnte nicht analysiert werden',
     errImageNoText:
       'Bildanlagen enthalten keinen Text; das Bild wird zusammen mit der Benutzernachricht gesendet',
@@ -801,8 +847,12 @@ const tMain = createI18n({
     errImageTooLarge: 'la imagen supera el límite de 5 MB',
     errUnreadable: 'no se puede leer',
     errFileTooLarge: 'El archivo supera el límite de tamaño',
-    errLargeTableReadOnly:
-      'Esta base grande es de solo lectura en esta versión: editar y guardar llegarán en la próxima etapa.',
+    errLargeTableValuesOnly:
+      'En la base grande, por ahora solo se guardan valores de celdas: insertar o eliminar filas, columnas y hojas llegará en las próximas etapas.',
+    errLargeTableXlsxRows:
+      'Esta base tiene {rows} filas y el .xlsx admite hasta 1.048.576 por hoja. Guárdela como CSV.',
+    errLargeTableChangedOutside:
+      'El archivo se modificó fuera de Fariv desde que se abrió. Use Guardar como para no perder ninguna versión.',
     errParseFailed: 'No se pudo analizar el archivo',
     errImageNoText:
       'Las imágenes adjuntas no tienen texto; la imagen se envía junto con el mensaje del usuario',
@@ -874,8 +924,12 @@ const tMain = createI18n({
     errImageTooLarge: 'รูปภาพเกินขีดจำกัด 5MB',
     errUnreadable: 'อ่านไม่ได้',
     errFileTooLarge: 'ไฟล์มีขนาดเกินขีดจำกัด',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'แยกวิเคราะห์ไฟล์ไม่สำเร็จ',
     errImageNoText:
       'รูปภาพแนบไม่มีข้อความ รูปภาพจะถูกส่งไปพร้อมข้อความของผู้ใช้ ให้ดูที่รูปภาพโดยตรง',
@@ -946,8 +1000,12 @@ const tMain = createI18n({
     errImageTooLarge: 'gambar melebihi batas 5MB',
     errUnreadable: 'tidak dapat dibaca',
     errFileTooLarge: 'File melebihi batas ukuran',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'Gagal mengurai file',
     errImageNoText: 'Lampiran gambar tidak memiliki teks; gambar dikirim bersama pesan pengguna',
     errNotImage: 'bukan jenis gambar yang didukung',
@@ -1016,8 +1074,12 @@ const tMain = createI18n({
     errImageTooLarge: 'изображение превышает лимит 5 МБ',
     errUnreadable: 'не удаётся прочитать',
     errFileTooLarge: 'Файл превышает предельный размер',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'Не удалось разобрать файл',
     errImageNoText:
       'Вложенные изображения не содержат текста; изображение отправляется вместе с сообщением пользователя',
@@ -1088,8 +1150,12 @@ const tMain = createI18n({
     errImageTooLarge: 'الصورة تتجاوز الحد البالغ 5 ميغابايت',
     errUnreadable: 'تعذّرت قراءته',
     errFileTooLarge: 'الملف يتجاوز حد الحجم',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'فشل تحليل الملف',
     errImageNoText: 'مرفقات الصور لا تحتوي على نص؛ تُرسل الصورة مع رسالة المستخدم',
     errNotImage: 'نوع صورة غير مدعوم',
@@ -1157,8 +1223,12 @@ const tMain = createI18n({
     errImageTooLarge: 'a imagem excede o limite de 5MB',
     errUnreadable: 'não é possível ler',
     errFileTooLarge: 'O arquivo excede o limite de tamanho',
-    errLargeTableReadOnly:
-      'Esta base grande está aberta só para leitura nesta versão: editar e salvar chegam na próxima etapa.',
+    errLargeTableValuesOnly:
+      'Na base grande, por enquanto só valores de células são salvos: inserir ou excluir linhas, colunas e planilhas chega nas próximas etapas.',
+    errLargeTableXlsxRows:
+      'Esta base tem {rows} linhas e o .xlsx comporta até 1.048.576 por planilha. Salve como CSV.',
+    errLargeTableChangedOutside:
+      'O arquivo foi alterado fora do Fariv desde que foi aberto. Use Salvar como para não perder nenhuma das versões.',
     errParseFailed: 'Falha ao analisar o arquivo',
     errImageNoText:
       'Anexos de imagem não têm texto; a imagem é enviada junto com a mensagem do usuário',
@@ -1229,8 +1299,12 @@ const tMain = createI18n({
     errImageTooLarge: "l'immagine supera il limite di 5 MB",
     errUnreadable: 'impossibile leggere',
     errFileTooLarge: 'Il file supera il limite di dimensione',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'Impossibile analizzare il file',
     errImageNoText:
       "Gli allegati immagine non hanno testo; l'immagine viene inviata insieme al messaggio dell'utente",
@@ -1302,8 +1376,12 @@ const tMain = createI18n({
     errImageTooLarge: 'obraz przekracza limit 5 MB',
     errUnreadable: 'nie można odczytać',
     errFileTooLarge: 'Plik przekracza limit rozmiaru',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'Nie udało się przeanalizować pliku',
     errImageNoText:
       'Załączniki graficzne nie zawierają tekstu; obraz jest wysyłany razem z wiadomością użytkownika',
@@ -1374,8 +1452,12 @@ const tMain = createI18n({
     errImageTooLarge: 'obrázek překračuje limit 5 MB',
     errUnreadable: 'nelze přečíst',
     errFileTooLarge: 'Soubor překračuje limit velikosti',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'Soubor se nepodařilo zpracovat',
     errImageNoText:
       'Obrázkové přílohy neobsahují text; obrázek se odesílá spolu se zprávou uživatele',
@@ -1446,8 +1528,12 @@ const tMain = createI18n({
     errImageTooLarge: 'afbeelding overschrijdt de limiet van 5 MB',
     errUnreadable: 'kan niet worden gelezen',
     errFileTooLarge: 'Bestand overschrijdt de maximale grootte',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'Kan bestand niet parseren',
     errImageNoText:
       'Afbeeldingsbijlagen bevatten geen tekst; de afbeelding wordt samen met het gebruikersbericht verzonden',
@@ -1519,8 +1605,12 @@ const tMain = createI18n({
     errImageTooLarge: 'imej melebihi had 5MB',
     errUnreadable: 'tidak dapat dibaca',
     errFileTooLarge: 'Fail melebihi had saiz',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'Gagal menghurai fail',
     errImageNoText: 'Lampiran imej tiada teks; imej dihantar bersama mesej pengguna',
     errNotImage: 'bukan jenis imej yang disokong',
@@ -1591,8 +1681,12 @@ const tMain = createI18n({
     errImageTooLarge: 'התמונה חורגת מהמגבלה של 5MB',
     errUnreadable: 'לא ניתן לקרוא',
     errFileTooLarge: 'הקובץ חורג ממגבלת הגודל',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'ניתוח הקובץ נכשל',
     errImageNoText: 'קבצים מצורפים מסוג תמונה אינם מכילים טקסט; התמונה נשלחת יחד עם הודעת המשתמש',
     errNotImage: 'סוג תמונה שאינו נתמך',
@@ -1658,8 +1752,12 @@ const tMain = createI18n({
     errImageTooLarge: 'छवि 5MB की सीमा से अधिक है',
     errUnreadable: 'पढ़ा नहीं जा सकता',
     errFileTooLarge: 'फ़ाइल आकार सीमा से अधिक है',
-    errLargeTableReadOnly:
-      'This large base is read-only in this version: editing and saving come in the next stage.',
+    errLargeTableValuesOnly:
+      'In a large base, only cell values are saved for now: inserting or deleting rows, columns and sheets comes in later stages.',
+    errLargeTableXlsxRows:
+      'This base has {rows} rows and an .xlsx sheet holds at most 1,048,576. Save it as CSV.',
+    errLargeTableChangedOutside:
+      'The file was changed outside Fariv since it was opened. Use Save As so neither version is lost.',
     errParseFailed: 'फ़ाइल पार्स करने में विफल',
     errImageNoText: 'छवि अनुलग्नक में टेक्स्ट नहीं होता; छवि उपयोगकर्ता संदेश के साथ भेजी जाती है',
     errNotImage: 'समर्थित छवि प्रकार नहीं है',
@@ -1730,7 +1828,12 @@ const tMain = createI18n({
     errImageTooLarge: '圖片超過 5MB 上限',
     errUnreadable: '無法讀取',
     errFileTooLarge: '檔案超過大小上限',
-    errLargeTableReadOnly: '這個大型資料表在此版本中為唯讀：編輯和儲存將在下一階段提供。',
+    errLargeTableValuesOnly:
+      '在大型資料表中，目前只儲存儲存格的值：插入或刪除列、欄和工作表將在後續階段提供。',
+    errLargeTableXlsxRows:
+      '此資料表有 {rows} 列，而 .xlsx 每個工作表最多 1,048,576 列。請另存為 CSV。',
+    errLargeTableChangedOutside:
+      '自開啟以來，該檔案已在 Fariv 之外被修改。請使用「另存新檔」，以免遺失任何版本。',
     errParseFailed: '檔案解析失敗',
     errImageNoText: '圖片附件不提供文字,已作為影像隨使用者訊息傳送,直接看圖即可',
     errNotImage: '不是支援的圖片類型',
@@ -3080,7 +3183,8 @@ export function registerSheetsIpc(): void {
           tempRoot: app.getPath('temp'),
           snapshotPath: session.snapshotPath,
           importTempDir: session.importTempDir,
-          closeSidecar: () => closeSessionBackends(entry.client, result.sessionId, session),
+          closeSidecar: () =>
+            closeSessionBackends(entry.client, result.sessionId, session, entry.sessions),
         })
       }
       return null
@@ -3159,7 +3263,9 @@ export function registerSheetsIpc(): void {
     // replaces still holds the engine's copy, so release it once the new one
     // is open (the renderer adopts the new session id).
     const priorLarge = [...entry.sessions.entries()].filter(
-      ([, session]) => session.largeTable?.sourcePath === validated,
+      ([, session]) =>
+        session.largeTable?.target.current.path === validated ||
+        session.largeTable?.sourcePath === validated,
     )
     const result = await openSelectedWorkbook(event, validated, priorSession?.password)
     if (result !== null && !('passwordRequired' in result)) {
@@ -3169,7 +3275,8 @@ export function registerSheetsIpc(): void {
           tempRoot: app.getPath('temp'),
           snapshotPath: session.snapshotPath,
           importTempDir: session.importTempDir,
-          closeSidecar: () => closeSessionBackends(entry.client, sessionId, session),
+          closeSidecar: () =>
+            closeSessionBackends(entry.client, sessionId, session, entry.sessions),
         })
       }
     }
@@ -3198,7 +3305,12 @@ export function registerSheetsIpc(): void {
             snapshotPath: session.snapshotPath,
             importTempDir: session.importTempDir,
             closeSidecar: () =>
-              closeSessionBackends(entry.client, sessionId, entry.sessions.get(sessionId)),
+              closeSessionBackends(
+                entry.client,
+                sessionId,
+                entry.sessions.get(sessionId),
+                entry.sessions,
+              ),
           })
         }
       }
@@ -3318,6 +3430,103 @@ export function registerSheetsIpc(): void {
       row: request.row,
       down: request.down,
     })
+  })
+
+  // Calculated columns of a large base: the engine computes the formula over
+  // every data row; the grid repaints the columns that changed.
+  ipcMain.handle(IPC_CHANNELS.largeTableCalc, async (event, input: unknown) => {
+    const entry = sessionFor(event)
+    const request = largeTableCalcRequestSchema.parse(input)
+    const session = entry.sessions.get(request.sessionId)
+    const table = session?.largeTable
+    if (session === undefined || table === undefined) throw new Error('Not a large-table session.')
+    const engine = dataEngineClient()
+    const numberColumns = largeTableFileNumberColumns(table)
+    const setCalc = (id: string, calc: LargeTableCalc): void => {
+      const next = new Map(table.calcs.current)
+      next.set(id, calc)
+      table.calcs.current = next
+    }
+    try {
+      if (request.action === 'create') {
+        // the first row is the header; the formula fills the rows below it
+        if (request.anchorRow < 1 || table.rows < 2) {
+          return largeTableCalcResultSchema.parse({ ok: false, code: 'HEADER_ROW', detail: '' })
+        }
+        const mark = largeTableColumnMark(table.csvFormat, request.column)
+        const created = await engine.calcCreate({
+          sessionId: table.engineSessionId,
+          formula: request.formula,
+          anchorRow: request.anchorRow,
+          column: request.column,
+          firstRow: 1,
+          lastRow: table.rows - 1,
+          sheetName: [...session.sheetNames.values()][0] ?? 'Sheet1',
+          decimal: mark,
+          numberColumns,
+          edits: request.edits,
+          replaceExisting: true,
+        })
+        if (created.replaced !== null) {
+          const old = table.calcs.current.get(created.replaced)
+          if (old) setCalc(created.replaced, { ...old, active: false })
+        }
+        setCalc(created.calcId, { column: request.column, mark, active: true })
+        table.width.current = Math.max(table.width.current, request.column + 1)
+        return largeTableCalcResultSchema.parse({
+          ok: true,
+          ms: created.ms,
+          refreshed: [request.column, ...created.refreshed],
+          calcId: created.calcId,
+          replaced: created.replaced,
+          rows: created.rows,
+          errors: created.errors,
+          firstErrorRow: created.firstErrorRow,
+        })
+      }
+      if (request.action === 'set-active') {
+        const calc = table.calcs.current.get(request.calcId)
+        if (calc === undefined) throw new Error('Unknown calculated column.')
+        const done = await engine.calcSetActive({
+          sessionId: table.engineSessionId,
+          calcId: request.calcId,
+          active: request.active,
+          numberColumns,
+          edits: request.edits,
+        })
+        setCalc(request.calcId, { ...calc, active: request.active })
+        return largeTableCalcResultSchema.parse({
+          ok: true,
+          ms: done.ms,
+          refreshed: [calc.column, ...done.refreshed],
+        })
+      }
+      if (![...table.calcs.current.values()].some((calc) => calc.active)) {
+        return largeTableCalcResultSchema.parse({ ok: true, ms: 0, refreshed: [] })
+      }
+      const done = await engine.calcRefresh({
+        sessionId: table.engineSessionId,
+        changed: request.changed,
+        numberColumns,
+        edits: request.edits,
+        quick: request.quick === true,
+      })
+      return largeTableCalcResultSchema.parse({
+        ok: true,
+        ms: done.ms,
+        refreshed: done.refreshed,
+        pending: done.pending === true,
+      })
+    } catch (error) {
+      if (error instanceof DataEngineError) {
+        return largeTableCalcResultSchema.parse({
+          ok: false,
+          code: error.code,
+          detail: error.message,
+        })
+      }
+      throw error
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.readWorkbookRowOutline, async (event, input: unknown) => {
@@ -3686,9 +3895,12 @@ export function registerSheetsIpc(): void {
     const request = resolveTransferredEdits(entry, workbookSaveRequestSchema.parse(input))
     const session = entry.sessions.get(request.sessionId)
     if (!session) throw new Error('Unknown workbook session.')
-    // A large base is read-only in this version: the renderer holds only the
-    // visible window, so a save from it would write a truncated file.
-    if (session.largeTable !== undefined) throw new Error(tm('errLargeTableReadOnly'))
+    // A large base saves from the engine, never from the grid (which holds
+    // only the visible window): the journal's value edits go into the base,
+    // and the engine writes the whole file.
+    if (session.largeTable !== undefined) {
+      return saveLargeTable(event, entry, request.sessionId, session, request)
+    }
 
     // A CSV session's plain Save keeps the CSV identity: the xlsx save lands
     // on the temp copy and the serialized csvContent is written back to the
@@ -3910,6 +4122,7 @@ export function registerSheetsIpc(): void {
       !session ||
       (session.suggestSaveAs !== undefined && !session.unsavedNew) ||
       session.csvSourcePath !== undefined ||
+      session.largeTable !== undefined ||
       (session.restoreTarget !== undefined && !session.emptySource)
     )
       return { ok: false }
@@ -3945,7 +4158,8 @@ export function registerSheetsIpc(): void {
       tempRoot: app.getPath('temp'),
       snapshotPath: session.snapshotPath,
       importTempDir: session.importTempDir,
-      closeSidecar: () => closeSessionBackends(entry.client, validatedSessionId, session),
+      closeSidecar: () =>
+        closeSessionBackends(entry.client, validatedSessionId, session, entry.sessions),
     })
   })
 
@@ -4975,11 +5189,11 @@ async function openWorkbookSession(
                 ? {
                     ...sheet,
                     rowCount: Math.max(1, largeTable.rows),
-                    columnCount: Math.max(1, largeTable.columns),
+                    columnCount: Math.max(1, largeTable.width.current),
                     storedCellCount: largeTable.cells,
                     valueCellCount: largeTable.cells,
                     valueRowCount: largeTable.rows,
-                    valueColumnCount: largeTable.columns,
+                    valueColumnCount: largeTable.width.current,
                   }
                 : sheet,
             ),
@@ -5028,9 +5242,9 @@ async function openWorkbookSession(
         : {
             // the shell is a temp copy: the tab, the status and a crash
             // re-open (recoverSidecarSession reopens file.path) use the
-            // user's file, which re-imports it through the engine
-            name: basename(largeTable.sourcePath),
-            path: largeTable.sourcePath,
+            // user's file — the one Save writes — which re-imports it
+            name: basename(largeTable.target.current.path),
+            path: largeTable.target.current.path,
             readOnly: true,
             largeTable: {
               rows: largeTable.rows,
@@ -5445,6 +5659,7 @@ async function importLargeDelimited(
   }
   const typing = decideCsvColumns(imported.counts, delimiter, imported.header)
   const declared = splitSepDeclaration(sampleText()).delimiter === delimiter
+  const source = await stat(path)
   return {
     engineSessionId: imported.sessionId,
     rows: imported.rows,
@@ -5453,6 +5668,131 @@ async function importLargeDelimited(
     sourcePath: path,
     importMs: imported.totalMs,
     csvFormat: declared ? { ...typing.report, declared: true } : typing.report,
+    target: { current: { path, format: 'csv', size: source.size, mtimeMs: source.mtimeMs } },
+    calcs: { current: new Map() },
+    width: { current: imported.columns },
+  }
+}
+
+/// Excel's sheet bound: a larger base can be saved as CSV only.
+const XLSX_MAX_ROWS = 1_048_576
+
+/// Save / Save As of a large base. The value edits of the request go into
+/// the engine, the engine writes the whole file next to the target and the
+/// finished file replaces it in one rename, so a failed write never leaves a
+/// truncated file. The renderer then swaps onto a fresh session over the same
+/// engine copy (its journal now lives in the base).
+async function saveLargeTable(
+  event: IpcMainInvokeEvent,
+  entry: SheetsTabSession,
+  sessionId: string,
+  session: SessionInfo,
+  request: z.infer<typeof workbookSaveRequestSchema>,
+): Promise<{ canceled: true } | { canceled: false; file: WorkbookFile; touchedEntries: string[] }> {
+  const table = session.largeTable!
+  if (request.structuralOps.length > 0 || request.sheetOps.length > 0) {
+    throw new Error(tm('errLargeTableValuesOnly'))
+  }
+  const current = table.target.current
+  let path = current.path
+  let format = current.format
+  if (request.targetPath !== undefined) {
+    if (request.mode !== 'save-as') throw new Error('An explicit save path needs Save As.')
+    if (!isAbsolute(request.targetPath)) throw new Error('Save path must be absolute.')
+    if (!canMcpSheetWrite(event.sender.id, request.targetPath)) {
+      throw new Error('save target was not authorized')
+    }
+    if (existsSync(request.targetPath) && request.overwrite !== true) {
+      throw new Error(`file already exists: ${request.targetPath}`)
+    }
+    path = request.targetPath
+    format = /\.xlsx$/i.test(path) ? 'xlsx' : 'csv'
+  } else if (request.mode === 'save-as') {
+    const stem = basename(current.path).replace(/\.[^.]+$/, '')
+    const csvFilter = { name: tm('filterCsv'), extensions: ['csv'] }
+    const xlsxFilter = { name: tm('filterXlsx'), extensions: ['xlsx'] }
+    const fitsXlsx = table.rows <= XLSX_MAX_ROWS
+    const selection = await saveFileDialog(event, {
+      defaultPath: join(dirname(current.path), `${stem}.${current.format}`),
+      filters: !fitsXlsx
+        ? [csvFilter]
+        : current.format === 'xlsx'
+          ? [xlsxFilter, csvFilter]
+          : [csvFilter, xlsxFilter],
+    })
+    if (selection.canceled || !selection.filePath) return { canceled: true }
+    path = selection.filePath
+    format = /\.xlsx$/i.test(path) ? 'xlsx' : 'csv'
+    if (format === 'csv' && !/\.(csv|tsv|txt)$/i.test(path)) path = `${path}.csv`
+  }
+  if (format === 'xlsx' && table.rows > XLSX_MAX_ROWS) {
+    throw new Error(tm('errLargeTableXlsxRows', { rows: table.rows.toLocaleString(getUiLang()) }))
+  }
+  // Save over the file this base came from (or was last saved to): refuse
+  // when someone changed it since, like the regular CSV write-back.
+  if (path === current.path) {
+    const now = await stat(path).catch(() => null)
+    if (now !== null && (now.size !== current.size || now.mtimeMs !== current.mtimeMs)) {
+      throw new Error(tm('errLargeTableChangedOutside'))
+    }
+  }
+  const engine = dataEngineClient()
+  // calculated columns catch up with the journal first (a no-op when the
+  // refresh after the last edit already ran), then the journal is written
+  if ([...table.calcs.current.values()].some((calc) => calc.active)) {
+    const { edits: gridEdits, changed } = largeTableGridEdits(table, request)
+    if (changed.length > 0) {
+      await engine.calcRefresh({
+        sessionId: table.engineSessionId,
+        changed,
+        numberColumns: largeTableFileNumberColumns(table),
+        edits: gridEdits,
+      })
+    }
+  }
+  const edits = largeTableEngineEdits(table, request)
+  if (edits.fills.length > 0 || edits.cells.length > 0) {
+    const applied = await engine.applyEdits({ sessionId: table.engineSessionId, ...edits })
+    table.width.current = Math.max(table.width.current, applied.columns)
+  }
+  const temp = join(dirname(path), `.${basename(path)}.${randomUUID()}.fariv-tmp`)
+  try {
+    if (format === 'xlsx') {
+      await engine.exportXlsx({
+        sessionId: table.engineSessionId,
+        path: temp,
+        sheetName: [...session.sheetNames.values()][0] ?? 'Sheet1',
+        numberColumns: largeTableNumberColumns(table),
+      })
+    } else {
+      await engine.exportDelimited({
+        sessionId: table.engineSessionId,
+        path: temp,
+        delimiter: table.csvFormat.delimiter,
+        sepLine: table.csvFormat.declared === true,
+      })
+    }
+    await rename(temp, path)
+  } catch (error) {
+    await rm(temp, { force: true }).catch(() => undefined)
+    throw error
+  }
+  const written = await stat(path)
+  table.target.current = { path, format, size: written.size, mtimeMs: written.mtimeMs }
+  // The renderer reopens on the returned session and closes this one: the
+  // temp directory (engine spill, shell workbook) moves to the new session.
+  const { importTempDir, ...withoutTempDir } = session
+  entry.sessions.set(sessionId, withoutTempDir)
+  try {
+    const file = await openWorkbookSession(entry.client, session.path, entry.sessions, {
+      csvFormat: table.csvFormat,
+      importTempDir,
+      largeTable: table,
+    })
+    return { canceled: false, file, touchedEntries: [] }
+  } catch (error) {
+    if (entry.sessions.has(sessionId)) entry.sessions.set(sessionId, session)
+    throw error
   }
 }
 
@@ -5573,7 +5913,7 @@ async function closeAllSessions(entry: {
         tempRoot: app.getPath('temp'),
         snapshotPath: session.snapshotPath,
         importTempDir: session.importTempDir,
-        closeSidecar: () => closeSessionBackends(entry.client, sessionId, session),
+        closeSidecar: () => closeSessionBackends(entry.client, sessionId, session, entry.sessions),
       })
     }),
   )
@@ -5585,10 +5925,18 @@ async function closeSessionBackends(
   client: XlsxSidecarClient,
   sessionId: string,
   session: SessionInfo | undefined,
+  remaining?: ReadonlyMap<string, SessionInfo>,
 ): Promise<void> {
   const large = session?.largeTable
+  // a save swaps the renderer onto a new session over the same engine copy:
+  // the engine session closes with the last session that holds it
+  const shared =
+    large !== undefined &&
+    [...(remaining?.values() ?? [])].some(
+      (other) => other.largeTable?.engineSessionId === large.engineSessionId,
+    )
   await Promise.allSettled([
     client.close(sessionId),
-    large === undefined ? Promise.resolve() : dataEngine?.close(large.engineSessionId),
+    large === undefined || shared ? Promise.resolve() : dataEngine?.close(large.engineSessionId),
   ])
 }

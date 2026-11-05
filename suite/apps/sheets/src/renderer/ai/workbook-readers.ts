@@ -387,6 +387,7 @@ export function getActiveSheetInfo(
     return {
       mode: 'lazy',
       streaming: !state.formulaMode,
+      ...(state.file.largeTable === undefined ? {} : { largeBase: true }),
       sheetId,
       sheetName: worksheet.getSheetName(),
       knownAddresses: [],

@@ -43,7 +43,7 @@ describe('planFromOps', () => {
 })
 
 describe('applyChangePlan on a large base', () => {
-  it('refuses every plan before it touches the grid or the journal', async () => {
+  it('refuses a plan it cannot take before it touches the grid or the journal', async () => {
     const plan = planFromOps(
       [{ op: 'fill_range', sheetId: 'sh1', source: 'A1', target: 'A1:A10' }] as never,
       workbook,
@@ -62,7 +62,9 @@ describe('applyChangePlan on a large base', () => {
     const outcome = await applyChangePlan(plan, ctx, {} as Parameters<typeof applyChangePlan>[2])
     expect(outcome.ok).toBe(false)
     expect(messages).toHaveLength(1)
-    expect(messages[0]).toMatch(/read-only|só para leitura|只读/)
+    // the source cell has no new formula: nothing to run over the base
+    expect(messages[0]).toMatch(/calculated columns|colunas calculadas|计算列/)
+    expect(messages[0]).toMatch(/without a new formula/)
     expect(outcome.ok ? '' : outcome.reason).toBe(messages[0])
   })
 })

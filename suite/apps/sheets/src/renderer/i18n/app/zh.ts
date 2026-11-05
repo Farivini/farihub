@@ -411,8 +411,30 @@ export const zh = {
   appSheetAddFailed: '无法添加工作表。',
   appFormatCopied: '格式已复制——选中目标单元格即可应用。',
   appProtectionNeedsFile: '请先打开 XLSX 文件——保护设置会保存进文件。',
-  appLargeTableReadOnly: '这个大型数据表在此版本中为只读：编辑、格式和保存将在下一阶段提供。',
-  appLargeTableOpened: '{name}：{rows} 行由大型数据引擎打开，只读。编辑和保存将在下一阶段提供。',
+  appLargeTableNotYet:
+    '在大型数据表中，目前可以编辑值：格式、插入或删除行以及其他结构更改将在后续阶段提供。',
+  appLargeTableNoFormulas:
+    '在大型数据表中，公式只需输入在一个单元格，即可填充整列。暂不支持在多个单元格中粘贴或拖动公式。',
+  appLargeTableRowLimit: '在此版本中，大型数据表仅接受前 1,048,576 行的编辑。',
+  appLargeTableAiNotYet:
+    '在大型数据表中，AI 可以编辑值并创建计算列（在本列中向下填充的公式，会应用到整个数据表）。格式设置、结构更改以及单个单元格中的公式将在后续阶段提供。',
+  appLargeTableOpened:
+    '{name}：大型数据表引擎已打开 {rows} 行。可以编辑值、创建计算列（在空列中输入公式），并保存为 CSV 或 XLSX。格式设置以及插入或删除行将在后续阶段提供。',
+  appLargeTableCalcRunning: '正在计算 {column} 列（{rows} 行）…',
+  appLargeTableCalcDone: '{column} 列已计算 {rows} 行（{seconds} 秒）。',
+  appLargeTableCalcErrors: '{count} 行出现错误（#DIV/0!、#N/A…），第一个在第 {row} 行。',
+  appLargeTableCalcHeader: '在大型数据表中，第一行是标题行：请从第 2 行开始输入公式。',
+  appLargeTableCalcNotEmpty: '公式会填充整列：请使用标题下方为空的列。',
+  appLargeTableCalcFunction: '函数 {name} 暂不支持在整个数据表上运行。',
+  appLargeTableCalcReference: '公式使用了 {ref}，此数据表中不存在（其他工作表、名称或表格）。',
+  appLargeTableCalcCircular: '公式读取了自身列的同一行或下方单元格（循环引用）。',
+  appLargeTableCalcApproximate:
+    '{name} 的近似匹配暂不支持在整个数据表上运行。请使用精确匹配（FALSE 或 0）。',
+  appLargeTableCalcRange: '随行移动且超过 256 个单元格的区域暂不支持在整个数据表上运行。',
+  appLargeTableCalcSyntax: '公式无效：{detail}。',
+  appLargeTableCalcFailed: '无法计算该列：{detail}',
+  appLargeTableCalcRefreshing: '正在重新计算数据表的计算列…',
+  appLargeTableCalcRefreshed: '计算列已更新（{seconds} 秒）。',
   appProtectionNeedsIndexed: '保护设置需要该工作表先完成索引——稍后再试。',
   appProtectedWithPassword: '该工作表有密码保护——请输入密码以取消保护。',
   appProtectionWillWrite: '工作表保护已开启，保存时写入文件。',

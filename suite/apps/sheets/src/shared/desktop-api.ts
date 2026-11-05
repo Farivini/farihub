@@ -923,6 +923,98 @@ export const largeTableColumnEdgeRequestSchema = z
   .strict()
 export type LargeTableColumnEdgeRequest = z.infer<typeof largeTableColumnEdgeRequestSchema>
 
+const largeTableSpanSchema = z
+  .object({
+    startRow: z.number().int().nonnegative(),
+    endRow: z.number().int().nonnegative(),
+    startColumn: z.number().int().nonnegative().max(16_383),
+    endColumn: z.number().int().nonnegative().max(16_383),
+  })
+  .strict()
+
+/// The grid's unsaved value edits of a large base, with the values the grid
+/// holds: a calculated column reads them, not the base as last saved.
+const largeTableGridEditsSchema = z
+  .object({
+    cells: z
+      .array(
+        z
+          .object({
+            row: z.number().int().nonnegative(),
+            column: z.number().int().nonnegative().max(16_383),
+            value: cellScalarSchema,
+          })
+          .strict(),
+      )
+      .max(2_000_000),
+    fills: z.array(largeTableSpanSchema.extend({ value: cellScalarSchema }).strict()).max(1_000),
+  })
+  .strict()
+
+/// A calculated column of a large base: a formula typed in one cell fills
+/// every data row of its column (Excel's table column formula).
+export const largeTableCalcRequestSchema = z.discriminatedUnion('action', [
+  z
+    .object({
+      action: z.literal('create'),
+      sessionId: z.string().uuid(),
+      column: z.number().int().nonnegative().max(16_383),
+      anchorRow: z.number().int().nonnegative(),
+      formula: z.string().min(2).max(8_192),
+      edits: largeTableGridEditsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('set-active'),
+      sessionId: z.string().uuid(),
+      calcId: z.string().uuid(),
+      active: z.boolean(),
+      edits: largeTableGridEditsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('refresh'),
+      sessionId: z.string().uuid(),
+      changed: z.array(largeTableSpanSchema).max(100_000),
+      edits: largeTableGridEditsSchema,
+      /// row-local formulas first, so an edited row shows its results at
+      /// once; `pending` in the result asks for the full pass
+      quick: z.boolean().optional(),
+    })
+    .strict(),
+])
+export type LargeTableCalcRequest = z.infer<typeof largeTableCalcRequestSchema>
+export type LargeTableGridEdits = z.infer<typeof largeTableGridEditsSchema>
+
+export const largeTableCalcResultSchema = z.union([
+  z
+    .object({
+      ok: z.literal(true),
+      ms: z.number().nonnegative(),
+      /** columns whose cells changed (the grid repaints them) */
+      refreshed: z.array(z.number().int().nonnegative()),
+      pending: z.boolean().optional(),
+      calcId: z.string().optional(),
+      replaced: z.string().nullable().optional(),
+      rows: z.number().int().nonnegative().optional(),
+      errors: z.number().int().nonnegative().optional(),
+      firstErrorRow: z.number().int().nonnegative().nullable().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ok: z.literal(false),
+      /** SYNTAX, UNSUPPORTED_FUNCTION, UNSUPPORTED_REFERENCE, CIRCULAR,
+       *  APPROXIMATE_LOOKUP, UNSUPPORTED_RANGE, COLUMN_NOT_EMPTY, … */
+      code: z.string(),
+      detail: z.string(),
+    })
+    .strict(),
+])
+export type LargeTableCalcResult = z.infer<typeof largeTableCalcResultSchema>
+
 export const workbookRangeRequestSchema = z
   .object({
     sessionId: z.string().uuid(),
@@ -3184,6 +3276,7 @@ export interface DesktopApi {
   readWorkbookRowOutline(request: WorkbookFormulaCellsRequest): Promise<WorkbookRowOutlineResult>
   /** Ctrl+Up/Down over a large base: the row the data-edge jump lands on */
   largeTableColumnEdge(request: LargeTableColumnEdgeRequest): Promise<number>
+  largeTableCalc(request: LargeTableCalcRequest): Promise<LargeTableCalcResult>
   recalcWorkbook(request: WorkbookRecalcRequest): Promise<WorkbookRecalcResult>
   readWorkbookMedia(request: WorkbookMediaRequest): Promise<WorkbookMediaResult>
   readPivotDefinition(request: WorkbookPivotRequest): Promise<WorkbookPivotDefinition>

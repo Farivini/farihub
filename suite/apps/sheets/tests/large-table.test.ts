@@ -8,8 +8,12 @@ import {
   type ColumnCounts,
 } from '@genoffice/xlsx-gateway/gateway/csv-number-format'
 
+import { largeTableBlock } from '../src/renderer/sheet-protection'
 import {
   largeTableCellValue,
+  largeTableColumnMark,
+  largeTableEditText,
+  largeTableEngineEdits,
   largeTableFindResult,
   largeTableRangeResult,
   type LargeTableSession,
@@ -90,6 +94,9 @@ describe('large-table reads and finds through the engine', () => {
     importMs: 0,
     csvFormat: typing.report,
     sheetId: 'sheet-1',
+    target: { current: { path: '/tmp/base.csv', format: 'csv', size: 0, mtimeMs: 0 } },
+    calcs: { current: new Map() },
+    width: { current: 9 },
   }
 
   it('maps engine rows onto grid cells and keeps the shell fields', async () => {
@@ -170,5 +177,151 @@ describe('large-table reads and finds through the engine', () => {
         limit: 10,
       }),
     ).toEqual({ matches: [], complete: true, indexingComplete: true })
+  })
+})
+
+describe('large-table edits', () => {
+  const rows = parseCsv('id;valor\n1;1,5\n', ';')
+  const ptBr = analyzeCsvColumns(rows, ';').report
+  const en = analyzeCsvColumns(parseCsv('id,value\n1,1.5\n', ','), ',').report
+
+  it('writes an edited value in the file convention', () => {
+    expect(largeTableEditText(1234.5, ptBr)).toBe('1234,5')
+    expect(largeTableEditText(1234.5, en)).toBe('1234.5')
+    expect(largeTableEditText(1.2e-7, ptBr)).toBe('0,00000012')
+    expect(largeTableEditText('007', ptBr)).toBe('007')
+    expect(largeTableEditText(true, ptBr)).toBe('TRUE')
+    expect(largeTableEditText(null, ptBr)).toBeNull()
+    expect(largeTableEditText('', ptBr)).toBeNull()
+  })
+
+  it('keeps the text the grid shows for a formatted number (a typed date)', () => {
+    expect(largeTableEditText(36526, ptBr, 'dd/mm/yyyy')).toBe('01/01/2000')
+    expect(largeTableEditText(0.125, ptBr, '0.00%')).toBe('12,50%')
+    expect(largeTableEditText(0.125, en, '0.00%')).toBe('12.50%')
+    expect(largeTableEditText(0.125, en, 'General')).toBe('0.125')
+  })
+
+  it('turns a save request into engine edits for the base sheet only', () => {
+    const table = {
+      engineSessionId: 'e',
+      rows: 10,
+      columns: 2,
+      cells: 0,
+      sourcePath: '/b.csv',
+      importMs: 0,
+      csvFormat: ptBr,
+      sheetId: 'sheet-1',
+      target: { current: { path: '/b.csv', format: 'csv' as const, size: 0, mtimeMs: 0 } },
+      calcs: { current: new Map() },
+      width: { current: 9 },
+    }
+    const edits = largeTableEngineEdits(table, {
+      edits: [
+        { sheetId: 'sheet-1', row: 1, column: 1, writeValue: true, value: 2.5 },
+        { sheetId: 'sheet-1', row: 2, column: 0, writeValue: false, value: null },
+        { sheetId: 'other', row: 1, column: 1, writeValue: true, value: 'x' },
+      ],
+      bulkConstantFills: [
+        { sheetId: 'sheet-1', startRow: 3, endRow: 9, startColumn: 0, endColumn: 0, value: null },
+      ],
+    })
+    expect(edits).toEqual({
+      fills: [{ startRow: 3, endRow: 9, startColumn: 0, endColumn: 0, text: null }],
+      cells: [{ row: 1, column: 1, text: '2,5' }],
+    })
+  })
+})
+
+describe('large-table command guard', () => {
+  it('lets value edits through and stops formulas, formatting and structure', () => {
+    const range = { startRow: 1, endRow: 1, startColumn: 0, endColumn: 0 }
+    expect(
+      largeTableBlock('sheet.command.set-range-values', 'edit', { range, value: { v: 'novo' } }),
+    ).toBeNull()
+    expect(
+      largeTableBlock('sheet.command.set-range-values', 'edit', { range, value: { f: '=A1*2' } }),
+    ).toBe('appLargeTableNoFormulas')
+    expect(
+      largeTableBlock('sheet.command.set-range-values', 'edit', { range, value: { s: 'bold' } }),
+    ).toBe('appLargeTableNotYet')
+    expect(largeTableBlock('sheet.command.clear-selection-content', 'edit', {})).toBeNull()
+    expect(largeTableBlock('sheet.command.insert-row', 'insertRows', {})).toBe(
+      'appLargeTableNotYet',
+    )
+    expect(
+      largeTableBlock('sheet.command.set-range-values', 'edit', {
+        range: { startRow: 1_048_576, endRow: 1_048_576, startColumn: 0, endColumn: 0 },
+        value: { v: 1 },
+      }),
+    ).toBe('appLargeTableRowLimit')
+  })
+})
+
+describe('large-table decimal mark per column', () => {
+  // pt-BR file: comma-decimal amounts, an integer-only quantity column
+  const rows = parseCsv('qtd;valor;obs\n2;1,5;a\n30;2,25;b\n', ';')
+  const typing = analyzeCsvColumns(rows, ';')
+  const format = typing.report
+
+  it('an integer-only column takes the file mark, and its values read the same', () => {
+    expect(format.decimal).toBe(',')
+    expect(format.columns[0]?.kind).toBe('number')
+    expect(format.columns[0]?.decimal).toBeUndefined()
+    expect(largeTableColumnMark(format, 0)).toBe(',')
+    for (const row of rows)
+      row.forEach((value, column) =>
+        expect(largeTableCellValue(format, column, value)).toBe(
+          typing.numberAt(column, value) ?? value,
+        ),
+      )
+  })
+
+  it('an edited number round-trips through its column (1.234 stays 1.234)', () => {
+    const text = largeTableEditText(1.234, format, undefined, 0)
+    expect(text).toBe('1,234')
+    expect(largeTableCellValue(format, 0, text!)).toBe(1.234)
+    expect(largeTableCellValue(format, 1, largeTableEditText(1234.5, format, undefined, 1)!)).toBe(
+      1234.5,
+    )
+  })
+
+  it('a file whose columns disagree writes each column in its own mark', () => {
+    const mixed = analyzeCsvColumns(parseCsv('a;b\n1,5;2.5\n', ';'), ';').report
+    expect(mixed.decimal).toBeNull()
+    expect(largeTableColumnMark(mixed, 0)).toBe(',')
+    expect(largeTableColumnMark(mixed, 1)).toBe('.')
+    expect(largeTableEditText(7.25, mixed, undefined, 0)).toBe('7,25')
+    expect(largeTableEditText(7.25, mixed, undefined, 1)).toBe('7.25')
+    expect(largeTableCellValue(mixed, 0, '7,25')).toBe(7.25)
+    expect(largeTableCellValue(mixed, 1, '7.25')).toBe(7.25)
+  })
+
+  it('a fill over several columns becomes one engine fill per column', () => {
+    const edits = largeTableEngineEdits(
+      {
+        engineSessionId: 'e',
+        rows: 10,
+        columns: 3,
+        cells: 0,
+        sourcePath: '/b.csv',
+        importMs: 0,
+        csvFormat: format,
+        sheetId: 's',
+        target: { current: { path: '/b.csv', format: 'csv', size: 0, mtimeMs: 0 } },
+        calcs: { current: new Map() },
+        width: { current: 9 },
+      },
+      {
+        edits: [],
+        bulkConstantFills: [
+          { sheetId: 's', startRow: 1, endRow: 2, startColumn: 0, endColumn: 1, value: 0.5 },
+        ],
+      },
+    )
+    expect(edits.fills).toEqual([
+      { startRow: 1, endRow: 2, startColumn: 0, endColumn: 0, text: '0,5' },
+      { startRow: 1, endRow: 2, startColumn: 1, endColumn: 1, text: '0,5' },
+    ])
   })
 })

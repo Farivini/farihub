@@ -402,8 +402,30 @@ export const zhTW = {
   appSheetAddFailed: '無法新增工作表。',
   appFormatCopied: '格式已複製——選取目標儲存格即可套用。',
   appProtectionNeedsFile: '請先開啟 XLSX 檔案——保護設定會儲存進檔案。',
-  appLargeTableReadOnly: '這個大型資料表在此版本中為唯讀：編輯、格式和儲存將在下一階段提供。',
-  appLargeTableOpened: '{name}：{rows} 列由大型資料引擎開啟，唯讀。編輯和儲存將在下一階段提供。',
+  appLargeTableNotYet:
+    '在大型資料表中，目前可以編輯值：格式、插入或刪除列以及其他結構變更將在後續階段提供。',
+  appLargeTableNoFormulas:
+    '在大型資料表中，公式只需輸入在一個儲存格，即可填滿整欄。暫不支援在多個儲存格中貼上或拖曳公式。',
+  appLargeTableRowLimit: '在此版本中，大型資料表僅接受前 1,048,576 列的編輯。',
+  appLargeTableAiNotYet:
+    '在大型資料表中，AI 可以編輯值並建立計算欄（在本欄中向下填滿的公式，會套用到整個資料表）。格式設定、結構變更以及單一儲存格中的公式將在後續階段提供。',
+  appLargeTableOpened:
+    '{name}：大型資料表引擎已開啟 {rows} 列。可以編輯值、建立計算欄（在空白欄中輸入公式），並儲存為 CSV 或 XLSX。格式設定以及插入或刪除列將在後續階段提供。',
+  appLargeTableCalcRunning: '正在計算 {column} 欄（{rows} 列）…',
+  appLargeTableCalcDone: '{column} 欄已計算 {rows} 列（{seconds} 秒）。',
+  appLargeTableCalcErrors: '{count} 列出現錯誤（#DIV/0!、#N/A…），第一個在第 {row} 列。',
+  appLargeTableCalcHeader: '在大型資料表中，第一列是標題列：請從第 2 列開始輸入公式。',
+  appLargeTableCalcNotEmpty: '公式會填滿整欄：請使用標題下方為空白的欄。',
+  appLargeTableCalcFunction: '函數 {name} 暫不支援在整個資料表上執行。',
+  appLargeTableCalcReference: '公式使用了 {ref}，此資料表中不存在（其他工作表、名稱或表格）。',
+  appLargeTableCalcCircular: '公式讀取了自身欄的同一列或下方儲存格（循環參照）。',
+  appLargeTableCalcApproximate:
+    '{name} 的近似相符暫不支援在整個資料表上執行。請使用完全相符（FALSE 或 0）。',
+  appLargeTableCalcRange: '隨列移動且超過 256 個儲存格的範圍暫不支援在整個資料表上執行。',
+  appLargeTableCalcSyntax: '公式無效：{detail}。',
+  appLargeTableCalcFailed: '無法計算該欄：{detail}',
+  appLargeTableCalcRefreshing: '正在重新計算資料表的計算欄…',
+  appLargeTableCalcRefreshed: '計算欄已更新（{seconds} 秒）。',
   appProtectionNeedsIndexed: '保護設定需要該工作表先完成索引——請稍後再試。',
   appProtectedWithPassword: '此工作表有密碼保護——請輸入密碼以取消保護。',
   appProtectionWillWrite: '工作表保護已開啟，儲存時寫入檔案。',

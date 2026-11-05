@@ -14,6 +14,7 @@ import {
 import type { SheetPasswordHash } from '@genoffice/xlsx-gateway/gateway/xlsx-protection-hash'
 
 import { t } from './i18n/locale'
+import { singleFormulaCell } from './large-table-calc'
 import { journalSuppression, type LazyWorkbookState, type UniverRuntime } from './univer-state'
 import type { WorkbookRangeResult } from '../shared/desktop-api'
 
@@ -405,10 +406,61 @@ export function rangesTouchLockedCell(
 export interface SheetProtectionGuardDeps {
   readonly getState: () => LazyWorkbookState | null
   readonly notify: (message: string) => void
+  /// A formula typed into one cell of a large base: the command is vetoed and
+  /// the formula becomes a calculated column over the whole base instead.
+  readonly onLargeTableFormula?: (cell: { row: number; column: number; formula: string }) => void
 }
 
 /// Vetoes commands the active sheet's protection forbids. Loader writes run
 /// under journalSuppression and pass through.
+/// Excel's last row index: edits past it cannot be saved by the grid's
+/// journal, so a larger base takes edits in its first 1,048,576 rows.
+const LARGE_TABLE_EDIT_ROW_LIMIT = 1_048_575
+
+/// Whether a set-range-values payload writes a formula (`f`/`si`, or a
+/// typed `=…` text the editor did not convert).
+export function setRangeValuesWritesFormula(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+  const cells: unknown[] = []
+  const data = value as Record<string, unknown>
+  if (CONTENT_KEYS.some((key) => key in data) || 's' in data) cells.push(data)
+  else
+    for (const row of Object.values(data)) {
+      if (Array.isArray(row)) cells.push(...row)
+      else if (typeof row === 'object' && row !== null) cells.push(...Object.values(row))
+    }
+  return cells.some((cell) => {
+    if (typeof cell !== 'object' || cell === null) return false
+    const record = cell as Record<string, unknown>
+    if (typeof record.f === 'string' && record.f !== '') return true
+    if (typeof record.si === 'string' && record.si !== '') return true
+    return typeof record.v === 'string' && record.v.startsWith('=') && record.v.length > 1
+  })
+}
+
+/// What stops a command on a large base, or null when it may run: value edits
+/// pass; formulas, formatting and every non-edit command wait for later stages.
+export function largeTableBlock(
+  commandId: string,
+  kind: GuardKind,
+  params: Record<string, unknown>,
+): 'appLargeTableNotYet' | 'appLargeTableNoFormulas' | 'appLargeTableRowLimit' | null {
+  if (kind !== 'edit') return 'appLargeTableNotYet'
+  if (commandId === 'sheet.operation.set-cell-edit-visible') return null
+  if (commandId === 'sheet.command.set-range-values') {
+    if (!setRangeValuesChangesContent(params.value)) return 'appLargeTableNotYet'
+    if (setRangeValuesWritesFormula(params.value)) return 'appLargeTableNoFormulas'
+  }
+  const ranges = [
+    ...rangesInParams(params),
+    ...(commandId === 'sheet.command.set-range-values' ? (matrixRanges(params.value) ?? []) : []),
+  ]
+  if (ranges.some((range) => range.endRow > LARGE_TABLE_EDIT_ROW_LIMIT)) {
+    return 'appLargeTableRowLimit'
+  }
+  return null
+}
+
 export function installSheetProtectionGuard(
   runtime: UniverRuntime,
   deps: SheetProtectionGuardDeps,
@@ -426,12 +478,26 @@ export function installSheetProtectionGuard(
         ? workbook?.getSheetBySheetId(params.subUnitId)
         : workbook?.getActiveSheet()
     if (!state || !worksheet) return
-    // A large base (data engine) is read-only in this version: the grid holds
-    // only the visible window of it, and saving it back is not supported yet.
+    // A large base (data engine) takes value edits in this version; formulas,
+    // formatting and structure changes come with later stages.
     if (state.file.largeTable !== undefined) {
-      if (event.id === 'sheet.operation.set-cell-edit-visible' && params.visible !== true) return
-      event.cancel = true
-      deps.notify(t('appLargeTableReadOnly'))
+      const blocked = largeTableBlock(event.id, kind, params)
+      if (
+        blocked === 'appLargeTableNoFormulas' &&
+        event.id === 'sheet.command.set-range-values' &&
+        deps.onLargeTableFormula !== undefined
+      ) {
+        const cell = singleFormulaCell(params)
+        if (cell !== null) {
+          event.cancel = true
+          deps.onLargeTableFormula(cell)
+          return
+        }
+      }
+      if (blocked !== null) {
+        event.cancel = true
+        deps.notify(t(blocked))
+      }
       return
     }
     const protection = effectiveSheetProtection(state, worksheet.getSheetId())

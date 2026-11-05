@@ -8,7 +8,10 @@
 //! own threads, each with its own DuckDB connection, so a long find never
 //! blocks the grid's reads.
 
+mod calc;
 mod delimited;
+mod export;
+mod formula;
 mod numbers;
 #[cfg(test)]
 mod tests;
@@ -41,7 +44,7 @@ pub struct EngineError {
 }
 
 impl EngineError {
-    fn new(code: &'static str, message: impl Into<String>) -> Self {
+    pub(crate) fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
@@ -120,15 +123,109 @@ pub enum Command {
         row: u64,
         down: bool,
     },
+    /// Writes edits from the grid into the base: constant fills first, then
+    /// single cells (the save planner's order). `text` is the cell's text in
+    /// the file's own convention; null or "" empties the cell.
+    #[serde(rename_all = "camelCase")]
+    ApplyEdits {
+        session_id: String,
+        #[serde(default)]
+        fills: Vec<FillEdit>,
+        #[serde(default)]
+        cells: Vec<CellEdit>,
+    },
+    /// The whole base as delimited text (UTF-8 with BOM, CRLF, Excel quoting),
+    /// written to `path`.
+    #[serde(rename_all = "camelCase")]
+    ExportDelimited {
+        session_id: String,
+        path: PathBuf,
+        delimiter: String,
+        #[serde(default)]
+        sep_line: bool,
+    },
+    /// The whole base as one .xlsx sheet; number columns are written as numbers.
+    #[serde(rename_all = "camelCase")]
+    ExportXlsx {
+        session_id: String,
+        path: PathBuf,
+        sheet_name: String,
+        #[serde(default)]
+        number_columns: Vec<NumberColumn>,
+    },
+    /// A formula over rows `firstRow..=lastRow` of `column`, typed in
+    /// `anchorRow`; written into the base (see calc.rs).
+    #[serde(rename_all = "camelCase")]
+    CalcCreate {
+        session_id: String,
+        formula: String,
+        anchor_row: u64,
+        column: u64,
+        first_row: u64,
+        last_row: u64,
+        sheet_name: String,
+        /// the mark numbers are written with (the file's)
+        decimal: String,
+        #[serde(default)]
+        number_columns: Vec<NumberColumn>,
+        #[serde(default)]
+        edits: calc::GridEdits,
+        /// a calculated column already on this column is replaced (Excel:
+        /// typing a new formula into a table's calculated column)
+        #[serde(default)]
+        replace_existing: bool,
+    },
+    /// Undo (off) and Redo (on) of a calculated column.
+    #[serde(rename_all = "camelCase")]
+    CalcSetActive {
+        session_id: String,
+        calc_id: String,
+        active: bool,
+        #[serde(default)]
+        number_columns: Vec<NumberColumn>,
+        #[serde(default)]
+        edits: calc::GridEdits,
+    },
+    /// Recomputes the formulas that read the `changed` cells.
+    #[serde(rename_all = "camelCase")]
+    CalcRefresh {
+        session_id: String,
+        changed: Vec<calc::Span>,
+        #[serde(default)]
+        number_columns: Vec<NumberColumn>,
+        #[serde(default)]
+        edits: calc::GridEdits,
+        /// row-local formulas only; `pending` in the answer asks for a full pass
+        #[serde(default)]
+        quick: bool,
+    },
     #[serde(rename_all = "camelCase")]
     Close { session_id: String },
 }
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct NumberColumn {
+pub struct FillEdit {
+    start_row: u64,
+    end_row: u64,
+    start_column: u64,
+    end_column: u64,
+    text: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CellEdit {
+    row: u64,
     column: u64,
-    decimal: String,
+    text: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NumberColumn {
+    pub(crate) column: u64,
+    pub(crate) decimal: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -154,8 +251,24 @@ struct Response {
 
 struct Session {
     db: Connection,
+    /// columns written by the file and by saved edits
     columns: u64,
     rows: u64,
+    calcs: Vec<calc::Calc>,
+    /// one writer at a time (edits, calculated columns); reads never take it
+    writer: Arc<Mutex<()>>,
+}
+
+impl Session {
+    /// The columns reads and exports cover: the saved ones and every
+    /// calculated column that is on.
+    fn width(&self) -> u64 {
+        self.calcs
+            .iter()
+            .filter(|c| c.active)
+            .map(|c| c.column() + 1)
+            .fold(self.columns, u64::max)
+    }
 }
 
 #[derive(Default)]
@@ -163,7 +276,7 @@ pub struct Engine {
     sessions: Mutex<HashMap<String, Arc<Mutex<Session>>>>,
 }
 
-fn column_name(index: u64) -> String {
+pub(crate) fn column_name(index: u64) -> String {
     format!("c{index}")
 }
 
@@ -178,7 +291,7 @@ impl Engine {
             .get(id)
             .ok_or_else(|| EngineError::new("UNKNOWN_SESSION", "Unknown data session."))?;
         let session = session.lock().unwrap();
-        Ok((session.db.try_clone()?, session.rows, session.columns))
+        Ok((session.db.try_clone()?, session.rows, session.width()))
     }
 
     pub fn handle(&self, command: Command) -> Result<Value, EngineError> {
@@ -248,6 +361,78 @@ impl Engine {
                 row,
                 down,
             } => self.column_edge(&session_id, column, row, down),
+            Command::ApplyEdits {
+                session_id,
+                fills,
+                cells,
+            } => self.apply_edits(&session_id, &fills, &cells),
+            Command::ExportDelimited {
+                session_id,
+                path,
+                delimiter,
+                sep_line,
+            } => {
+                let (db, _, columns) = self.session(&session_id)?;
+                let mut chars = delimiter.chars();
+                let delimiter = match (chars.next(), chars.next()) {
+                    (Some(c), None) => c,
+                    _ => {
+                        return Err(EngineError::new(
+                            "BAD_REQUEST",
+                            "delimiter must be one character",
+                        ));
+                    }
+                };
+                export::delimited(&db, columns, &path, delimiter, sep_line)
+            }
+            Command::ExportXlsx {
+                session_id,
+                path,
+                sheet_name,
+                number_columns,
+            } => {
+                let (db, rows, columns) = self.session(&session_id)?;
+                export::xlsx(&db, rows, columns, &path, &sheet_name, &number_columns)
+            }
+            Command::CalcCreate {
+                session_id,
+                formula,
+                anchor_row,
+                column,
+                first_row,
+                last_row,
+                sheet_name,
+                decimal,
+                number_columns,
+                edits,
+                replace_existing,
+            } => self.calc_create(
+                &session_id,
+                &formula,
+                anchor_row,
+                column,
+                first_row,
+                last_row,
+                &sheet_name,
+                &decimal,
+                &number_columns,
+                &edits,
+                replace_existing,
+            ),
+            Command::CalcSetActive {
+                session_id,
+                calc_id,
+                active,
+                number_columns,
+                edits,
+            } => self.calc_set_active(&session_id, &calc_id, active, &number_columns, &edits),
+            Command::CalcRefresh {
+                session_id,
+                changed,
+                number_columns,
+                edits,
+                quick,
+            } => self.calc_refresh(&session_id, &changed, &number_columns, &edits, quick),
             Command::Close { session_id } => {
                 self.sessions.lock().unwrap().remove(&session_id);
                 Ok(json!({}))
@@ -377,6 +562,8 @@ impl Engine {
                 db,
                 columns: width as u64,
                 rows,
+                calcs: Vec::new(),
+                writer: Arc::new(Mutex::new(())),
             })),
         );
         Ok(json!({
@@ -438,6 +625,117 @@ impl Engine {
             }
         }
         Ok(json!({ "rows": out }))
+    }
+
+    fn apply_edits(
+        &self,
+        session_id: &str,
+        fills: &[FillEdit],
+        cells: &[CellEdit],
+    ) -> Result<Value, EngineError> {
+        let session = self
+            .sessions
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .cloned()
+            .ok_or_else(|| EngineError::new("UNKNOWN_SESSION", "Unknown data session."))?;
+        // one writer at a time per base; reads keep their own connections
+        // and never wait for it
+        let (writer, rows, db) = {
+            let locked = session.lock().unwrap();
+            (locked.writer.clone(), locked.rows, locked.db.try_clone()?)
+        };
+        let _writing = writer.lock().unwrap();
+        let needed = fills
+            .iter()
+            .map(|f| f.end_column + 1)
+            .chain(cells.iter().map(|c| c.column + 1))
+            .max()
+            .unwrap_or(0);
+        if fills
+            .iter()
+            .any(|f| f.end_row >= rows || f.start_row > f.end_row)
+            || cells.iter().any(|c| c.row >= rows)
+        {
+            return Err(EngineError::new("BAD_REQUEST", "Edit outside the base."));
+        }
+        if needed > MAX_CSV_COLS as u64 {
+            return Err(EngineError::new("TOO_MANY_COLUMNS", "too many columns"));
+        }
+        let empty =
+            |text: &Option<String>| text.as_deref().filter(|t| !t.is_empty()).map(str::to_owned);
+        db.execute_batch("BEGIN TRANSACTION")?;
+        let result = (|| -> Result<(), EngineError> {
+            let existing: u64 = db.query_row(
+                "SELECT count(*) FROM information_schema.columns WHERE table_name = 't'",
+                [],
+                |r| r.get::<_, i64>(0),
+            )? as u64;
+            for index in existing..needed {
+                db.execute_batch(&format!(
+                    "ALTER TABLE t ADD COLUMN {} VARCHAR",
+                    column_name(index)
+                ))?;
+            }
+            for fill in fills {
+                let value = empty(&fill.text);
+                for column in fill.start_column..=fill.end_column {
+                    db.execute(
+                        &format!(
+                            "UPDATE t SET {} = ? WHERE rowid BETWEEN ? AND ?",
+                            column_name(column)
+                        ),
+                        params![value, fill.start_row as i64, fill.end_row as i64],
+                    )?;
+                }
+            }
+            // single cells per column through a temp table: one UPDATE ... FROM
+            // writes 100k cells in ~0.2 s, where one statement per cell is ~100x slower
+            let mut by_column: std::collections::BTreeMap<u64, HashMap<u64, Option<String>>> =
+                std::collections::BTreeMap::new();
+            for cell in cells {
+                by_column
+                    .entry(cell.column)
+                    .or_default()
+                    .insert(cell.row, empty(&cell.text));
+            }
+            for (column, values) in by_column {
+                db.execute_batch("CREATE OR REPLACE TEMP TABLE fariv_edits (r BIGINT, v VARCHAR)")?;
+                {
+                    let mut appender = db.appender("fariv_edits")?;
+                    for (row, value) in &values {
+                        appender.append_row(params![*row as i64, value])?;
+                    }
+                    appender.flush()?;
+                }
+                db.execute_batch(&format!(
+                    "UPDATE t SET {} = fariv_edits.v FROM fariv_edits WHERE t.rowid = fariv_edits.r",
+                    column_name(column)
+                ))?;
+            }
+            db.execute_batch("DROP TABLE IF EXISTS fariv_edits")?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => db.execute_batch("COMMIT")?,
+            Err(error) => {
+                let _ = db.execute_batch("ROLLBACK");
+                return Err(error);
+            }
+        }
+        let mut session = session.lock().unwrap();
+        session.columns = session.columns.max(needed);
+        // cells typed over a calculated column stay the person's after Save
+        let cell_spots: Vec<(u64, u64)> = cells.iter().map(|c| (c.row, c.column)).collect();
+        let fill_spans: Vec<(u64, u64, u64, u64)> = fills
+            .iter()
+            .map(|f| (f.start_row, f.end_row, f.start_column, f.end_column))
+            .collect();
+        for calc in session.calcs.iter_mut().filter(|c| c.active) {
+            calc.record_overrides(&cell_spots, &fill_spans);
+        }
+        Ok(json!({ "columns": session.width() }))
     }
 
     fn column_edge(
