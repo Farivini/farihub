@@ -442,10 +442,15 @@ export const en = {
   appSheetAddFailed: 'Unable to add a sheet.',
   appFormatCopied: 'Format copied — select the target cells to apply it.',
   appProtectionNeedsFile: 'Open an XLSX file first — protection saves into the file.',
-  appLargeTableReadOnly:
-    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableNotYet:
+    'In a large base you can edit values for now: formatting, inserting or deleting rows and other structure changes come in later stages.',
+  appLargeTableNoFormulas:
+    'Formulas in a large base come with the calculated column in the next stage. For now, type values.',
+  appLargeTableRowLimit: 'In this version, a large base takes edits in its first 1,048,576 rows.',
+  appLargeTableAiNotYet:
+    'AI changes to a large base come in the next stage, with the calculated column. For now the AI can read the base and answer about it.',
   appLargeTableOpened:
-    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
+    '{name}: {rows} rows opened by the large-base engine. You can edit values and save (CSV or XLSX); formulas, formatting and inserting or deleting rows come in later stages.',
   appProtectionNeedsIndexed:
     'Protection needs this sheet fully indexed first — try again in a moment.',
   appProtectedWithPassword: 'This sheet is protected with a password — enter it to unprotect.',

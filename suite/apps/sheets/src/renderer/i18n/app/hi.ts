@@ -459,10 +459,15 @@ export const hi = {
   appSheetAddFailed: 'शीट नहीं जोड़ी जा सकी।',
   appFormatCopied: 'स्वरूपण की प्रतिलिपि बनाई गई — लागू करने के लिए लक्ष्य सेल चुनें।',
   appProtectionNeedsFile: 'पहले एक XLSX फ़ाइल खोलें — सुरक्षा फ़ाइल में सहेजी जाती है।',
-  appLargeTableReadOnly:
-    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableNotYet:
+    'In a large base you can edit values for now: formatting, inserting or deleting rows and other structure changes come in later stages.',
+  appLargeTableNoFormulas:
+    'Formulas in a large base come with the calculated column in the next stage. For now, type values.',
+  appLargeTableRowLimit: 'In this version, a large base takes edits in its first 1,048,576 rows.',
+  appLargeTableAiNotYet:
+    'AI changes to a large base come in the next stage, with the calculated column. For now the AI can read the base and answer about it.',
   appLargeTableOpened:
-    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
+    '{name}: {rows} rows opened by the large-base engine. You can edit values and save (CSV or XLSX); formulas, formatting and inserting or deleting rows come in later stages.',
   appProtectionNeedsIndexed:
     'सुरक्षा के लिए पहले इस शीट का अनुक्रमण पूरा होना चाहिए — थोड़ी देर बाद फिर प्रयास करें।',
   appProtectedWithPassword:

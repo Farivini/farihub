@@ -496,10 +496,15 @@ export const de = {
   appFormatCopied: 'Format kopiert — wählen Sie die Zielzellen aus, um es anzuwenden.',
   appProtectionNeedsFile:
     'Öffnen Sie zuerst eine XLSX-Datei — der Schutz wird in die Datei gespeichert.',
-  appLargeTableReadOnly:
-    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableNotYet:
+    'In a large base you can edit values for now: formatting, inserting or deleting rows and other structure changes come in later stages.',
+  appLargeTableNoFormulas:
+    'Formulas in a large base come with the calculated column in the next stage. For now, type values.',
+  appLargeTableRowLimit: 'In this version, a large base takes edits in its first 1,048,576 rows.',
+  appLargeTableAiNotYet:
+    'AI changes to a large base come in the next stage, with the calculated column. For now the AI can read the base and answer about it.',
   appLargeTableOpened:
-    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
+    '{name}: {rows} rows opened by the large-base engine. You can edit values and save (CSV or XLSX); formulas, formatting and inserting or deleting rows come in later stages.',
   appProtectionNeedsIndexed:
     'Der Schutz erfordert, dass dieses Blatt zuerst vollständig indiziert ist — versuchen Sie es gleich noch einmal.',
   appProtectedWithPassword:

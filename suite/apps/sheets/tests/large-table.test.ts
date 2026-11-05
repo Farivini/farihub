@@ -8,8 +8,11 @@ import {
   type ColumnCounts,
 } from '@genoffice/xlsx-gateway/gateway/csv-number-format'
 
+import { largeTableBlock } from '../src/renderer/sheet-protection'
 import {
   largeTableCellValue,
+  largeTableEditText,
+  largeTableEngineEdits,
   largeTableFindResult,
   largeTableRangeResult,
   type LargeTableSession,
@@ -90,6 +93,7 @@ describe('large-table reads and finds through the engine', () => {
     importMs: 0,
     csvFormat: typing.report,
     sheetId: 'sheet-1',
+    target: { current: { path: '/tmp/base.csv', format: 'csv', size: 0, mtimeMs: 0 } },
   }
 
   it('maps engine rows onto grid cells and keeps the shell fields', async () => {
@@ -170,5 +174,81 @@ describe('large-table reads and finds through the engine', () => {
         limit: 10,
       }),
     ).toEqual({ matches: [], complete: true, indexingComplete: true })
+  })
+})
+
+describe('large-table edits', () => {
+  const rows = parseCsv('id;valor\n1;1,5\n', ';')
+  const ptBr = analyzeCsvColumns(rows, ';').report
+  const en = analyzeCsvColumns(parseCsv('id,value\n1,1.5\n', ','), ',').report
+
+  it('writes an edited value in the file convention', () => {
+    expect(largeTableEditText(1234.5, ptBr)).toBe('1234,5')
+    expect(largeTableEditText(1234.5, en)).toBe('1234.5')
+    expect(largeTableEditText(1.2e-7, ptBr)).toBe('0,00000012')
+    expect(largeTableEditText('007', ptBr)).toBe('007')
+    expect(largeTableEditText(true, ptBr)).toBe('TRUE')
+    expect(largeTableEditText(null, ptBr)).toBeNull()
+    expect(largeTableEditText('', ptBr)).toBeNull()
+  })
+
+  it('keeps the text the grid shows for a formatted number (a typed date)', () => {
+    expect(largeTableEditText(36526, ptBr, 'dd/mm/yyyy')).toBe('01/01/2000')
+    expect(largeTableEditText(0.125, ptBr, '0.00%')).toBe('12,50%')
+    expect(largeTableEditText(0.125, en, '0.00%')).toBe('12.50%')
+    expect(largeTableEditText(0.125, en, 'General')).toBe('0.125')
+  })
+
+  it('turns a save request into engine edits for the base sheet only', () => {
+    const table = {
+      engineSessionId: 'e',
+      rows: 10,
+      columns: 2,
+      cells: 0,
+      sourcePath: '/b.csv',
+      importMs: 0,
+      csvFormat: ptBr,
+      sheetId: 'sheet-1',
+      target: { current: { path: '/b.csv', format: 'csv' as const, size: 0, mtimeMs: 0 } },
+    }
+    const edits = largeTableEngineEdits(table, {
+      edits: [
+        { sheetId: 'sheet-1', row: 1, column: 1, writeValue: true, value: 2.5 },
+        { sheetId: 'sheet-1', row: 2, column: 0, writeValue: false, value: null },
+        { sheetId: 'other', row: 1, column: 1, writeValue: true, value: 'x' },
+      ],
+      bulkConstantFills: [
+        { sheetId: 'sheet-1', startRow: 3, endRow: 9, startColumn: 0, endColumn: 0, value: null },
+      ],
+    })
+    expect(edits).toEqual({
+      fills: [{ startRow: 3, endRow: 9, startColumn: 0, endColumn: 0, text: null }],
+      cells: [{ row: 1, column: 1, text: '2,5' }],
+    })
+  })
+})
+
+describe('large-table command guard', () => {
+  it('lets value edits through and stops formulas, formatting and structure', () => {
+    const range = { startRow: 1, endRow: 1, startColumn: 0, endColumn: 0 }
+    expect(
+      largeTableBlock('sheet.command.set-range-values', 'edit', { range, value: { v: 'novo' } }),
+    ).toBeNull()
+    expect(
+      largeTableBlock('sheet.command.set-range-values', 'edit', { range, value: { f: '=A1*2' } }),
+    ).toBe('appLargeTableNoFormulas')
+    expect(
+      largeTableBlock('sheet.command.set-range-values', 'edit', { range, value: { s: 'bold' } }),
+    ).toBe('appLargeTableNotYet')
+    expect(largeTableBlock('sheet.command.clear-selection-content', 'edit', {})).toBeNull()
+    expect(largeTableBlock('sheet.command.insert-row', 'insertRows', {})).toBe(
+      'appLargeTableNotYet',
+    )
+    expect(
+      largeTableBlock('sheet.command.set-range-values', 'edit', {
+        range: { startRow: 1_048_576, endRow: 1_048_576, startColumn: 0, endColumn: 0 },
+        value: { v: 1 },
+      }),
+    ).toBe('appLargeTableRowLimit')
   })
 })

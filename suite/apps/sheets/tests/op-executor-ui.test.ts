@@ -62,7 +62,7 @@ describe('applyChangePlan on a large base', () => {
     const outcome = await applyChangePlan(plan, ctx, {} as Parameters<typeof applyChangePlan>[2])
     expect(outcome.ok).toBe(false)
     expect(messages).toHaveLength(1)
-    expect(messages[0]).toMatch(/read-only|só para leitura|只读/)
+    expect(messages[0]).toMatch(/next stage|próxima etapa|下一阶段/)
     expect(outcome.ok ? '' : outcome.reason).toBe(messages[0])
   })
 })

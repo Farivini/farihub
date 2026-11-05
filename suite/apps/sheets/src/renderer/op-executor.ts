@@ -389,10 +389,10 @@ async function applyChangePlanNow(
   const notices: string[] = []
   let imageData: Map<string, LoadedImage>
   try {
-    // A large base is read-only in this version. Plans write through the edit
-    // journal (a constant fill never runs a guarded grid command), so the
-    // command guard alone would let an AI change land on screen unsaveable.
-    if (state.file.largeTable !== undefined) throw new Error(t('appLargeTableReadOnly'))
+    // AI plans on a large base come with the calculated column. Plans write
+    // through the edit journal (a constant fill never runs a guarded grid
+    // command), so the refusal sits here, not only in the command guard.
+    if (state.file.largeTable !== undefined) throw new Error(t('appLargeTableAiNotYet'))
     imageData = await prefetchOpImages(plannedOps)
     const spanError = await precheckStructuralDeletes(state, workbook, plannedOps)
     if (spanError) throw new Error(options.userFacing ? t('appDeleteSpanFormulas') : spanError)

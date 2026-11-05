@@ -126,6 +126,44 @@ export class DataEngineClient {
     return result.row
   }
 
+  async applyEdits(input: {
+    sessionId: string
+    fills: readonly {
+      startRow: number
+      endRow: number
+      startColumn: number
+      endColumn: number
+      text: string | null
+    }[]
+    cells: readonly { row: number; column: number; text: string | null }[]
+  }): Promise<{ columns: number }> {
+    return (await this.request({ command: 'apply_edits', ...input }, IMPORT_TIMEOUT_MS)) as {
+      columns: number
+    }
+  }
+
+  async exportDelimited(input: {
+    sessionId: string
+    path: string
+    delimiter: string
+    sepLine: boolean
+  }): Promise<{ rows: number }> {
+    return (await this.request({ command: 'export_delimited', ...input }, IMPORT_TIMEOUT_MS)) as {
+      rows: number
+    }
+  }
+
+  async exportXlsx(input: {
+    sessionId: string
+    path: string
+    sheetName: string
+    numberColumns: readonly { column: number; decimal: ',' | '.' }[]
+  }): Promise<{ rows: number }> {
+    return (await this.request({ command: 'export_xlsx', ...input }, IMPORT_TIMEOUT_MS)) as {
+      rows: number
+    }
+  }
+
   async close(sessionId: string): Promise<void> {
     if (!this.process) return
     await this.request({ command: 'close', sessionId })

@@ -490,10 +490,16 @@ export const pt = {
   appSheetAddFailed: 'Não foi possível adicionar a planilha.',
   appFormatCopied: 'Formato copiado — selecione as células de destino para aplicá-lo.',
   appProtectionNeedsFile: 'Abra primeiro um arquivo XLSX — a proteção é salva no arquivo.',
-  appLargeTableReadOnly:
-    'Esta base grande está aberta só para leitura nesta versão: editar, formatar e salvar chegam na próxima etapa.',
+  appLargeTableNotYet:
+    'Na base grande, por enquanto dá para editar valores: formatação, inserir ou excluir linhas e as demais alterações de estrutura chegam nas próximas etapas.',
+  appLargeTableNoFormulas:
+    'Fórmulas na base grande chegam com a coluna calculada, na próxima etapa. Por enquanto, digite valores.',
+  appLargeTableRowLimit:
+    'Nesta versão, a base grande aceita edições nas primeiras 1.048.576 linhas.',
+  appLargeTableAiNotYet:
+    'Alterações da IA na base grande chegam na próxima etapa, com a coluna calculada. Por enquanto, a IA pode ler e responder sobre a base.',
   appLargeTableOpened:
-    '{name}: {rows} linhas abertas pelo motor de bases grandes, só para leitura. Editar e salvar chegam na próxima etapa.',
+    '{name}: {rows} linhas abertas pelo motor de bases grandes. Dá para editar valores e salvar (CSV ou XLSX); fórmulas, formatação e inserir ou excluir linhas chegam nas próximas etapas.',
   appProtectionNeedsIndexed:
     'A proteção requer que esta planilha seja totalmente indexada primeiro — tente novamente em instantes.',
   appProtectedWithPassword: 'Esta planilha está protegida por senha — informe-a para desproteger.',

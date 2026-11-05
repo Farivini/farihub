@@ -490,10 +490,16 @@ export const es = {
   appSheetAddFailed: 'No se puede agregar una hoja.',
   appFormatCopied: 'Formato copiado — seleccione las celdas de destino para aplicarlo.',
   appProtectionNeedsFile: 'Abra primero un archivo XLSX — la protección se guarda en el archivo.',
-  appLargeTableReadOnly:
-    'Esta base grande es de solo lectura en esta versión: editar, dar formato y guardar llegarán en la próxima etapa.',
+  appLargeTableNotYet:
+    'En la base grande, por ahora se pueden editar valores: el formato, insertar o eliminar filas y los demás cambios de estructura llegarán en las próximas etapas.',
+  appLargeTableNoFormulas:
+    'Las fórmulas en la base grande llegarán con la columna calculada, en la próxima etapa. Por ahora, escriba valores.',
+  appLargeTableRowLimit:
+    'En esta versión, la base grande acepta ediciones en las primeras 1.048.576 filas.',
+  appLargeTableAiNotYet:
+    'Los cambios de la IA en la base grande llegarán en la próxima etapa, con la columna calculada. Por ahora, la IA puede leer y responder sobre la base.',
   appLargeTableOpened:
-    '{name}: {rows} filas abiertas con el motor de bases grandes, solo lectura. Editar y guardar llegarán en la próxima etapa.',
+    '{name}: {rows} filas abiertas con el motor de bases grandes. Puede editar valores y guardar (CSV o XLSX); fórmulas, formato e insertar o eliminar filas llegarán en las próximas etapas.',
   appProtectionNeedsIndexed:
     'La protección requiere que esta hoja esté totalmente indexada — inténtelo de nuevo en un momento.',
   appProtectedWithPassword:

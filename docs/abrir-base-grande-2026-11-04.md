@@ -1,5 +1,8 @@
 # Abrir uma base de 1 milhão de linhas pelo menu normal
 
+> Atualização de 05/11/2026: a base grande passou a aceitar edição e gravação. Ver
+> [editar, desfazer e salvar](editar-salvar-base-grande-2026-11-05.md).
+
 04/11/2026. **Resultado: CSV acima de 32 MB agora abre pelo menu Abrir, com a rolagem e os atalhos de
 sempre, e cada célula igual à importação de hoje. Nesta etapa a base grande abre só para leitura.**
 

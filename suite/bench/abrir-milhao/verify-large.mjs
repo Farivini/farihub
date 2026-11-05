@@ -6,8 +6,8 @@
  *  - cada célula da base inteira (lida pelo mesmo canal da grade) igual à
  *    importação de hoje (parseCsv + analyzeCsvColumns) e, para o texto bruto,
  *    a um leitor independente (Python csv);
- *  - busca (Ctrl+F) com a mesma contagem do oráculo;
- *  - só leitura: editar e salvar são recusados com aviso.
+ *  - busca (Ctrl+F) com a mesma contagem do oráculo.
+ * Editar e salvar: verify-edit-save.mjs.
  * Rodar a partir de suite/, com apps/sheets construído:
  *   xvfb-run -a node --import tsx bench/abrir-milhao/verify-large.mjs ARQUIVO.csv SAIDA.json [busca]
  */
@@ -374,29 +374,6 @@ print(n, h.hexdigest())
   await page.waitForTimeout(1500)
   await mark('after')
   report.frames = await page.evaluate(() => window.__gaps)
-
-  // ---- só leitura ----
-  await page.keyboard.press('Control+Home')
-  await page.waitForTimeout(300)
-  await page.keyboard.press('ArrowDown')
-  const before = expectedValue(1, 0)
-  await page.keyboard.type('XYZ')
-  await page.keyboard.press('Enter')
-  await page.waitForTimeout(500)
-  const after = await page.evaluate(() =>
-    window.__genofficeDebug.univerAPI
-      .getActiveWorkbook()
-      .getActiveSheet()
-      .getRange('A2')
-      .getValue(),
-  )
-  check('edicao_recusada', after === before, { a2: after })
-  await page.keyboard.press('Control+s')
-  await page.waitForTimeout(1500)
-  const bodyText = await page.locator('body').innerText()
-  check('salvar_recusado_com_aviso', /só para leitura/i.test(bodyText), {
-    trecho: (bodyText.match(/[^\n]*só para leitura[^\n]*/i) ?? [''])[0].slice(0, 200),
-  })
 
   // pico do uso normal (abrir, navegar, rolar, buscar na tela); a conferência
   // abaixo passa a base inteira pelo renderizador e não é uso normal

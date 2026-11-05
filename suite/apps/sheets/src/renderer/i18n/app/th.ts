@@ -437,10 +437,15 @@ export const th = {
   appSheetAddFailed: 'เพิ่มแผ่นงานไม่ได้',
   appFormatCopied: 'คัดลอกรูปแบบแล้ว — เลือกเซลล์เป้าหมายเพื่อนำไปใช้',
   appProtectionNeedsFile: 'เปิดไฟล์ XLSX ก่อน — การป้องกันจะถูกบันทึกลงไฟล์',
-  appLargeTableReadOnly:
-    'This large base is read-only in this version: editing, formatting and saving come in the next stage.',
+  appLargeTableNotYet:
+    'In a large base you can edit values for now: formatting, inserting or deleting rows and other structure changes come in later stages.',
+  appLargeTableNoFormulas:
+    'Formulas in a large base come with the calculated column in the next stage. For now, type values.',
+  appLargeTableRowLimit: 'In this version, a large base takes edits in its first 1,048,576 rows.',
+  appLargeTableAiNotYet:
+    'AI changes to a large base come in the next stage, with the calculated column. For now the AI can read the base and answer about it.',
   appLargeTableOpened:
-    '{name}: {rows} rows opened by the large-base engine, read-only. Editing and saving come in the next stage.',
+    '{name}: {rows} rows opened by the large-base engine. You can edit values and save (CSV or XLSX); formulas, formatting and inserting or deleting rows come in later stages.',
   appProtectionNeedsIndexed: 'การป้องกันต้องรอให้แผ่นงานนี้ทำดัชนีเสร็จก่อน — ลองใหม่อีกสักครู่',
   appProtectedWithPassword: 'แผ่นงานนี้ป้องกันด้วยรหัสผ่าน — ป้อนรหัสผ่านเพื่อยกเลิกการป้องกัน',
   appProtectionWillWrite: 'เปิดการป้องกันแผ่นงานแล้ว และจะถูกเขียนลงไฟล์เมื่อบันทึก',

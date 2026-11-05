@@ -44,7 +44,7 @@ fn numbers_match_typescript_cases() {
 }
 
 mod engine {
-    use crate::{Command, Engine};
+    use crate::{CellEdit, Command, Engine, FillEdit, NumberColumn};
     use serde_json::Value;
     use std::io::Write;
 
@@ -175,5 +175,107 @@ mod engine {
         );
         let rest = find(3, 1, 2);
         assert_eq!(rest["matches"], serde_json::json!([[3, 1, "ana"]]));
+    }
+
+    #[test]
+    fn edits_then_csv_keep_untouched_text_byte_for_byte() {
+        let engine = Engine::default();
+        // pt-BR file: thousands and decimal comma, a quoted delimiter, a ragged row
+        let text = "id;valor;obs\n1;1.234,56;\"a;b\"\n2;0,5\n3;7;x\n";
+        let (session, _, dir) = import(&engine, text, ";");
+        engine
+            .handle(Command::ApplyEdits {
+                session_id: session.clone(),
+                fills: vec![FillEdit {
+                    start_row: 1,
+                    end_row: 2,
+                    start_column: 2,
+                    end_column: 2,
+                    text: Some("cheio".into()),
+                }],
+                cells: vec![
+                    CellEdit {
+                        row: 2,
+                        column: 2,
+                        text: Some("diz \"oi\"".into()),
+                    },
+                    CellEdit {
+                        row: 3,
+                        column: 1,
+                        text: None,
+                    },
+                    CellEdit {
+                        row: 1,
+                        column: 3,
+                        text: Some("nova".into()),
+                    },
+                ],
+            })
+            .unwrap();
+        let out = dir.path().join("saida.csv");
+        engine
+            .handle(Command::ExportDelimited {
+                session_id: session.clone(),
+                path: out.clone(),
+                delimiter: ";".into(),
+                sep_line: false,
+            })
+            .unwrap();
+        let written = std::fs::read(&out).unwrap();
+        assert_eq!(&written[..3], &[0xef, 0xbb, 0xbf]);
+        assert_eq!(
+            String::from_utf8(written[3..].to_vec()).unwrap(),
+            "id;valor;obs;\r\n1;1.234,56;cheio;nova\r\n2;0,5;\"diz \"\"oi\"\"\";\r\n3;;x;\r\n"
+        );
+        // reads see the new column and values
+        let read = engine
+            .handle(Command::ReadRange {
+                session_id: session,
+                start_row: 1,
+                end_row: 1,
+                start_column: 0,
+                end_column: 3,
+            })
+            .unwrap();
+        assert_eq!(read["rows"][0][1][3], "nova");
+    }
+
+    #[test]
+    fn xlsx_writes_numbers_and_text() {
+        let engine = Engine::default();
+        let (session, _, dir) = import(&engine, "cod;valor\n007;1,5\n010;abc\n", ";");
+        let out = dir.path().join("saida.xlsx");
+        let result = engine
+            .handle(Command::ExportXlsx {
+                session_id: session,
+                path: out.clone(),
+                sheet_name: "Base".into(),
+                number_columns: vec![NumberColumn {
+                    column: 1,
+                    decimal: ",".into(),
+                }],
+            })
+            .unwrap();
+        assert_eq!(result["rows"], 3);
+        let bytes = std::fs::read(&out).unwrap();
+        assert_eq!(&bytes[..2], b"PK");
+    }
+
+    #[test]
+    fn edits_outside_the_base_are_refused() {
+        let engine = Engine::default();
+        let (session, _, _dir) = import(&engine, "a\n1\n", ",");
+        let error = engine
+            .handle(Command::ApplyEdits {
+                session_id: session,
+                fills: vec![],
+                cells: vec![CellEdit {
+                    row: 5,
+                    column: 0,
+                    text: Some("x".into()),
+                }],
+            })
+            .unwrap_err();
+        assert_eq!(error.code, "BAD_REQUEST");
     }
 }
