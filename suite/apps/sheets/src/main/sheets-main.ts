@@ -29,6 +29,7 @@ import { availableParallelism, totalmem } from 'node:os'
 import {
   app,
   BrowserWindow,
+  clipboard,
   desktopCapturer,
   dialog,
   ipcMain,
@@ -3499,6 +3500,48 @@ export function registerSheetsIpc(): void {
           ok: true,
           ms: done.ms,
           refreshed: [calc.column, ...done.refreshed],
+        })
+      }
+      if (request.action === 'list') {
+        const calcs = await engine.calcList(table.engineSessionId)
+        return largeTableCalcResultSchema.parse({ ok: true, ms: 0, refreshed: [], calcs })
+      }
+      if (request.action === 'copy') {
+        const started = Date.now()
+        const copied = await engine.rangeText({
+          sessionId: table.engineSessionId,
+          startRow: request.startRow,
+          endRow: request.endRow,
+          startColumn: request.startColumn,
+          endColumn: request.endColumn,
+          numberColumns,
+          edits: request.edits,
+        })
+        clipboard.writeText(copied.text)
+        return largeTableCalcResultSchema.parse({
+          ok: true,
+          ms: Date.now() - started,
+          refreshed: [],
+          copied: { rows: copied.rows, columns: copied.columns },
+        })
+      }
+      if (request.action === 'aggregate') {
+        const started = Date.now()
+        const aggregate = await engine.aggregateRange({
+          sessionId: table.engineSessionId,
+          startRow: request.startRow,
+          endRow: request.endRow,
+          startColumn: request.startColumn,
+          endColumn: request.endColumn,
+          numberColumns,
+          edits: request.edits,
+          topValues: request.topValues,
+        })
+        return largeTableCalcResultSchema.parse({
+          ok: true,
+          ms: Date.now() - started,
+          refreshed: [],
+          aggregate,
         })
       }
       if (![...table.calcs.current.values()].some((calc) => calc.active)) {

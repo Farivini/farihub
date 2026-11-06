@@ -1,0 +1,43 @@
+{
+  "date": "2026-11-06",
+  "base": "bank_transactions.csv (1.048.567 transações; valores omitidos)",
+  "steps": {
+    "ctrlShiftRight": {
+      "responsiveMs": 47,
+      "maxGapMs": 17
+    },
+    "ctrlShiftDown": {
+      "responsiveMs": 63,
+      "maxGapMs": 300
+    },
+    "copiar": {
+      "responsiveMs": 28,
+      "maxGapMs": 17
+    },
+    "apagarColuna": {
+      "responsiveMs": 52,
+      "maxGapMs": 100
+    },
+    "desfazerApagar": {
+      "responsiveMs": 59,
+      "maxGapMs": 100
+    },
+    "apagarColunaCalculada": {
+      "responsiveMs": 17,
+      "maxGapMs": 100
+    },
+    "desfazerColunaCalculada": {
+      "responsiveMs": 40,
+      "maxGapMs": 100
+    }
+  },
+  "checks": {
+    "barra_de_status_conta_a_base_inteira": true,
+    "copiar_traz_todas_as_linhas": true,
+    "apagar_e_desfazer_volta_o_arquivo_identico": true,
+    "apagar_e_salvar_esvazia_so_a_coluna": true,
+    "apagar_coluna_calculada_e_desfazer": true,
+    "nenhuma_pausa_acima_de_1s": true
+  },
+  "failures": []
+}

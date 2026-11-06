@@ -201,6 +201,9 @@ export interface EditJournal {
   /// Sheets whose filter changed; the save snapshots their live filter model
   /// instead of replaying mutations.
   readonly filterDirty: Set<string>
+  /// Changes the data engine of a large base holds outside the cell journal
+  /// (a calculated column created, turned off or on): Save must still run.
+  readonly engineChanges: { count: number }
   /// Sheets whose conditional formatting changed; the save snapshots the full
   /// rule set declaratively (same recipe as filters).
   readonly cfDirty: Set<string>
@@ -331,6 +334,7 @@ export function createEditJournal(): EditJournal {
       orderDirty: false,
     },
     filterDirty: new Set(),
+    engineChanges: { count: 0 },
     cfDirty: new Set(),
     dvDirty: new Set(),
     sheetProtection: new Map(),
@@ -2618,6 +2622,7 @@ export function journalSize(journal: EditJournal): number {
     if (!isSheetRemoved(journal, sheetId)) total += 1
   }
   if (journal.definedNames.dirty) total += 1
+  total += journal.engineChanges?.count ?? 0
   if (journal.workbookProtection.desired !== null) total += 1
   for (const sheetId of journal.protectedRangesDirty) {
     if (!isSheetRemoved(journal, sheetId)) total += 1

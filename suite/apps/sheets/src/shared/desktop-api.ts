@@ -973,6 +973,33 @@ export const largeTableCalcRequestSchema = z.discriminatedUnion('action', [
       edits: largeTableGridEditsSchema,
     })
     .strict(),
+  z.object({ action: z.literal('list'), sessionId: z.string().uuid() }).strict(),
+  /// Copy of a selection past the grid's window: the engine builds the text,
+  /// the main process puts it on the clipboard.
+  z
+    .object({
+      action: z.literal('copy'),
+      sessionId: z.string().uuid(),
+      startRow: z.number().int().nonnegative(),
+      endRow: z.number().int().nonnegative(),
+      startColumn: z.number().int().nonnegative().max(16_383),
+      endColumn: z.number().int().nonnegative().max(16_383),
+      edits: largeTableGridEditsSchema,
+    })
+    .strict(),
+  /// Statistics of a range (status bar, aggregate_range), computed in the engine.
+  z
+    .object({
+      action: z.literal('aggregate'),
+      sessionId: z.string().uuid(),
+      startRow: z.number().int().nonnegative(),
+      endRow: z.number().int().nonnegative(),
+      startColumn: z.number().int().nonnegative().max(16_383),
+      endColumn: z.number().int().nonnegative().max(16_383),
+      topValues: z.number().int().nonnegative().max(1_000),
+      edits: largeTableGridEditsSchema,
+    })
+    .strict(),
   z
     .object({
       action: z.literal('refresh'),
@@ -996,6 +1023,38 @@ export const largeTableCalcResultSchema = z.union([
       /** columns whose cells changed (the grid repaints them) */
       refreshed: z.array(z.number().int().nonnegative()),
       pending: z.boolean().optional(),
+      copied: z
+        .object({ rows: z.number().int().nonnegative(), columns: z.number().int().nonnegative() })
+        .strict()
+        .optional(),
+      calcs: z
+        .array(
+          z
+            .object({
+              calcId: z.string(),
+              column: z.number().int().nonnegative(),
+              active: z.boolean(),
+              firstRow: z.number().int().nonnegative(),
+              lastRow: z.number().int().nonnegative(),
+            })
+            .strict(),
+        )
+        .optional(),
+      aggregate: z
+        .object({
+          cells: z.number(),
+          nonEmpty: z.number(),
+          distinct: z.number().nullable(),
+          numericCount: z.number(),
+          sum: z.number(),
+          min: z.number().nullable(),
+          max: z.number().nullable(),
+          average: z.number().nullable(),
+          topValues: z.array(z.object({ value: z.string(), count: z.number() }).strict()),
+          withheld: z.number(),
+        })
+        .strict()
+        .optional(),
       calcId: z.string().optional(),
       replaced: z.string().nullable().optional(),
       rows: z.number().int().nonnegative().optional(),
@@ -2441,6 +2500,9 @@ export const workbookSaveRequestSchema = z
      * through without a translation step.
      */
     redactionStates: redactionStatesSchema.nullable().default(null),
+    /// A large base changed in its data engine (a calculated column on or
+    /// off) with nothing else in the journal: the save still writes it.
+    largeTableChanges: z.boolean().optional(),
   })
   .strict()
   .refine(
@@ -2475,7 +2537,8 @@ export const workbookSaveRequestSchema = z
       (request.tableEdits?.length ?? 0) > 0 ||
       request.pivotAdditions.length > 0 ||
       request.sparklineAdditions.length > 0 ||
-      (request.redactionStates?.length ?? 0) > 0,
+      (request.redactionStates?.length ?? 0) > 0 ||
+      request.largeTableChanges === true,
     { message: 'A save needs at least one edit.' },
   )
   .refine((request) => request.sheetOps.length === 0 || request.sheetOrder.length > 0, {

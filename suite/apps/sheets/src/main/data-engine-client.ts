@@ -84,6 +84,28 @@ export interface DataEngineCalcCreated extends DataEngineCalcRefreshed {
   readonly firstErrorRow: number | null
 }
 
+export interface DataEngineCalcInfo {
+  readonly calcId: string
+  readonly column: number
+  readonly active: boolean
+  readonly firstRow: number
+  readonly lastRow: number
+}
+
+/// The app's RangeAggregate (renderer/ai/aggregate.ts).
+export interface DataEngineAggregate {
+  readonly cells: number
+  readonly nonEmpty: number
+  readonly distinct: number | null
+  readonly numericCount: number
+  readonly sum: number
+  readonly min: number | null
+  readonly max: number | null
+  readonly average: number | null
+  readonly topValues: readonly { value: string; count: number }[]
+  readonly withheld: number
+}
+
 export class DataEngineError extends Error {
   constructor(
     readonly code: string,
@@ -249,6 +271,48 @@ export class DataEngineClient {
       { command: 'calc_refresh', ...input },
       IMPORT_TIMEOUT_MS,
     )) as DataEngineCalcRefreshed
+  }
+
+  /// Every calculated column of the base, on or off.
+  async calcList(sessionId: string): Promise<DataEngineCalcInfo[]> {
+    const result = (await this.request({ command: 'calc_list', sessionId })) as {
+      calcs: DataEngineCalcInfo[]
+    }
+    return result.calcs
+  }
+
+  /// Statistics of a range with the grid's unsaved edits on top.
+  async aggregateRange(input: {
+    sessionId: string
+    startRow: number
+    endRow: number
+    startColumn: number
+    endColumn: number
+    numberColumns: readonly { column: number; decimal: ',' | '.' }[]
+    edits: DataEngineGridEdits
+    topValues: number
+  }): Promise<DataEngineAggregate> {
+    return (await this.request(
+      { command: 'aggregate_range', ...input },
+      IMPORT_TIMEOUT_MS,
+    )) as DataEngineAggregate
+  }
+
+  /// A range as clipboard text (tab-separated).
+  async rangeText(input: {
+    sessionId: string
+    startRow: number
+    endRow: number
+    startColumn: number
+    endColumn: number
+    numberColumns: readonly { column: number; decimal: ',' | '.' }[]
+    edits: DataEngineGridEdits
+  }): Promise<{ text: string; rows: number; columns: number }> {
+    return (await this.request({ command: 'range_text', ...input }, IMPORT_TIMEOUT_MS)) as {
+      text: string
+      rows: number
+      columns: number
+    }
   }
 
   async close(sessionId: string): Promise<void> {

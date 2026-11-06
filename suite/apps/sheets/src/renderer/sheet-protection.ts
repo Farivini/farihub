@@ -14,7 +14,7 @@ import {
 import type { SheetPasswordHash } from '@genoffice/xlsx-gateway/gateway/xlsx-protection-hash'
 
 import { t } from './i18n/locale'
-import { singleFormulaCell } from './large-table-calc'
+import { singleFormulaCell } from './large-table-formula'
 import { journalSuppression, type LazyWorkbookState, type UniverRuntime } from './univer-state'
 import type { WorkbookRangeResult } from '../shared/desktop-api'
 
@@ -409,6 +409,9 @@ export interface SheetProtectionGuardDeps {
   /// A formula typed into one cell of a large base: the command is vetoed and
   /// the formula becomes a calculated column over the whole base instead.
   readonly onLargeTableFormula?: (cell: { row: number; column: number; formula: string }) => void
+  /// Delete / Clear contents on a large base: vetoed here and cleared in the
+  /// journal and the engine as one command instead of cell by cell.
+  readonly onLargeTableClear?: () => void
 }
 
 /// Vetoes commands the active sheet's protection forbids. Loader writes run
@@ -481,6 +484,15 @@ export function installSheetProtectionGuard(
     // A large base (data engine) takes value edits in this version; formulas,
     // formatting and structure changes come with later stages.
     if (state.file.largeTable !== undefined) {
+      if (
+        deps.onLargeTableClear !== undefined &&
+        (event.id === 'sheet.command.clear-selection-content' ||
+          event.id === 'sheet.command.clear-selection-all')
+      ) {
+        event.cancel = true
+        deps.onLargeTableClear()
+        return
+      }
       const blocked = largeTableBlock(event.id, kind, params)
       if (
         blocked === 'appLargeTableNoFormulas' &&

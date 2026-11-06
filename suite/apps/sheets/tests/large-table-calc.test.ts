@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { parseRange } from '@genoffice/xlsx-gateway/domain/cell-address'
 
-import { singleFormulaCell, splitLargeTablePlan } from '../src/renderer/large-table-calc'
+import {
+  planLargeTableClear,
+  singleFormulaCell,
+  splitLargeTablePlan,
+} from '../src/renderer/large-table-calc'
 
 const plan = (over: Record<string, unknown>): any => ({
   transactionId: 't',
@@ -90,5 +94,36 @@ describe('singleFormulaCell', () => {
     expect(
       singleFormulaCell({ value: { v: 12 }, range: { startRow: 0, startColumn: 0 } }),
     ).toBeNull()
+  })
+})
+
+describe('planLargeTableClear', () => {
+  const calcs = [{ calcId: 'c9', column: 9, firstRow: 1, lastRow: 99 }]
+  it('turns off a calculated column whose formula rows are all selected', () => {
+    // J1:J100 plus whole-column overshoot: the header clears, the formula goes
+    expect(
+      planLargeTableClear(
+        [{ startRow: 0, endRow: 1_048_575, startColumn: 8, endColumn: 9 }],
+        100,
+        10,
+        calcs,
+      ),
+    ).toEqual({
+      fills: [
+        { startRow: 0, endRow: 99, startColumn: 8, endColumn: 8 },
+        { startRow: 0, endRow: 0, startColumn: 9, endColumn: 9 },
+      ],
+      calcIds: ['c9'],
+    })
+  })
+  it('clears part of a calculated column as values, and clamps to the base', () => {
+    expect(
+      planLargeTableClear(
+        [{ startRow: 5, endRow: 9, startColumn: 9, endColumn: 16_383 }],
+        100,
+        10,
+        calcs,
+      ),
+    ).toEqual({ fills: [{ startRow: 5, endRow: 9, startColumn: 9, endColumn: 9 }], calcIds: [] })
   })
 })

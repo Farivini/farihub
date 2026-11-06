@@ -8,6 +8,7 @@
 //! own threads, each with its own DuckDB connection, so a long find never
 //! blocks the grid's reads.
 
+mod aggregate;
 mod calc;
 mod delimited;
 mod export;
@@ -200,6 +201,36 @@ pub enum Command {
         quick: bool,
     },
     #[serde(rename_all = "camelCase")]
+    CalcList { session_id: String },
+    /// A range as clipboard text (Copy of a selection past the grid's window).
+    #[serde(rename_all = "camelCase")]
+    RangeText {
+        session_id: String,
+        start_row: u64,
+        end_row: u64,
+        start_column: u64,
+        end_column: u64,
+        #[serde(default)]
+        number_columns: Vec<NumberColumn>,
+        #[serde(default)]
+        edits: calc::GridEdits,
+    },
+    /// Statistics of a range (status bar, the AI's aggregate_range).
+    #[serde(rename_all = "camelCase")]
+    AggregateRange {
+        session_id: String,
+        start_row: u64,
+        end_row: u64,
+        start_column: u64,
+        end_column: u64,
+        #[serde(default)]
+        number_columns: Vec<NumberColumn>,
+        #[serde(default)]
+        edits: calc::GridEdits,
+        #[serde(default)]
+        top_values: usize,
+    },
+    #[serde(rename_all = "camelCase")]
     Close { session_id: String },
 }
 
@@ -292,6 +323,45 @@ impl Engine {
             .ok_or_else(|| EngineError::new("UNKNOWN_SESSION", "Unknown data session."))?;
         let session = session.lock().unwrap();
         Ok((session.db.try_clone()?, session.rows, session.width()))
+    }
+
+    /// The calculated columns that are on, with their decimal marks.
+    pub(crate) fn calc_columns(&self, id: &str) -> Result<Vec<(u64, char)>, EngineError> {
+        let sessions = self.sessions.lock().unwrap();
+        let session = sessions
+            .get(id)
+            .ok_or_else(|| EngineError::new("UNKNOWN_SESSION", "Unknown data session."))?;
+        let session = session.lock().unwrap();
+        Ok(session
+            .calcs
+            .iter()
+            .filter(|c| c.active)
+            .map(|c| (c.column(), c.mark))
+            .collect())
+    }
+
+    /// Every calculated column of the base, on or off.
+    fn calc_list(&self, id: &str) -> Result<Value, EngineError> {
+        let sessions = self.sessions.lock().unwrap();
+        let session = sessions
+            .get(id)
+            .ok_or_else(|| EngineError::new("UNKNOWN_SESSION", "Unknown data session."))?;
+        let session = session.lock().unwrap();
+        let calcs: Vec<Value> = session
+            .calcs
+            .iter()
+            .map(|c| {
+                let (first_row, last_row) = c.rows();
+                json!({
+                    "calcId": c.id,
+                    "column": c.column(),
+                    "active": c.active,
+                    "firstRow": first_row,
+                    "lastRow": last_row,
+                })
+            })
+            .collect();
+        Ok(json!({ "calcs": calcs }))
     }
 
     pub fn handle(&self, command: Command) -> Result<Value, EngineError> {
@@ -433,6 +503,43 @@ impl Engine {
                 edits,
                 quick,
             } => self.calc_refresh(&session_id, &changed, &number_columns, &edits, quick),
+            Command::CalcList { session_id } => self.calc_list(&session_id),
+            Command::RangeText {
+                session_id,
+                start_row,
+                end_row,
+                start_column,
+                end_column,
+                number_columns,
+                edits,
+            } => self.range_text(
+                &session_id,
+                start_row,
+                end_row,
+                start_column,
+                end_column,
+                &number_columns,
+                &edits,
+            ),
+            Command::AggregateRange {
+                session_id,
+                start_row,
+                end_row,
+                start_column,
+                end_column,
+                number_columns,
+                edits,
+                top_values,
+            } => self.aggregate_range(
+                &session_id,
+                start_row,
+                end_row,
+                start_column,
+                end_column,
+                &number_columns,
+                &edits,
+                top_values,
+            ),
             Command::Close { session_id } => {
                 self.sessions.lock().unwrap().remove(&session_id);
                 Ok(json!({}))

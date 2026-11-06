@@ -485,4 +485,43 @@ mod engine {
             Some("0")
         );
     }
+
+    #[test]
+    fn aggregate_reads_the_grid_values_with_unsaved_edits() {
+        let engine = Engine::default();
+        let text = "cidade;valor\nA;1,5\nB;2\nA;x\n;\n";
+        let (session, _, _dir) = import(&engine, text, ";");
+        let edits: GridEdits = serde_json::from_value(serde_json::json!({
+            "cells": [{ "row": 3, "column": 1, "value": 10 }, { "row": 2, "column": 0, "value": "a" }],
+            "fills": []
+        }))
+        .unwrap();
+        let result = engine
+            .handle(Command::AggregateRange {
+                session_id: session,
+                start_row: 1,
+                end_row: 1_048_575,
+                start_column: 0,
+                end_column: 16_383,
+                number_columns: vec![NumberColumn {
+                    column: 1,
+                    decimal: ",".into(),
+                }],
+                edits,
+                top_values: 5,
+            })
+            .unwrap();
+        // rows 1..=3 (the trailing empty row is not part of the base), A:B
+        assert_eq!(result["cells"], 6);
+        assert_eq!(result["nonEmpty"], 6);
+        assert_eq!(result["numericCount"], 3);
+        assert_eq!(result["sum"], 13.5);
+        assert_eq!(result["min"], 1.5);
+        assert_eq!(result["max"], 10.0);
+        assert_eq!(result["distinct"], 5);
+        assert_eq!(
+            result["topValues"][0],
+            serde_json::json!({ "value": "A", "count": 2 })
+        );
+    }
 }

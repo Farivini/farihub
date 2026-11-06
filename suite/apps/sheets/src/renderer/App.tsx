@@ -554,7 +554,11 @@ import { EncryptedWorkbookPasswordDialog } from './EncryptedWorkbookPasswordDial
 import { ChangeWorkbookPasswordDialog } from './ChangeWorkbookPasswordDialog'
 import { ToastHost } from './toast'
 import { showToast } from './toast-bus'
-import { createLargeTableCalc, installLargeTableCalc } from './large-table-calc'
+import {
+  clearLargeTableSelection,
+  createLargeTableCalc,
+  installLargeTableCalc,
+} from './large-table-calc'
 import { AdvancedFilterDialog, type AdvancedFilterColumn } from './AdvancedFilterDialog'
 import { EquationDialog } from './EquationDialog'
 import { IconsDialog } from './IconsDialog'
@@ -2466,6 +2470,10 @@ export function App({
         showToast(message, kind)
       },
       status: (message: string) => setMessage(message),
+      journalChanged: () => {
+        const state = lazyWorkbookRef.current
+        if (state) setPendingEdits(journalSize(state.editJournal))
+      },
     }
     const largeTableCalcDisposable = installLargeTableCalc(largeTableCalcDeps)
     const sheetProtectionDisposable = installSheetProtectionGuard(runtime, {
@@ -2475,6 +2483,16 @@ export function App({
         showToast(message, 'error')
       },
       onLargeTableFormula: (cell) => void createLargeTableCalc(largeTableCalcDeps, cell),
+      onLargeTableClear: () => {
+        const ranges =
+          runtime.univerAPI
+            .getActiveWorkbook()
+            ?.getActiveSheet()
+            ?.getSelection()
+            ?.getActiveRangeList()
+            ?.map((range) => range.getRange()) ?? []
+        void clearLargeTableSelection(largeTableCalcDeps, ranges)
+      },
     })
     const ctrlDragFillDisposable = installCtrlDragFill(runtime)
     // The grid's right-click item that withholds the selected cells from the

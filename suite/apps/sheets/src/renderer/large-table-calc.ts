@@ -3,9 +3,15 @@ import { SheetPermissionCheckController } from '@univerjs/sheets'
 
 import type { LargeTableCalcResult, LargeTableGridEdits } from '../shared/desktop-api'
 import { BULK_FILL_UNDO_COMMAND_ID } from './bulk-fill-undo'
-import { journalCellContentAt } from './edit-journal'
+import {
+  journalCellContentAt,
+  recordBulkConstantFill,
+  removeBulkConstantFill,
+  restoreJournalCells,
+} from './edit-journal'
 import { t } from './i18n/locale'
 import { columnLabel } from './redact-actions'
+import { pushVisualUndo } from './univer-sync'
 import { journalSuppression, type LazyWorkbookState, type UniverRuntime } from './univer-state'
 
 /// Calculated columns of a large base (data engine). A formula typed in one
@@ -33,6 +39,8 @@ export interface LargeTableCalcDeps {
   readonly notify: (message: string, kind: 'success' | 'error') => void
   /// status bar only (no toast): the background recompute after an edit
   readonly status?: (message: string) => void
+  /// the journal changed outside a grid command (the unsaved-edits count)
+  readonly journalChanged?: () => void
 }
 
 interface Span {
@@ -64,45 +72,7 @@ export function largeTableJournalEdits(
   return { cells, fills }
 }
 
-/// The one cell a set-range-values command writes a formula into, or null
-/// (several cells, no formula). The command carries the cell as an object or
-/// as a row → column matrix.
-export function singleFormulaCell(
-  params: Record<string, unknown>,
-): { row: number; column: number; formula: string } | null {
-  const formulaOf = (cell: unknown): string | null => {
-    if (typeof cell !== 'object' || cell === null) return null
-    const record = cell as Record<string, unknown>
-    if (typeof record.f === 'string' && record.f.startsWith('=') && record.f.length > 1) {
-      return record.f
-    }
-    if (typeof record.v === 'string' && record.v.startsWith('=') && record.v.length > 1) {
-      return record.v
-    }
-    return null
-  }
-  const value = params.value
-  if (typeof value !== 'object' || value === null) return null
-  const range = params.range as { startRow?: unknown; startColumn?: unknown } | undefined
-  const direct = value as Record<string, unknown>
-  if ('f' in direct || 'v' in direct) {
-    const formula = formulaOf(direct)
-    if (formula === null || typeof range?.startRow !== 'number') return null
-    if (typeof range.startColumn !== 'number') return null
-    return { row: range.startRow, column: range.startColumn, formula }
-  }
-  let found: { row: number; column: number; formula: string } | null = null
-  for (const [rowKey, rowValue] of Object.entries(direct)) {
-    if (typeof rowValue !== 'object' || rowValue === null) return null
-    for (const [columnKey, cell] of Object.entries(rowValue as Record<string, unknown>)) {
-      const formula = formulaOf(cell)
-      if (formula === null) continue
-      if (found !== null) return null
-      found = { row: Number(rowKey), column: Number(columnKey), formula }
-    }
-  }
-  return found
-}
+export { singleFormulaCell } from './large-table-formula'
 
 /// The message for an engine refusal.
 export function largeTableCalcMessage(code: string, detail: string): string {
@@ -127,6 +97,16 @@ export function largeTableCalcMessage(code: string, detail: string): string {
       return t('appLargeTableCalcFailed', { detail })
   }
 }
+
+/// The base changed in the engine (a calculated column on or off): the
+/// workbook has something to save even with no cell edit in the journal.
+function noteEngineChange(deps: LargeTableCalcDeps, state: LazyWorkbookState): void {
+  state.editJournal.engineChanges.count += 1
+  deps.journalChanged?.()
+}
+
+/// Set by installLargeTableCalc: recompute the formulas reading these cells.
+let scheduleRefresh: ((span: Span) => void) | null = null
 
 /// Engine calls run one at a time, in the order the grid asked for them.
 let queue: Promise<unknown> = Promise.resolve()
@@ -167,9 +147,9 @@ async function repaintColumns(
     for (const cell of result.cells) values.set(cell.row, cell.value ?? null)
     const matrix = Array.from({ length: endRow - startRow + 1 }, (_unused, offset) => {
       const row = startRow + offset
-      // the journal's own edit of this cell wins over the formula
-      if (journalCellContentAt(state.editJournal, sheetId, row, column).found) return [{}]
-      const value = values.get(row) ?? null
+      // the journal's own edit of this cell (a typed value, a clear) wins
+      const journal = journalCellContentAt(state.editJournal, sheetId, row, column)
+      const value = journal.found ? journal.value : (values.get(row) ?? null)
       return [
         value === null
           ? { v: null, f: null, si: null, p: null, t: null }
@@ -241,7 +221,10 @@ async function applyCalcUndo(deps: LargeTableCalcDeps, params: CalcUndoParams): 
     }
     repaint.push(...result.refreshed)
   }
-  if (deps.getState() === state) await repaintColumns(deps, state, repaint)
+  if (deps.getState() === state) {
+    noteEngineChange(deps, state)
+    await repaintColumns(deps, state, repaint)
+  }
 }
 
 /// A formula typed into a data cell of the base: the whole column becomes
@@ -306,6 +289,7 @@ export function createLargeTableCalc(
     if (meta.valueColumnCount !== undefined) {
       meta.valueColumnCount = Math.max(meta.valueColumnCount, cell.column + 1)
     }
+    noteEngineChange(deps, state)
     pushCalcUndo(deps, result.calcId, result.replaced ?? null)
     await repaintColumns(deps, state, result.refreshed)
     const seconds = (result.ms / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })
@@ -493,6 +477,11 @@ export function installLargeTableCalc(deps: LargeTableCalcDeps): { dispose(): vo
 
   let pending: Span[] = []
   let timer: ReturnType<typeof setTimeout> | null = null
+  scheduleRefresh = (span) => {
+    pending.push(span)
+    if (timer !== null) clearTimeout(timer)
+    timer = setTimeout(flush, REFRESH_DEBOUNCE_MS)
+  }
   const flush = (): void => {
     timer = null
     const changed = pending
@@ -540,9 +529,7 @@ export function installLargeTableCalc(deps: LargeTableCalcDeps): { dispose(): vo
       if (params?.subUnitId !== undefined && params.subUnitId !== state.file.sheets[0]?.id) return
       const span = mutationSpan(command.id, command.params)
       if (span === null) return
-      pending.push(span)
-      if (timer !== null) clearTimeout(timer)
-      timer = setTimeout(flush, REFRESH_DEBOUNCE_MS)
+      scheduleRefresh?.(span)
     },
   )
   return {
@@ -550,7 +537,159 @@ export function installLargeTableCalc(deps: LargeTableCalcDeps): { dispose(): vo
       if (typeof formulaCheck === 'function') permission._permissionCheckWithFormula = formulaCheck
       registration.dispose()
       subscription.dispose()
+      scheduleRefresh = null
       if (timer !== null) clearTimeout(timer)
     },
   }
+}
+
+/// A selection as the clear path takes it: whole-row/column picks reach far
+/// past the base; they are clamped to it.
+export interface ClearRange {
+  readonly startRow: number
+  readonly endRow: number
+  readonly startColumn: number
+  readonly endColumn: number
+}
+
+/// The fills and calculated columns a clear of `ranges` turns into: a
+/// calculated column whose every formula row is selected is turned off as a
+/// whole (Excel: deleting a table's calculated column); every other selected
+/// cell of the base takes an empty constant fill.
+export function planLargeTableClear(
+  ranges: readonly ClearRange[],
+  rows: number,
+  columns: number,
+  calcs: readonly { calcId: string; column: number; firstRow: number; lastRow: number }[],
+): { fills: ClearRange[]; calcIds: string[] } {
+  const fills: ClearRange[] = []
+  const calcIds = new Set<string>()
+  for (const range of ranges) {
+    const startRow = Math.max(0, range.startRow)
+    const endRow = Math.min(rows - 1, range.endRow)
+    const startColumn = Math.max(0, range.startColumn)
+    const endColumn = Math.min(columns - 1, range.endColumn)
+    if (startRow > endRow || startColumn > endColumn) continue
+    let runStart: number | null = null
+    const flush = (end: number) => {
+      if (runStart !== null) fills.push({ startRow, endRow, startColumn: runStart, endColumn: end })
+      runStart = null
+    }
+    for (let column = startColumn; column <= endColumn; column += 1) {
+      const calc = calcs.find(
+        (candidate) =>
+          candidate.column === column &&
+          startRow <= candidate.firstRow &&
+          endRow >= candidate.lastRow,
+      )
+      if (calc === undefined) {
+        runStart ??= column
+        continue
+      }
+      flush(column - 1)
+      calcIds.add(calc.calcId)
+      // the rest of the column (its header) still clears
+      if (startRow < calc.firstRow) {
+        fills.push({ startRow, endRow: calc.firstRow - 1, startColumn: column, endColumn: column })
+      }
+      if (endRow > calc.lastRow) {
+        fills.push({ startRow: calc.lastRow + 1, endRow, startColumn: column, endColumn: column })
+      }
+    }
+    flush(endColumn)
+  }
+  return { fills, calcIds: [...calcIds] }
+}
+
+/// Delete / Clear contents on a large base: one journal fill per area and
+/// whole calculated columns turned off, in one undo step. The grid never
+/// writes the cleared cells one by one (a million-row column took seconds to
+/// clear and a minute to undo, and the undo only knew the resident rows).
+export function clearLargeTableSelection(
+  deps: LargeTableCalcDeps,
+  ranges: readonly ClearRange[],
+): Promise<void> {
+  return enqueue(async () => {
+    const state = deps.getState()
+    const sheet = state?.file.sheets[0]
+    const large = state?.file.largeTable
+    if (!state || !sheet || large === undefined) return
+    const sheetId = sheet.id
+    const listed = await window.desktopApi.largeTableCalc({
+      action: 'list',
+      sessionId: state.file.sessionId,
+    })
+    if (!listed.ok) {
+      deps.notify(largeTableCalcMessage(listed.code, listed.detail), 'error')
+      return
+    }
+    const plan = planLargeTableClear(
+      ranges,
+      large.rows,
+      sheet.columnCount,
+      (listed.calcs ?? []).filter((calc) => calc.active),
+    )
+    if (plan.fills.length === 0 && plan.calcIds.length === 0) return
+    let records = plan.fills.map((fill) =>
+      recordBulkConstantFill(state.editJournal, { sheetId, ...fill, value: null }),
+    )
+    const setCalcs = async (active: boolean): Promise<number[]> => {
+      const repaint: number[] = []
+      for (const calcId of plan.calcIds) {
+        const current = deps.getState()
+        if (!current) break
+        const result = await window.desktopApi.largeTableCalc({
+          action: 'set-active',
+          sessionId: current.file.sessionId,
+          calcId,
+          active,
+          edits: largeTableJournalEdits(current, sheetId),
+        })
+        if (!result.ok) {
+          deps.notify(largeTableCalcMessage(result.code, result.detail), 'error')
+          break
+        }
+        repaint.push(...result.refreshed)
+      }
+      return repaint
+    }
+    const settle = async (extra: readonly number[]): Promise<void> => {
+      const current = deps.getState()
+      if (!current) return
+      if (plan.calcIds.length > 0) current.editJournal.engineChanges.count += 1
+      deps.journalChanged?.()
+      const columns = new Set<number>(extra)
+      for (const fill of plan.fills) {
+        for (let column = fill.startColumn; column <= fill.endColumn; column += 1) {
+          columns.add(column)
+        }
+        scheduleRefresh?.(fill)
+      }
+      await repaintColumns(deps, current, [...columns])
+    }
+    await settle(await setCalcs(false))
+    pushVisualUndo(deps.runtime, {
+      undo: () => {
+        void enqueue(async () => {
+          const current = deps.getState()
+          if (!current) return
+          for (const record of [...records].reverse()) {
+            removeBulkConstantFill(current.editJournal, record.fill)
+            restoreJournalCells(current.editJournal, sheetId, record.purgedCells)
+          }
+          await settle(await setCalcs(true))
+        })
+      },
+      redo: () => {
+        void enqueue(async () => {
+          const current = deps.getState()
+          if (!current) return
+          records = records.map((record) =>
+            recordBulkConstantFill(current.editJournal, record.fill),
+          )
+          await settle(await setCalcs(false))
+        })
+      },
+    })
+  })
 }

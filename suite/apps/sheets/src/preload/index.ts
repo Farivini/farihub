@@ -2343,7 +2343,8 @@ function parseSaveRequest(input: WorkbookSaveRequest): WorkbookSaveRequest {
     input.themeState === null &&
     input.workbookProtectionState === null &&
     input.protectedRangeStates.length === 0 &&
-    (input.redactionStates?.length ?? 0) === 0
+    (input.redactionStates?.length ?? 0) === 0 &&
+    input.largeTableChanges !== true
   )
     invalid('no changes to save')
   if (input.sheetOps.length > 0 && input.sheetOrder.length === 0)
