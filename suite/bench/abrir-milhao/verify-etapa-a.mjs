@@ -5,7 +5,8 @@
  * tela e confere o resultado de cada ação que travava no teste do Windows:
  * selecionar até o fim (Ctrl+Shift+→/↓) com a barra de status, copiar a base
  * inteira, apagar uma coluna inteira e desfazer, apagar e salvar, apagar uma
- * coluna calculada inteira e desfazer. Os arquivos salvos são conferidos em
+ * coluna calculada inteira e desfazer, apagar a coluna calculada com células
+ * digitadas por cima e apagar uma coluna nova à direita. Os arquivos salvos são conferidos em
  * Python contra o original.
  *
  *   xvfb-run -a node bench/abrir-milhao/verify-etapa-a.mjs base.csv saida.json
@@ -190,7 +191,8 @@ try {
     sha(csv) === originalSha && afterDelete === null && afterUndo !== null,
     {
       telaDepoisDeApagar: afterDelete,
-      telaDepoisDeDesfazer: afterUndo,
+      // só se voltou: o valor é dado da base e não vai para o relatório
+      telaDepoisDeDesfazer: afterUndo === null ? null : 'preenchida',
     },
   )
 
@@ -232,6 +234,63 @@ try {
       telaDepoisDeApagar: calcCleared,
       linhasErradas: calc.bad,
     },
+  )
+
+  // ---- apagar a coluna calculada com células digitadas por cima ----
+  // J5 digitada e salva (fica da pessoa), J6 digitada sem salvar: apagar a
+  // coluna inteira esvazia as duas, como no Excel (a coluna C já foi apagada
+  // e salva no passo anterior, então fica de fora da comparação)
+  const typeAt = async (address, text) => {
+    await goTo(address)
+    await page.keyboard.type(text)
+    await page.keyboard.press('Enter')
+    await page.waitForTimeout(1500)
+  }
+  await typeAt('J5', 'manual')
+  await save()
+  await typeAt('J6', 'outro')
+  await goTo('J1:J1048568')
+  await step('apagarColunaCalculadaDigitada', () => page.keyboard.press('Delete'))
+  const typedGone = [await raw(4, 9), await raw(5, 9)]
+  await save()
+  const typed = python(
+    READ +
+      "a=rows(sys.argv[1]);b=rows(sys.argv[2])\nbad=sum(1 for x,y in zip(a,b) if (x[:2]+x[3:])!=(y[:2]+y[3:len(x)]) or any(v!='' for v in y[len(x):]))\nprint(json.dumps({'rows':len(b),'bad':bad}))",
+    resolve(file),
+    csv,
+  )
+  check(
+    'apagar_coluna_calculada_leva_o_digitado',
+    typedGone.every((v) => v === null) && typed.rows === rows && typed.bad === 0,
+    { telaJ5J6: typedGone, ...typed },
+  )
+
+  // ---- apagar uma coluna nova, digitada à direita da base ----
+  await typeAt('K2', 'novo')
+  await typeAt('K3', 'novo2')
+  await goTo('K1:K1048568')
+  await step('apagarColunaNova', () => page.keyboard.press('Delete'))
+  const newGone = [await raw(1, 10), await raw(2, 10)]
+  await step('desfazerColunaNova', () => page.keyboard.press('Control+z'))
+  const newBack = [await raw(1, 10), await raw(2, 10)]
+  await step('refazerColunaNova', () => page.keyboard.press('Control+y'))
+  const newGoneAgain = [await raw(1, 10), await raw(2, 10)]
+  await save()
+  const fresh = python(
+    READ +
+      "a=rows(sys.argv[1]);b=rows(sys.argv[2])\nbad=sum(1 for x,y in zip(a,b) if (x[:2]+x[3:])!=(y[:2]+y[3:len(x)]) or len(y)>10 or any(v!='' for v in y[len(x):]))\nprint(json.dumps({'rows':len(b),'bad':bad}))",
+    resolve(file),
+    csv,
+  )
+  check(
+    'apagar_coluna_nova',
+    newGone.every((v) => v === null) &&
+      newBack[0] === 'novo' &&
+      newBack[1] === 'novo2' &&
+      newGoneAgain.every((v) => v === null) &&
+      fresh.rows === rows &&
+      fresh.bad === 0,
+    { telaK2K3: newGone, desfazer: newBack, refazer: newGoneAgain, ...fresh },
   )
 
   const worst = Math.max(...Object.values(report.steps).map((s) => s.maxGapMs))

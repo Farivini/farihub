@@ -268,6 +268,44 @@ mod engine {
     }
 
     #[test]
+    fn empty_edits_past_the_base_do_not_widen_it() {
+        // a column typed right of the base and then deleted before Save
+        let engine = Engine::default();
+        let (session, _, dir) = import(&engine, "a;b\n1;2\n3;4\n", ";");
+        engine
+            .handle(Command::ApplyEdits {
+                session_id: session.clone(),
+                fills: vec![FillEdit {
+                    start_row: 0,
+                    end_row: 2,
+                    start_column: 1,
+                    end_column: 3,
+                    text: None,
+                }],
+                cells: vec![CellEdit {
+                    row: 1,
+                    column: 4,
+                    text: None,
+                }],
+            })
+            .unwrap();
+        let out = dir.path().join("saida.csv");
+        engine
+            .handle(Command::ExportDelimited {
+                session_id: session,
+                path: out.clone(),
+                delimiter: ";".into(),
+                sep_line: false,
+            })
+            .unwrap();
+        let written = std::fs::read(&out).unwrap();
+        assert_eq!(
+            String::from_utf8(written[3..].to_vec()).unwrap(),
+            "a;\r\n1;\r\n3;\r\n"
+        );
+    }
+
+    #[test]
     fn edits_outside_the_base_are_refused() {
         let engine = Engine::default();
         let (session, _, _dir) = import(&engine, "a\n1\n", ",");
@@ -484,6 +522,21 @@ mod engine {
             column_text(&engine, &session, 4, 4)[1].as_deref(),
             Some("0")
         );
+        // the list tells the host which formulas were typed over (a clear of
+        // the whole column must empty those cells too)
+        let listed = engine
+            .handle(Command::CalcList {
+                session_id: session.clone(),
+            })
+            .unwrap();
+        let overrides: Vec<(u64, bool)> = listed["calcs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|c| c["active"] == true)
+            .map(|c| (c["column"].as_u64().unwrap(), c["overrides"] == true))
+            .collect();
+        assert_eq!(overrides, vec![(3, true), (4, false)]);
     }
 
     #[test]

@@ -358,6 +358,7 @@ impl Engine {
                     "active": c.active,
                     "firstRow": first_row,
                     "lastRow": last_row,
+                    "overrides": c.has_overrides(),
                 })
             })
             .collect();
@@ -754,10 +755,19 @@ impl Engine {
             (locked.writer.clone(), locked.rows, locked.db.try_clone()?)
         };
         let _writing = writer.lock().unwrap();
+        let filled = |text: &Option<String>| text.as_deref().is_some_and(|t| !t.is_empty());
+        // only values widen the base: clearing a column nobody saved yet
+        // (typed right of the base, then deleted) writes nothing
         let needed = fills
             .iter()
+            .filter(|f| filled(&f.text))
             .map(|f| f.end_column + 1)
-            .chain(cells.iter().map(|c| c.column + 1))
+            .chain(
+                cells
+                    .iter()
+                    .filter(|c| filled(&c.text))
+                    .map(|c| c.column + 1),
+            )
             .max()
             .unwrap_or(0);
         if fills
@@ -785,9 +795,11 @@ impl Engine {
                     column_name(index)
                 ))?;
             }
+            // empty edits past the table have nothing to clear
+            let have = existing.max(needed);
             for fill in fills {
                 let value = empty(&fill.text);
-                for column in fill.start_column..=fill.end_column {
+                for column in fill.start_column..=fill.end_column.min(have.saturating_sub(1)) {
                     db.execute(
                         &format!(
                             "UPDATE t SET {} = ? WHERE rowid BETWEEN ? AND ?",
@@ -801,7 +813,7 @@ impl Engine {
             // writes 100k cells in ~0.2 s, where one statement per cell is ~100x slower
             let mut by_column: std::collections::BTreeMap<u64, HashMap<u64, Option<String>>> =
                 std::collections::BTreeMap::new();
-            for cell in cells {
+            for cell in cells.iter().filter(|c| c.column < have) {
                 by_column
                     .entry(cell.column)
                     .or_default()

@@ -90,6 +90,8 @@ export interface DataEngineCalcInfo {
   readonly active: boolean
   readonly firstRow: number
   readonly lastRow: number
+  /// cells typed over it before a Save, kept in the base when it is off
+  readonly overrides: boolean
 }
 
 /// The app's RangeAggregate (renderer/ai/aggregate.ts).

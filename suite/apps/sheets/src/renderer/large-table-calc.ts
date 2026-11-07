@@ -1,4 +1,5 @@
 import { CommandType, ICommandService, IUndoRedoService } from '@univerjs/core'
+import type { FWorksheet } from '@univerjs/sheets/facade'
 import { SheetPermissionCheckController } from '@univerjs/sheets'
 
 import type { LargeTableCalcResult, LargeTableGridEdits } from '../shared/desktop-api'
@@ -162,6 +163,66 @@ async function repaintColumns(
     } finally {
       journalSuppression.active = false
     }
+  }
+  repaintTypedOutsideWindow(state, worksheet, sheetId, loaded, new Set(columns))
+}
+
+/// The loader evicts only the base's rows: cells typed outside the resident
+/// window (a new column right of the base) stay in the grid, so a clear or
+/// its undo rewrites them from the journal too.
+function repaintTypedOutsideWindow(
+  state: LazyWorkbookState,
+  worksheet: FWorksheet,
+  sheetId: string,
+  window: { readonly startRow: number; readonly endRow: number },
+  columns: ReadonlySet<number>,
+): void {
+  const outside = (row: number) => row < window.startRow || row > window.endRow
+  const spots = new Map<number, Set<number>>()
+  const add = (row: number, column: number) => {
+    if (!columns.has(column) || !outside(row)) return
+    let rows = spots.get(column)
+    if (rows === undefined) spots.set(column, (rows = new Set()))
+    rows.add(row)
+  }
+  worksheet
+    .getSheet()
+    .getCellMatrix()
+    .forValue((row, column, cell) => {
+      if (cell?.v !== undefined && cell.v !== null && cell.v !== '') add(row, column)
+      return undefined
+    })
+  for (const entry of state.editJournal.cells.get(sheetId)?.values() ?? []) {
+    add(entry.row, entry.column)
+  }
+  journalSuppression.active = true
+  try {
+    for (const [column, rowSet] of spots) {
+      // only what the journal holds: other cells outside the window are not
+      // this repaint's to change
+      const cells = [...rowSet]
+        .sort((a, b) => a - b)
+        .flatMap((row) => {
+          const journal = journalCellContentAt(state.editJournal, sheetId, row, column)
+          return journal.found ? [{ row, value: journal.value }] : []
+        })
+      for (let at = 0; at < cells.length;) {
+        // contiguous rows go in one write
+        let end = at
+        while (end + 1 < cells.length && cells[end + 1]!.row === cells[end]!.row + 1) end += 1
+        const matrix = cells
+          .slice(at, end + 1)
+          .map(({ value }) => [
+            value === null
+              ? { v: null, f: null, si: null, p: null, t: null }
+              : { v: value, f: null, si: null, p: null },
+          ])
+        worksheet.getRange(cells[at]!.row, column, matrix.length, 1).setValues(matrix)
+        at = end + 1
+      }
+    }
+  } finally {
+    journalSuppression.active = false
   }
 }
 
@@ -552,15 +613,27 @@ export interface ClearRange {
   readonly endColumn: number
 }
 
+/// A calculated column as the clear plan sees it. `typedOver`: cells were
+/// typed over its formula rows (saved overrides or unsaved journal values),
+/// which turning the formula off would leave behind.
+export interface ClearCalc {
+  readonly calcId: string
+  readonly column: number
+  readonly firstRow: number
+  readonly lastRow: number
+  readonly typedOver?: boolean
+}
+
 /// The fills and calculated columns a clear of `ranges` turns into: a
 /// calculated column whose every formula row is selected is turned off as a
-/// whole (Excel: deleting a table's calculated column); every other selected
+/// whole (Excel: deleting a table's calculated column), and its formula rows
+/// are emptied too when cells were typed over them; every other selected
 /// cell of the base takes an empty constant fill.
 export function planLargeTableClear(
   ranges: readonly ClearRange[],
   rows: number,
   columns: number,
-  calcs: readonly { calcId: string; column: number; firstRow: number; lastRow: number }[],
+  calcs: readonly ClearCalc[],
 ): { fills: ClearRange[]; calcIds: string[] } {
   const fills: ClearRange[] = []
   const calcIds = new Set<string>()
@@ -586,8 +659,13 @@ export function planLargeTableClear(
         runStart ??= column
         continue
       }
-      flush(column - 1)
       calcIds.add(calc.calcId)
+      if (calc.typedOver === true) {
+        // the typed cells go with the formula: the whole selection clears
+        runStart ??= column
+        continue
+      }
+      flush(column - 1)
       // the rest of the column (its header) still clears
       if (startRow < calc.firstRow) {
         fills.push({ startRow, endRow: calc.firstRow - 1, startColumn: column, endColumn: column })
@@ -623,11 +701,39 @@ export function clearLargeTableSelection(
       deps.notify(largeTableCalcMessage(listed.code, listed.detail), 'error')
       return
     }
+    const journal = largeTableJournalEdits(state, sheetId)
+    // values typed right of the base widen it only in the journal
+    let columns = sheet.columnCount
+    for (const cell of journal.cells) columns = Math.max(columns, cell.column + 1)
+    for (const fill of journal.fills) columns = Math.max(columns, fill.endColumn + 1)
+    const typedIn = (column: number, firstRow: number, lastRow: number): boolean =>
+      journal.cells.some(
+        (cell) =>
+          cell.column === column &&
+          cell.row >= firstRow &&
+          cell.row <= lastRow &&
+          cell.value !== null &&
+          cell.value !== '',
+      ) ||
+      journal.fills.some(
+        (fill) =>
+          fill.value !== null &&
+          fill.value !== '' &&
+          fill.startColumn <= column &&
+          fill.endColumn >= column &&
+          fill.startRow <= lastRow &&
+          fill.endRow >= firstRow,
+      )
     const plan = planLargeTableClear(
       ranges,
       large.rows,
-      sheet.columnCount,
-      (listed.calcs ?? []).filter((calc) => calc.active),
+      columns,
+      (listed.calcs ?? [])
+        .filter((calc) => calc.active)
+        .map((calc) => ({
+          ...calc,
+          typedOver: calc.overrides === true || typedIn(calc.column, calc.firstRow, calc.lastRow),
+        })),
     )
     if (plan.fills.length === 0 && plan.calcIds.length === 0) return
     let records = plan.fills.map((fill) =>

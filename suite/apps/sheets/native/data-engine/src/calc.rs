@@ -178,6 +178,12 @@ impl Calc {
         (self.formula.first_row, self.formula.last_row)
     }
 
+    /// Whether cells were typed over it before a Save (they stay in the base
+    /// when the formula is turned off).
+    pub fn has_overrides(&self) -> bool {
+        !self.override_rows.is_empty() || !self.override_spans.is_empty()
+    }
+
     fn overridden(&self, row: u64) -> bool {
         self.override_rows.contains(&row)
             || self

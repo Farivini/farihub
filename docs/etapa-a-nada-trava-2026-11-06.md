@@ -26,7 +26,10 @@ barra de status era a parte visível do problema.
   - Cada área apagada vira um preenchimento vazio no diário de edições, sem escrever célula por
     célula na tela.
   - Uma **coluna calculada** inteira selecionada é desligada como um todo, como apagar a coluna
-    calculada de uma tabela do Excel.
+    calculada de uma tabela do Excel. Células digitadas por cima da fórmula (salvas ou não) saem
+    junto.
+  - Uma **coluna nova** digitada à direita da base também é apagada, na tela e no arquivo; apagar
+    uma coluna que nunca foi salva não acrescenta coluna vazia ao arquivo.
   - **Desfazer** traz tudo de volta num passo, e o arquivo salvo depois fica idêntico ao original.
 - **Barra de status e `aggregate_range` da IA:** a conta (contagem, soma, mínimo, máximo, média,
   valores distintos, valores mais frequentes) é feita **pelo motor**, numa passada, sem teto de
@@ -49,6 +52,8 @@ App real, base aberta pelo menu (numa cópia). Roteiro:
 | Apagar a coluna C inteira, desfazer e salvar | **Arquivo idêntico ao original** (mesmo SHA-256) |
 | Apagar a coluna C e salvar | Só a coluna C vazia; as outras 8 iguais ao original em todas as linhas |
 | Apagar uma coluna calculada inteira e desfazer | Some e volta; o arquivo salvo traz a coluna certa em todas as linhas |
+| Apagar a coluna calculada com células digitadas por cima (uma salva, uma não) | As duas somem; o arquivo salvo fica com a coluna vazia e o resto igual |
+| Apagar uma coluna nova digitada à direita, desfazer e refazer | Some, volta e some na tela; o arquivo salvo não ganha coluna |
 
 | Ação | Responde em | Maior pausa da tela |
 | --- | --- | --- |
@@ -61,12 +66,12 @@ App real, base aberta pelo menu (numa cópia). Roteiro:
 
 | Teste | Resultado |
 | --- | --- |
-| Motor (Rust), com o teste novo da conta por intervalo | 16/16 |
-| Etapa A (este roteiro) | 6/6 |
+| Motor (Rust), com os testes novos da conta por intervalo e de edições vazias fora da base | 17/17 |
+| Etapa A (este roteiro) | 8/8 |
 | Coluna calculada (`verify-calc`) | 7/7 (CSV salvo igual ao oráculo em 15.728.520 campos) |
 | Editar e salvar (`verify-edit-save`) | 7/7 |
 | IA criando coluna calculada, modelo simulado (`verify-ai-calc`) | 5/5 |
-| Planilha (vitest) | 3.907 aprovados; as 3 falhas de `promote-file-atomically` são as de sempre (usuário root) |
+| Planilha (vitest) | 3.908 aprovados; as 3 falhas de `promote-file-atomically` são as de sempre (usuário root) |
 
 ## Limites
 

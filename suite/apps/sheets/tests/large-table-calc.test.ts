@@ -126,4 +126,18 @@ describe('planLargeTableClear', () => {
       ),
     ).toEqual({ fills: [{ startRow: 5, endRow: 9, startColumn: 9, endColumn: 9 }], calcIds: [] })
   })
+  it('empties the formula rows too when cells were typed over them', () => {
+    // turning the formula off alone would leave the typed cells behind
+    expect(
+      planLargeTableClear(
+        [{ startRow: 0, endRow: 1_048_575, startColumn: 8, endColumn: 9 }],
+        100,
+        10,
+        [{ ...calcs[0]!, typedOver: true }],
+      ),
+    ).toEqual({
+      fills: [{ startRow: 0, endRow: 99, startColumn: 8, endColumn: 9 }],
+      calcIds: ['c9'],
+    })
+  })
 })

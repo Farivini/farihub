@@ -1036,6 +1036,7 @@ export const largeTableCalcResultSchema = z.union([
               active: z.boolean(),
               firstRow: z.number().int().nonnegative(),
               lastRow: z.number().int().nonnegative(),
+              overrides: z.boolean().optional(),
             })
             .strict(),
         )
