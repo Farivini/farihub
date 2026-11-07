@@ -669,4 +669,5 @@ export const zhTW = {
   dlgSizeMoveOnly: '大小固定，位置隨儲存格而變',
   dlgSizeFixed: '大小、位置均固定',
   dlgSizeInvalid: '請輸入有效的大小和旋轉角度。',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

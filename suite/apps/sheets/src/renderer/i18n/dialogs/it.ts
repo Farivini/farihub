@@ -691,4 +691,5 @@ export const it = {
   dlgSizeMoveOnly: 'Sposta ma non ridimensionare con le celle',
   dlgSizeFixed: 'Non spostare né ridimensionare con le celle',
   dlgSizeInvalid: 'Inserisci dimensioni e rotazione valide.',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

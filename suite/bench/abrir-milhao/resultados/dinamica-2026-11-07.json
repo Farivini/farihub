@@ -1,0 +1,87 @@
+{
+ "steps": {
+  "abrir": {
+   "responsiveMs": 171
+  },
+  "1_cidade": {
+   "responsiveMs": 78,
+   "maxGapMs": 17
+  },
+  "2_soma_valor": {
+   "responsiveMs": 360,
+   "maxGapMs": 167
+  },
+  "3_genero": {
+   "responsiveMs": 317,
+   "maxGapMs": 167
+  },
+  "4_tira_cidade": {
+   "responsiveMs": 369,
+   "maxGapMs": 17
+  },
+  "5_data": {
+   "responsiveMs": 100,
+   "maxGapMs": 17
+  },
+  "6_tira_genero": {
+   "responsiveMs": 113,
+   "maxGapMs": 17
+  },
+  "7_cliente": {
+   "responsiveMs": 625,
+   "maxGapMs": 117
+  },
+  "8_tira_cliente": {
+   "responsiveMs": 154,
+   "maxGapMs": 50
+  },
+  "9_saldo": {
+   "responsiveMs": 106,
+   "maxGapMs": 17
+  },
+  "10_tira_valor": {
+   "responsiveMs": 84,
+   "maxGapMs": 17
+  },
+  "contagem_distinta": {
+   "responsiveMs": 193,
+   "maxGapMs": 58
+  }
+ },
+ "checks": {
+  "abre_a_dinamica_do_motor": {
+   "passed": true,
+   "campos": 9
+  },
+  "cidade_soma_igual_ao_python": {
+   "passed": true,
+   "linhas": 9356,
+   "esperadas": 9356,
+   "diferencas": 0
+  },
+  "dez_trocas_abaixo_de_1s": {
+   "passed": true,
+   "piorRespostaMs": 625,
+   "piorPausaMs": 167
+  },
+  "contagem_distinta_igual_ao_python": {
+   "passed": true,
+   "linhas": 4,
+   "esperadas": 4,
+   "diferencas": 0
+  },
+  "pareto_e_grafico": {
+   "passed": true,
+   "linhas": 9356,
+   "classesEmOrdem": true,
+   "ultimoAcumulado": "100%",
+   "barras": 20
+  },
+  "volta_e_reabre_a_mesma_dinamica": {
+   "passed": true,
+   "fechou": true,
+   "reabriuComOsCampos": true
+  }
+ },
+ "failures": []
+}

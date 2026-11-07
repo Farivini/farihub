@@ -674,4 +674,5 @@ export const he = {
   dlgSizeMoveOnly: 'הזז אך אל תשנה גודל עם התאים',
   dlgSizeFixed: 'אל תזיז ואל תשנה גודל עם התאים',
   dlgSizeInvalid: 'הזן גודל וסיבוב חוקיים.',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

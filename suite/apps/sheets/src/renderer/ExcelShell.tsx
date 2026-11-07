@@ -390,6 +390,9 @@ interface ExcelShellProps {
   readonly onGetPivotEditSeed: () => PivotEditSeed | null
   readonly onEditPivot: (config: OoXmlPivotConfig) => string | null
   readonly onGetPivotFieldMembers: (fieldIndex: number) => string[]
+  /// Insert → PivotTable on a large base: the engine's pivot view opens
+  /// instead of the grid pivot (true when it did).
+  readonly onOpenLargePivot?: () => boolean
   /// Identity of the pivot under the selection; the pane follows it like Excel.
   readonly pivotSelectionKey: string | null
   readonly onRefreshPivot: () => string | null
@@ -517,6 +520,7 @@ export function ExcelShell({
   onGetPivotEditSeed,
   onEditPivot,
   onGetPivotFieldMembers,
+  onOpenLargePivot,
   pivotSelectionKey,
   onRefreshPivot,
   onIsSelectionInPivot,
@@ -719,8 +723,9 @@ export function ExcelShell({
     else if (command === 'table-create-open') setShowCreateTable(true)
     else if (command === 'table-resize-open') setShowResizeTable(true)
     else if (command === 'name-manager-open') setShowNameManager(true)
-    else if (command === 'pivot-open') setShowPivotDialog(true)
-    else if (command === 'pivot-edit') openPivotPane()
+    else if (command === 'pivot-open') {
+      if (onOpenLargePivot?.() !== true) setShowPivotDialog(true)
+    } else if (command === 'pivot-edit') openPivotPane()
     else if (command === 'insert-function-open') openInsertFunction('All')
     else if (command.startsWith('insert-function-open:'))
       openInsertFunction(command.slice('insert-function-open:'.length))

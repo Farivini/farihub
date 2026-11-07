@@ -685,4 +685,5 @@ export const cs = {
   dlgSizeMoveOnly: 'Přesouvat, ale neměnit velikost s buňkami',
   dlgSizeFixed: 'Nepřesouvat ani neměnit velikost s buňkami',
   dlgSizeInvalid: 'Zadejte platnou velikost a otočení.',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

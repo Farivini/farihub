@@ -689,4 +689,5 @@ export const ru = {
   dlgSizeMoveOnly: 'Перемещать, но не изменять размеры',
   dlgSizeFixed: 'Не перемещать и не изменять размеры',
   dlgSizeInvalid: 'Введите допустимые размер и поворот.',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

@@ -539,6 +539,145 @@ mod engine {
         assert_eq!(overrides, vec![(3, true), (4, false)]);
     }
 
+    fn run(engine: &Engine, command: serde_json::Value) -> Value {
+        engine
+            .handle(serde_json::from_value::<Command>(command).unwrap())
+            .unwrap()
+    }
+
+    #[test]
+    fn pivot_groups_sums_counts_distinct_and_dates() {
+        let engine = Engine::default();
+        // pt-BR: decimal comma; dates day first (13/02 tells)
+        let text = "cidade;data;valor;cliente\n\
+                    Rio;13/02/2024 10:00;1,5;a\n\
+                    Rio;01/03/2024;2;b\n\
+                    Sao Paulo;02/03/2024;10;a\n\
+                    Rio;15/03/2024;x;a\n\
+                    ;01/01/2023;4;c\n";
+        let (session, _, _dir) = import(&engine, text, ";");
+        let marks = serde_json::json!([{ "column": 2, "decimal": "," }]);
+        let result = run(
+            &engine,
+            serde_json::json!({
+                "command": "pivot", "sessionId": session,
+                "rows": [{ "column": 0 }],
+                "columns": [{ "column": 1, "group": "month" }],
+                "values": [
+                    { "column": 2, "agg": "sum" },
+                    { "column": 3, "agg": "countDistinct" },
+                    { "column": 2, "agg": "count" },
+                    { "column": 2, "agg": "average" }
+                ],
+                "numberColumns": marks,
+            }),
+        );
+        let columns: Vec<String> = result["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["labels"][0].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(columns, vec!["2023-01", "2024-02", "2024-03"]);
+        let labels: Vec<String> = result["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["labels"][0].as_str().unwrap().to_owned())
+            .collect();
+        // text order, the blank last
+        assert_eq!(labels, vec!["Rio", "Sao Paulo", ""]);
+        let rio = &result["rows"][0];
+        assert_eq!(rio["cells"][0], Value::Null);
+        assert_eq!(rio["cells"][1], serde_json::json!([1.5, 1, 1, 1.5]));
+        // the text "x" counts but does not sum
+        assert_eq!(rio["cells"][2], serde_json::json!([2.0, 2, 2, 2.0]));
+        // a distinct count total is not the sum of its cells
+        assert_eq!(rio["total"], serde_json::json!([3.5, 2, 3, 1.75]));
+        assert_eq!(result["grandTotal"], serde_json::json!([17.5, 3, 5, 4.375]));
+        assert_eq!(result["sourceRows"], 5);
+
+        // a filter, an unsaved edit on top, years
+        let edits =
+            serde_json::json!({ "cells": [{ "row": 2, "column": 2, "value": 100 }], "fills": [] });
+        let filtered = run(
+            &engine,
+            serde_json::json!({
+                "command": "pivot", "sessionId": session,
+                "rows": [{ "column": 1, "group": "year" }],
+                "filters": [{ "column": 0, "include": ["Rio"] }],
+                "values": [{ "column": 2, "agg": "sum" }],
+                "numberColumns": marks, "edits": edits,
+            }),
+        );
+        assert_eq!(filtered["rows"][0]["labels"], serde_json::json!(["2024"]));
+        assert_eq!(filtered["rows"][0]["total"], serde_json::json!([101.5]));
+        assert_eq!(filtered["rowCount"], 1);
+
+        // the largest first, cut after the first row; the totals keep every row
+        let top = run(
+            &engine,
+            serde_json::json!({
+                "command": "pivot", "sessionId": session,
+                "rows": [{ "column": 0 }],
+                "values": [{ "column": 2, "agg": "sum" }],
+                "numberColumns": marks, "sortByValue": true, "maxRows": 1,
+            }),
+        );
+        assert_eq!(top["rows"][0]["labels"], serde_json::json!(["Sao Paulo"]));
+        assert_eq!(top["rows"].as_array().unwrap().len(), 1);
+        assert_eq!(top["rowCount"], 3);
+        assert_eq!(top["grandTotal"], serde_json::json!([17.5]));
+        assert_eq!(top["firstValueSum"], serde_json::json!(17.5));
+
+        let members = run(
+            &engine,
+            serde_json::json!({
+                "command": "pivot_members", "sessionId": session,
+                "column": 1, "group": "quarter",
+            }),
+        );
+        assert_eq!(
+            members["members"],
+            serde_json::json!([
+                { "label": "2023-T1", "count": 1 },
+                { "label": "2024-T1", "count": 4 }
+            ])
+        );
+    }
+
+    #[test]
+    fn pivot_reads_month_first_columns_and_two_digit_years() {
+        assert_eq!(crate::pivot::parse_date("2/8/16", true), Some((2016, 8, 2)));
+        assert_eq!(
+            crate::pivot::parse_date("12/31/99", false),
+            Some((1999, 12, 31))
+        );
+        assert_eq!(crate::pivot::parse_date("2024-02-30", true), None);
+        assert_eq!(
+            crate::pivot::parse_date("29/02/2024 11:00", true),
+            Some((2024, 2, 29))
+        );
+        assert_eq!(crate::pivot::parse_date("V073", true), None);
+        let engine = Engine::default();
+        let (session, _, _dir) = import(&engine, "d,v\n12/31/2020,1\n1/2/2021,2\n", ",");
+        let result = run(
+            &engine,
+            serde_json::json!({
+                "command": "pivot", "sessionId": session,
+                "rows": [{ "column": 0, "group": "day" }],
+                "values": [{ "column": 1, "agg": "count" }],
+            }),
+        );
+        let labels: Vec<&str> = result["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["labels"][0].as_str().unwrap())
+            .collect();
+        assert_eq!(labels, vec!["2020-12-31", "2021-01-02"]);
+    }
+
     #[test]
     fn aggregate_reads_the_grid_values_with_unsaved_edits() {
         let engine = Engine::default();

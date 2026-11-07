@@ -14,6 +14,7 @@ mod delimited;
 mod export;
 mod formula;
 mod numbers;
+mod pivot;
 #[cfg(test)]
 mod tests;
 
@@ -230,6 +231,37 @@ pub enum Command {
         #[serde(default)]
         top_values: usize,
     },
+    /// A pivot table over the whole base (see pivot.rs).
+    #[serde(rename_all = "camelCase")]
+    Pivot {
+        session_id: String,
+        #[serde(flatten)]
+        request: pivot::PivotRequest,
+        #[serde(default)]
+        number_columns: Vec<NumberColumn>,
+        #[serde(default)]
+        edits: calc::GridEdits,
+    },
+    /// A field's members as a pivot groups them (filter lists).
+    #[serde(rename_all = "camelCase")]
+    PivotMembers {
+        session_id: String,
+        column: u64,
+        #[serde(default)]
+        group: pivot::DateGroup,
+        #[serde(default)]
+        number_columns: Vec<NumberColumn>,
+        #[serde(default)]
+        edits: calc::GridEdits,
+    },
+    /// Reads columns ahead of pivots (see pivot.rs).
+    #[serde(rename_all = "camelCase")]
+    PivotWarm {
+        session_id: String,
+        columns: Vec<u64>,
+        #[serde(default)]
+        number_columns: Vec<NumberColumn>,
+    },
     #[serde(rename_all = "camelCase")]
     Close { session_id: String },
 }
@@ -288,6 +320,12 @@ struct Session {
     calcs: Vec<calc::Calc>,
     /// one writer at a time (edits, calculated columns); reads never take it
     writer: Arc<Mutex<()>>,
+    /// bumped by every write into the base: cached reads of an older
+    /// version are stale
+    version: u64,
+    /// columns a pivot read, by (column, decimal mark, logical), with the
+    /// version they were read at
+    pivot_cache: HashMap<(u64, char, bool), (u64, Arc<pivot::DictColumn>)>,
 }
 
 impl Session {
@@ -541,6 +579,24 @@ impl Engine {
                 &edits,
                 top_values,
             ),
+            Command::Pivot {
+                session_id,
+                request,
+                number_columns,
+                edits,
+            } => self.pivot(&session_id, &request, &number_columns, &edits),
+            Command::PivotMembers {
+                session_id,
+                column,
+                group,
+                number_columns,
+                edits,
+            } => self.pivot_members(&session_id, column, group, &number_columns, &edits),
+            Command::PivotWarm {
+                session_id,
+                columns,
+                number_columns,
+            } => self.pivot_warm(&session_id, &columns, &number_columns),
             Command::Close { session_id } => {
                 self.sessions.lock().unwrap().remove(&session_id);
                 Ok(json!({}))
@@ -672,6 +728,8 @@ impl Engine {
                 rows,
                 calcs: Vec::new(),
                 writer: Arc::new(Mutex::new(())),
+                version: 0,
+                pivot_cache: HashMap::new(),
             })),
         );
         Ok(json!({
@@ -845,6 +903,7 @@ impl Engine {
         }
         let mut session = session.lock().unwrap();
         session.columns = session.columns.max(needed);
+        session.version += 1;
         // cells typed over a calculated column stay the person's after Save
         let cell_spots: Vec<(u64, u64)> = cells.iter().map(|c| (c.row, c.column)).collect();
         let fill_spans: Vec<(u64, u64, u64, u64)> = fills

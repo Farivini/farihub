@@ -107,6 +107,24 @@ impl GridEdits {
         }
     }
 
+    /// The edits of one column in journal order (fills, then cells): the
+    /// rows each covers and the value it puts there.
+    pub(crate) fn column_edits(&self, column: u64) -> Vec<(u64, u64, Value)> {
+        let mut out: Vec<(u64, u64, Value)> = self
+            .fills
+            .iter()
+            .filter(|f| (f.start_column..=f.end_column).contains(&column))
+            .map(|f| (f.start_row, f.end_row, json_value(&f.value)))
+            .collect();
+        out.extend(
+            self.cells
+                .iter()
+                .filter(|c| c.column == column)
+                .map(|c| (c.row, c.row, json_value(&c.value))),
+        );
+        out
+    }
+
     /// Whether an edit puts a value in rows `first..=last` of `column`.
     fn touches(&self, column: u64, first: u64, last: u64) -> bool {
         let filled = |v: &Json| !matches!(json_value(v), Value::Empty);
@@ -357,7 +375,12 @@ impl Engine {
             Some(&id),
             None,
         )?;
-        session.lock().unwrap().calcs = calcs;
+        {
+            let mut locked = session.lock().unwrap();
+            locked.calcs = calcs;
+            // the column's values changed: cached reads are stale
+            locked.version += 1;
+        }
         Ok(json!({
             "calcId": id,
             "replaced": replaced_id,
@@ -420,7 +443,12 @@ impl Engine {
             Some(calc_id),
             None,
         )?;
-        session.lock().unwrap().calcs = calcs;
+        {
+            let mut locked = session.lock().unwrap();
+            locked.calcs = calcs;
+            // the column's values changed: cached reads are stale
+            locked.version += 1;
+        }
         Ok(json!({ "ms": started.elapsed().as_millis() as u64, "refreshed": refreshed }))
     }
 
@@ -447,7 +475,12 @@ impl Engine {
             None,
             quick.then_some(&mut pending),
         )?;
-        session.lock().unwrap().calcs = calcs;
+        {
+            let mut locked = session.lock().unwrap();
+            locked.calcs = calcs;
+            // the column's values changed: cached reads are stale
+            locked.version += 1;
+        }
         Ok(json!({
             "ms": started.elapsed().as_millis() as u64,
             "refreshed": refreshed,

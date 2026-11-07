@@ -65,6 +65,25 @@ const AGG_OPTIONS: readonly { value: string; labelKey: StringKey; supported: boo
   { value: 'varp', labelKey: 'dlgPivotAggVarp', supported: true },
 ]
 
+/// A large base's pivot runs in the data engine: these summaries and
+/// "show values as" modes, plus Distinct Count (Excel's data-model count).
+const LARGE_BASE_AGGS = new Set(['sum', 'count', 'countDistinct', 'average', 'max', 'min'])
+const LARGE_BASE_SHOW_AS = new Set(['', 'percentOfTotal', 'percentOfCol', 'percentOfRow'])
+const COUNT_DISTINCT_OPTION = {
+  value: 'countDistinct',
+  labelKey: 'dlgPivotAggCountDistinct' as StringKey,
+  supported: true,
+}
+
+function aggOptions(
+  largeBase: boolean,
+): readonly { value: string; labelKey: StringKey; supported: boolean }[] {
+  if (!largeBase) return AGG_OPTIONS
+  return [AGG_OPTIONS[0]!, AGG_OPTIONS[1]!, COUNT_DISTINCT_OPTION, ...AGG_OPTIONS.slice(2)].map(
+    (option) => ({ ...option, supported: LARGE_BASE_AGGS.has(option.value) }),
+  )
+}
+
 /// Every Excel "Show Values As" entry; '' = No Calculation. All fifteen modes
 /// are baked by the pivot engine (percent spellings map to OOXML on save).
 const SHOW_AS_OPTIONS: readonly { value: string; labelKey: StringKey; supported: boolean }[] = [
@@ -100,7 +119,7 @@ function fieldLabel(t: TFunc, fields: readonly PivotField[], fieldIndex: number)
 function valueCaption(t: TFunc, fields: readonly PivotField[], value: PivotValueSpec): string {
   if (value.name?.trim()) return value.name
   if (value.formula !== undefined) return value.calcName?.trim() || t('dlgPivotCalcNamePlaceholder')
-  const agg = AGG_OPTIONS.find((option) => option.value === value.agg)
+  const agg = [...AGG_OPTIONS, COUNT_DISTINCT_OPTION].find((option) => option.value === value.agg)
   return t('dlgPivotValueCaption', {
     agg: agg ? t(agg.labelKey) : value.agg,
     field: fieldLabel(t, fields, value.fieldIndex),
@@ -157,6 +176,7 @@ export function PivotFieldPane({
   onUpdate,
   onClose,
   onGetFieldMembers,
+  largeBase = false,
 }: {
   readonly fields: readonly PivotField[]
   readonly model: PivotLayoutModel
@@ -169,6 +189,8 @@ export function PivotFieldPane({
   readonly onUpdate: () => void
   readonly onClose: () => void
   readonly onGetFieldMembers: (fieldIndex: number) => string[]
+  /// the pivot of a large base (data engine): its summaries and modes only
+  readonly largeBase?: boolean
 }): React.JSX.Element {
   const { t } = useI18n()
   const paneRef = useRef<HTMLDivElement>(null)
@@ -454,6 +476,7 @@ export function PivotFieldPane({
             model={model}
             value={model.values[settings.index]!}
             onGetFieldMembers={onGetFieldMembers}
+            largeBase={largeBase}
             onApply={(patch) => onModelChange(updateValueSpec(model, settings.index, patch))}
             onClose={() => setSettings(null)}
           />
@@ -480,6 +503,7 @@ function ValueFieldSettingsDialog({
   model,
   value,
   onGetFieldMembers,
+  largeBase,
   onApply,
   onClose,
 }: {
@@ -487,6 +511,7 @@ function ValueFieldSettingsDialog({
   readonly model: PivotLayoutModel
   readonly value: PivotValueSpec
   readonly onGetFieldMembers: (fieldIndex: number) => string[]
+  readonly largeBase: boolean
   readonly onApply: (patch: Partial<PivotValueSpec>) => void
   readonly onClose: () => void
 }): React.JSX.Element {
@@ -567,7 +592,7 @@ function ValueFieldSettingsDialog({
               {t('dlgPivotSummarizeBy')}
               <Dropdown
                 value={draft.agg}
-                options={AGG_OPTIONS.map((option) => ({
+                options={aggOptions(largeBase).map((option) => ({
                   value: option.value,
                   label: option.supported
                     ? t(option.labelKey)
@@ -583,6 +608,9 @@ function ValueFieldSettingsDialog({
             <Dropdown
               value={draft.showDataAs ?? ''}
               options={SHOW_AS_OPTIONS.map((option) => ({
+                ...option,
+                supported: option.supported && (!largeBase || LARGE_BASE_SHOW_AS.has(option.value)),
+              })).map((option) => ({
                 value: option.value,
                 label: option.supported
                   ? t(option.labelKey)

@@ -684,4 +684,5 @@ export const ja = {
   dlgSizeMoveOnly: 'セルに合わせて移動するがサイズ変更はしない',
   dlgSizeFixed: 'セルに合わせて移動やサイズ変更をしない',
   dlgSizeInvalid: '有効なサイズと回転角度を入力してください。',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

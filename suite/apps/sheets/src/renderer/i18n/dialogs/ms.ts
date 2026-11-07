@@ -686,4 +686,5 @@ export const ms = {
   dlgSizeMoveOnly: 'Alih tetapi jangan ubah saiz',
   dlgSizeFixed: 'Jangan alih atau ubah saiz',
   dlgSizeInvalid: 'Masukkan saiz dan putaran yang sah.',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

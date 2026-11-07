@@ -300,6 +300,41 @@ export class DataEngineClient {
     )) as DataEngineAggregate
   }
 
+  /// A pivot over the whole base (rows, columns, filters, values).
+  async pivot(input: {
+    sessionId: string
+    rows: readonly { column: number; group?: string | undefined }[]
+    columns: readonly { column: number; group?: string | undefined }[]
+    filters: readonly { column: number; group?: string | undefined; include: readonly string[] }[]
+    values: readonly { column: number; agg: string }[]
+    maxRows?: number | undefined
+    sortByValue?: boolean | undefined
+    numberColumns: readonly { column: number; decimal: ',' | '.' }[]
+    edits: DataEngineGridEdits
+  }): Promise<unknown> {
+    return this.request({ command: 'pivot', ...input }, IMPORT_TIMEOUT_MS)
+  }
+
+  /// A field's members as the pivot groups them (filter lists).
+  async pivotMembers(input: {
+    sessionId: string
+    column: number
+    group?: string | undefined
+    numberColumns: readonly { column: number; decimal: ',' | '.' }[]
+    edits: DataEngineGridEdits
+  }): Promise<unknown> {
+    return this.request({ command: 'pivot_members', ...input }, IMPORT_TIMEOUT_MS)
+  }
+
+  /// Reads columns ahead of the first pivot.
+  async pivotWarm(input: {
+    sessionId: string
+    columns: readonly number[]
+    numberColumns: readonly { column: number; decimal: ',' | '.' }[]
+  }): Promise<unknown> {
+    return this.request({ command: 'pivot_warm', ...input }, IMPORT_TIMEOUT_MS)
+  }
+
   /// A range as clipboard text (tab-separated).
   async rangeText(input: {
     sessionId: string

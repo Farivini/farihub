@@ -681,4 +681,5 @@ export const hi = {
   dlgSizeMoveOnly: 'कक्षों के साथ स्थानांतरित करें पर आकार न बदलें',
   dlgSizeFixed: 'कक्षों के साथ न स्थानांतरित करें न आकार बदलें',
   dlgSizeInvalid: 'मान्य आकार और घुमाव दर्ज करें।',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>
