@@ -3,6 +3,7 @@
  * grid or touch the formula engine — the supported path for distinct counts
  * and frequency questions on large streamed workbooks. Extracted from App.tsx.
  */
+import { largeTableJournalEdits } from '../large-table-calc'
 import {
   columnLabel,
   formatAddress,
@@ -317,6 +318,34 @@ export async function aggregateWorkbookRange(
       error:
         'aggregate_range only works on sheets that came with the file — read sheets added this session with read_range.',
     }
+  }
+  // A large base (data engine) aggregates in the engine: one pass over the
+  // whole range with this session's edits on top, no cell budget. A range
+  // with withheld cells keeps the reader path below, which withholds them.
+  if (
+    state.file.largeTable !== undefined &&
+    !redactions
+      .marksFor(sheetId)
+      .some(
+        (mark) =>
+          mark.startRow <= bounds.endRow &&
+          mark.endRow >= bounds.startRow &&
+          mark.startColumn <= bounds.endColumn &&
+          mark.endColumn >= bounds.startColumn,
+      )
+  ) {
+    const result = await window.desktopApi.largeTableCalc({
+      action: 'aggregate',
+      sessionId: state.file.sessionId,
+      startRow: bounds.startRow,
+      endRow: bounds.endRow,
+      startColumn: bounds.startColumn,
+      endColumn: bounds.endColumn,
+      topValues: 50,
+      edits: largeTableJournalEdits(state, sheetId),
+    })
+    if (!result.ok) return { ok: false, error: result.detail || result.code }
+    if (result.aggregate) return { ok: true, aggregate: result.aggregate }
   }
   if ((state.editJournal.structuralOps.get(sheetId) ?? []).length > 0) {
     return {

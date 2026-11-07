@@ -8,11 +8,13 @@
 //! own threads, each with its own DuckDB connection, so a long find never
 //! blocks the grid's reads.
 
+mod aggregate;
 mod calc;
 mod delimited;
 mod export;
 mod formula;
 mod numbers;
+mod pivot;
 #[cfg(test)]
 mod tests;
 
@@ -200,6 +202,67 @@ pub enum Command {
         quick: bool,
     },
     #[serde(rename_all = "camelCase")]
+    CalcList { session_id: String },
+    /// A range as clipboard text (Copy of a selection past the grid's window).
+    #[serde(rename_all = "camelCase")]
+    RangeText {
+        session_id: String,
+        start_row: u64,
+        end_row: u64,
+        start_column: u64,
+        end_column: u64,
+        #[serde(default)]
+        number_columns: Vec<NumberColumn>,
+        #[serde(default)]
+        edits: calc::GridEdits,
+    },
+    /// Statistics of a range (status bar, the AI's aggregate_range).
+    #[serde(rename_all = "camelCase")]
+    AggregateRange {
+        session_id: String,
+        start_row: u64,
+        end_row: u64,
+        start_column: u64,
+        end_column: u64,
+        #[serde(default)]
+        number_columns: Vec<NumberColumn>,
+        #[serde(default)]
+        edits: calc::GridEdits,
+        #[serde(default)]
+        top_values: usize,
+    },
+    /// A pivot table over the whole base (see pivot.rs).
+    #[serde(rename_all = "camelCase")]
+    Pivot {
+        session_id: String,
+        #[serde(flatten)]
+        request: pivot::PivotRequest,
+        #[serde(default)]
+        number_columns: Vec<NumberColumn>,
+        #[serde(default)]
+        edits: calc::GridEdits,
+    },
+    /// A field's members as a pivot groups them (filter lists).
+    #[serde(rename_all = "camelCase")]
+    PivotMembers {
+        session_id: String,
+        column: u64,
+        #[serde(default)]
+        group: pivot::DateGroup,
+        #[serde(default)]
+        number_columns: Vec<NumberColumn>,
+        #[serde(default)]
+        edits: calc::GridEdits,
+    },
+    /// Reads columns ahead of pivots (see pivot.rs).
+    #[serde(rename_all = "camelCase")]
+    PivotWarm {
+        session_id: String,
+        columns: Vec<u64>,
+        #[serde(default)]
+        number_columns: Vec<NumberColumn>,
+    },
+    #[serde(rename_all = "camelCase")]
     Close { session_id: String },
 }
 
@@ -257,6 +320,12 @@ struct Session {
     calcs: Vec<calc::Calc>,
     /// one writer at a time (edits, calculated columns); reads never take it
     writer: Arc<Mutex<()>>,
+    /// bumped by every write into the base: cached reads of an older
+    /// version are stale
+    version: u64,
+    /// columns a pivot read, by (column, decimal mark, logical), with the
+    /// version they were read at
+    pivot_cache: HashMap<(u64, char, bool), (u64, Arc<pivot::DictColumn>)>,
 }
 
 impl Session {
@@ -292,6 +361,46 @@ impl Engine {
             .ok_or_else(|| EngineError::new("UNKNOWN_SESSION", "Unknown data session."))?;
         let session = session.lock().unwrap();
         Ok((session.db.try_clone()?, session.rows, session.width()))
+    }
+
+    /// The calculated columns that are on, with their decimal marks.
+    pub(crate) fn calc_columns(&self, id: &str) -> Result<Vec<(u64, char)>, EngineError> {
+        let sessions = self.sessions.lock().unwrap();
+        let session = sessions
+            .get(id)
+            .ok_or_else(|| EngineError::new("UNKNOWN_SESSION", "Unknown data session."))?;
+        let session = session.lock().unwrap();
+        Ok(session
+            .calcs
+            .iter()
+            .filter(|c| c.active)
+            .map(|c| (c.column(), c.mark))
+            .collect())
+    }
+
+    /// Every calculated column of the base, on or off.
+    fn calc_list(&self, id: &str) -> Result<Value, EngineError> {
+        let sessions = self.sessions.lock().unwrap();
+        let session = sessions
+            .get(id)
+            .ok_or_else(|| EngineError::new("UNKNOWN_SESSION", "Unknown data session."))?;
+        let session = session.lock().unwrap();
+        let calcs: Vec<Value> = session
+            .calcs
+            .iter()
+            .map(|c| {
+                let (first_row, last_row) = c.rows();
+                json!({
+                    "calcId": c.id,
+                    "column": c.column(),
+                    "active": c.active,
+                    "firstRow": first_row,
+                    "lastRow": last_row,
+                    "overrides": c.has_overrides(),
+                })
+            })
+            .collect();
+        Ok(json!({ "calcs": calcs }))
     }
 
     pub fn handle(&self, command: Command) -> Result<Value, EngineError> {
@@ -433,6 +542,61 @@ impl Engine {
                 edits,
                 quick,
             } => self.calc_refresh(&session_id, &changed, &number_columns, &edits, quick),
+            Command::CalcList { session_id } => self.calc_list(&session_id),
+            Command::RangeText {
+                session_id,
+                start_row,
+                end_row,
+                start_column,
+                end_column,
+                number_columns,
+                edits,
+            } => self.range_text(
+                &session_id,
+                start_row,
+                end_row,
+                start_column,
+                end_column,
+                &number_columns,
+                &edits,
+            ),
+            Command::AggregateRange {
+                session_id,
+                start_row,
+                end_row,
+                start_column,
+                end_column,
+                number_columns,
+                edits,
+                top_values,
+            } => self.aggregate_range(
+                &session_id,
+                start_row,
+                end_row,
+                start_column,
+                end_column,
+                &number_columns,
+                &edits,
+                top_values,
+            ),
+            Command::Pivot {
+                session_id,
+                request,
+                number_columns,
+                edits,
+            } => self.pivot(&session_id, &request, &number_columns, &edits),
+            Command::PivotMembers {
+                session_id,
+                column,
+                group,
+                number_columns,
+                edits,
+            } => self.pivot_members(&session_id, column, group, &number_columns, &edits),
+            Command::PivotWarm {
+                session_id,
+                columns,
+                number_columns,
+            } => self.pivot_warm(&session_id, &columns, &number_columns),
             Command::Close { session_id } => {
                 self.sessions.lock().unwrap().remove(&session_id);
                 Ok(json!({}))
@@ -564,6 +728,8 @@ impl Engine {
                 rows,
                 calcs: Vec::new(),
                 writer: Arc::new(Mutex::new(())),
+                version: 0,
+                pivot_cache: HashMap::new(),
             })),
         );
         Ok(json!({
@@ -647,10 +813,19 @@ impl Engine {
             (locked.writer.clone(), locked.rows, locked.db.try_clone()?)
         };
         let _writing = writer.lock().unwrap();
+        let filled = |text: &Option<String>| text.as_deref().is_some_and(|t| !t.is_empty());
+        // only values widen the base: clearing a column nobody saved yet
+        // (typed right of the base, then deleted) writes nothing
         let needed = fills
             .iter()
+            .filter(|f| filled(&f.text))
             .map(|f| f.end_column + 1)
-            .chain(cells.iter().map(|c| c.column + 1))
+            .chain(
+                cells
+                    .iter()
+                    .filter(|c| filled(&c.text))
+                    .map(|c| c.column + 1),
+            )
             .max()
             .unwrap_or(0);
         if fills
@@ -678,9 +853,11 @@ impl Engine {
                     column_name(index)
                 ))?;
             }
+            // empty edits past the table have nothing to clear
+            let have = existing.max(needed);
             for fill in fills {
                 let value = empty(&fill.text);
-                for column in fill.start_column..=fill.end_column {
+                for column in fill.start_column..=fill.end_column.min(have.saturating_sub(1)) {
                     db.execute(
                         &format!(
                             "UPDATE t SET {} = ? WHERE rowid BETWEEN ? AND ?",
@@ -694,7 +871,7 @@ impl Engine {
             // writes 100k cells in ~0.2 s, where one statement per cell is ~100x slower
             let mut by_column: std::collections::BTreeMap<u64, HashMap<u64, Option<String>>> =
                 std::collections::BTreeMap::new();
-            for cell in cells {
+            for cell in cells.iter().filter(|c| c.column < have) {
                 by_column
                     .entry(cell.column)
                     .or_default()
@@ -726,6 +903,7 @@ impl Engine {
         }
         let mut session = session.lock().unwrap();
         session.columns = session.columns.max(needed);
+        session.version += 1;
         // cells typed over a calculated column stay the person's after Save
         let cell_spots: Vec<(u64, u64)> = cells.iter().map(|c| (c.row, c.column)).collect();
         let fill_spans: Vec<(u64, u64, u64, u64)> = fills

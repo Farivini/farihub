@@ -2,6 +2,8 @@
 
 Atualizado em 30/10/2026, com o estado conferido no código da `main` (até a PR #7: arquivos por formato, CSV protegido, ressalvas persistentes) e nesta entrega: **operações de tabela** — filtros, ordenação, inserir e excluir linhas e colunas, com desfazer, por uma API tipada que a IA vai usar. A próxima frente é a IA contextual sobre essas operações.
 
+> **Plano atual e ordem de ataque (06/11/2026):** [plano-2026-11-06.md](plano-2026-11-06.md).
+
 ## Visão
 
 Um hub de trabalho com **Planilhas**, **Documentos**, **Apresentações** e, no futuro, **BI**, numa interface minimalista e com **IA contextual opcional**: a IA ajuda quando chamada, trabalha sobre o documento aberto e nunca é obrigatória para usar o produto.

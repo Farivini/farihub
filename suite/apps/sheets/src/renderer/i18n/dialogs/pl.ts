@@ -688,4 +688,5 @@ export const pl = {
   dlgSizeMoveOnly: 'Przenoś, ale nie zmieniaj rozmiaru wraz z komórkami',
   dlgSizeFixed: 'Nie przenoś ani nie zmieniaj rozmiaru wraz z komórkami',
   dlgSizeInvalid: 'Wprowadź prawidłowy rozmiar i obrót.',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

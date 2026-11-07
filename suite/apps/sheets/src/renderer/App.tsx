@@ -554,7 +554,14 @@ import { EncryptedWorkbookPasswordDialog } from './EncryptedWorkbookPasswordDial
 import { ChangeWorkbookPasswordDialog } from './ChangeWorkbookPasswordDialog'
 import { ToastHost } from './toast'
 import { showToast } from './toast-bus'
-import { createLargeTableCalc, installLargeTableCalc } from './large-table-calc'
+import {
+  clearLargeTableSelection,
+  createLargeTableCalc,
+  installLargeTableCalc,
+  largeTableJournalEdits,
+} from './large-table-calc'
+import { LargePivotView } from './LargePivotView'
+import type { PivotLayoutModel } from './pivot-field-model'
 import { AdvancedFilterDialog, type AdvancedFilterColumn } from './AdvancedFilterDialog'
 import { EquationDialog } from './EquationDialog'
 import { IconsDialog } from './IconsDialog'
@@ -938,6 +945,10 @@ export function App({
   const [tableCreatedSeq, setTableCreatedSeq] = useState(0)
   /// Chart panels (Select Data dialog / format task pane), opened from the
   /// ribbon or the chart context menu, keyed like chart edits.
+  /// The pivot of a large base (data engine) is open over the grid.
+  const [largePivotOpen, setLargePivotOpen] = useState(false)
+  /// Its layout per base session, so Back and Insert → PivotTable reopen it.
+  const largePivotLayoutRef = useRef<{ sessionId: string; model: PivotLayoutModel } | null>(null)
   const [chartDialog, setChartDialog] = useState<{ kind: ChartDialogKind; editKey: string } | null>(
     null,
   )
@@ -2466,6 +2477,10 @@ export function App({
         showToast(message, kind)
       },
       status: (message: string) => setMessage(message),
+      journalChanged: () => {
+        const state = lazyWorkbookRef.current
+        if (state) setPendingEdits(journalSize(state.editJournal))
+      },
     }
     const largeTableCalcDisposable = installLargeTableCalc(largeTableCalcDeps)
     const sheetProtectionDisposable = installSheetProtectionGuard(runtime, {
@@ -2475,6 +2490,16 @@ export function App({
         showToast(message, 'error')
       },
       onLargeTableFormula: (cell) => void createLargeTableCalc(largeTableCalcDeps, cell),
+      onLargeTableClear: () => {
+        const ranges =
+          runtime.univerAPI
+            .getActiveWorkbook()
+            ?.getActiveSheet()
+            ?.getSelection()
+            ?.getActiveRangeList()
+            ?.map((range) => range.getRange()) ?? []
+        void clearLargeTableSelection(largeTableCalcDeps, ranges)
+      },
     })
     const ctrlDragFillDisposable = installCtrlDragFill(runtime)
     // The grid's right-click item that withholds the selected cells from the
@@ -5999,7 +6024,42 @@ export function App({
           onClose={() => setChartDialog(null)}
         />
       )}
+      {largePivotOpen &&
+        (() => {
+          const state = lazyWorkbookRef.current
+          const sheet = state?.file.sheets[0]
+          const large = state?.file.largeTable
+          if (!state || !sheet || large === undefined) return null
+          return (
+            <LargePivotView
+              sessionId={state.file.sessionId}
+              sheetId={sheet.id}
+              baseRows={Math.max(0, large.rows - 1)}
+              columnCount={sheet.columnCount}
+              getEdits={() => {
+                const current = lazyWorkbookRef.current
+                return current
+                  ? largeTableJournalEdits(current, sheet.id)
+                  : { cells: [], fills: [] }
+              }}
+              initialModel={
+                largePivotLayoutRef.current?.sessionId === state.file.sessionId
+                  ? largePivotLayoutRef.current.model
+                  : undefined
+              }
+              onLayout={(model) => {
+                largePivotLayoutRef.current = { sessionId: state.file.sessionId, model }
+              }}
+              onClose={() => setLargePivotOpen(false)}
+            />
+          )
+        })()}
       <ExcelShell
+        onOpenLargePivot={() => {
+          if (lazyWorkbookRef.current?.file.largeTable === undefined) return false
+          setLargePivotOpen(true)
+          return true
+        }}
         openingWorkbook={openingWorkbook}
         prompt={prompt}
         preview={preview}

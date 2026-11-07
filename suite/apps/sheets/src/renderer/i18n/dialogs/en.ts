@@ -686,4 +686,5 @@ export const en = {
   dlgSizeMoveOnly: "Move but don't size with cells",
   dlgSizeFixed: "Don't move or size with cells",
   dlgSizeInvalid: 'Enter a valid size and rotation.',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

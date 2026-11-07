@@ -326,7 +326,9 @@ export async function handleSave(
     sparklineAdditions.length +
     // A save with nothing else pending but newly withheld cells is still a
     // save: skipping it would leave the file claiming nothing is hidden.
-    (redactionStates?.length ?? 0)
+    (redactionStates?.length ?? 0) +
+    // a large base's calculated columns live in its engine, not the journal
+    state.editJournal.engineChanges.count
   // A restored crash-recovery session carries its changes in the workbook
   // bytes themselves, not the journal: a plain Save with nothing pending must
   // still write back to the original file (and clear the recovery copy).
@@ -452,6 +454,7 @@ export async function handleSave(
     workbookProtectionState,
     protectedRangeStates,
     redactionStates,
+    ...(state.editJournal.engineChanges.count > 0 ? { largeTableChanges: true } : {}),
   }
   if (mode === 'recovery') {
     // Best-effort; a failure only means this tick's copy is skipped — but an
@@ -509,6 +512,7 @@ export async function handleSave(
       workbookProtectionState,
       protectedRangeStates,
       redactionStates,
+      ...(state.editJournal.engineChanges.count > 0 ? { largeTableChanges: true } : {}),
     })
     if (ctx.lazyWorkbookRef.current !== state) return { ok: false }
     if (result.canceled) {

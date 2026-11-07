@@ -678,4 +678,5 @@ export const ko = {
   dlgSizeMoveOnly: '셀에 맞춰 위치만 변경',
   dlgSizeFixed: '위치와 크기 변경 안 함',
   dlgSizeInvalid: '유효한 크기와 회전 각도를 입력하세요.',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

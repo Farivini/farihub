@@ -679,4 +679,5 @@ export const ar = {
   dlgSizeMoveOnly: 'نقل دون تغيير الحجم مع الخلايا',
   dlgSizeFixed: 'عدم النقل أو تغيير الحجم مع الخلايا',
   dlgSizeInvalid: 'أدخل حجمًا وتدويرًا صالحين.',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

@@ -953,6 +953,51 @@ const largeTableGridEditsSchema = z
 
 /// A calculated column of a large base: a formula typed in one cell fills
 /// every data row of its column (Excel's table column formula).
+/// A pivot over the whole base, computed in the data engine (Etapa B).
+const largeTablePivotGroupSchema = z.enum(['none', 'year', 'quarter', 'month', 'day'])
+const largeTablePivotDimSchema = z
+  .object({
+    column: z.number().int().nonnegative().max(16_383),
+    group: largeTablePivotGroupSchema.optional(),
+  })
+  .strict()
+export const largeTablePivotAggSchema = z.enum([
+  'sum',
+  'count',
+  'countDistinct',
+  'average',
+  'min',
+  'max',
+])
+export type LargeTablePivotAgg = z.infer<typeof largeTablePivotAggSchema>
+export type LargeTablePivotGroup = z.infer<typeof largeTablePivotGroupSchema>
+const largeTablePivotValueSchema = z.union([z.number(), z.null()])
+const largeTablePivotResultSchema = z
+  .object({
+    rows: z.array(
+      z
+        .object({
+          labels: z.array(z.string()),
+          cells: z.array(z.array(largeTablePivotValueSchema).nullable()),
+          total: z.array(largeTablePivotValueSchema),
+        })
+        .strict(),
+    ),
+    rowCount: z.number().int().nonnegative(),
+    columns: z.array(
+      z
+        .object({ labels: z.array(z.string()), total: z.array(largeTablePivotValueSchema) })
+        .strict(),
+    ),
+    grandTotal: z.array(largeTablePivotValueSchema),
+    /// the sum of every row's first value (a Pareto's base)
+    firstValueSum: z.number().optional(),
+    sourceRows: z.number().int().nonnegative(),
+    ms: z.number().nonnegative(),
+  })
+  .strict()
+export type LargeTablePivotResult = z.infer<typeof largeTablePivotResultSchema>
+
 export const largeTableCalcRequestSchema = z.discriminatedUnion('action', [
   z
     .object({
@@ -971,6 +1016,86 @@ export const largeTableCalcRequestSchema = z.discriminatedUnion('action', [
       calcId: z.string().uuid(),
       active: z.boolean(),
       edits: largeTableGridEditsSchema,
+    })
+    .strict(),
+  z.object({ action: z.literal('list'), sessionId: z.string().uuid() }).strict(),
+  /// Copy of a selection past the grid's window: the engine builds the text,
+  /// the main process puts it on the clipboard.
+  z
+    .object({
+      action: z.literal('copy'),
+      sessionId: z.string().uuid(),
+      startRow: z.number().int().nonnegative(),
+      endRow: z.number().int().nonnegative(),
+      startColumn: z.number().int().nonnegative().max(16_383),
+      endColumn: z.number().int().nonnegative().max(16_383),
+      edits: largeTableGridEditsSchema,
+    })
+    .strict(),
+  /// Statistics of a range (status bar, aggregate_range), computed in the engine.
+  z
+    .object({
+      action: z.literal('aggregate'),
+      sessionId: z.string().uuid(),
+      startRow: z.number().int().nonnegative(),
+      endRow: z.number().int().nonnegative(),
+      startColumn: z.number().int().nonnegative().max(16_383),
+      endColumn: z.number().int().nonnegative().max(16_383),
+      topValues: z.number().int().nonnegative().max(1_000),
+      edits: largeTableGridEditsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('pivot'),
+      sessionId: z.string().uuid(),
+      rows: z.array(largeTablePivotDimSchema).max(4),
+      columns: z.array(largeTablePivotDimSchema).max(2),
+      filters: z
+        .array(
+          z
+            .object({
+              column: z.number().int().nonnegative().max(16_383),
+              group: largeTablePivotGroupSchema.optional(),
+              include: z.array(z.string().max(32_767)).max(100_000),
+            })
+            .strict(),
+        )
+        .max(16),
+      values: z
+        .array(
+          z
+            .object({
+              column: z.number().int().nonnegative().max(16_383),
+              agg: largeTablePivotAggSchema,
+            })
+            .strict(),
+        )
+        .max(16),
+      maxRows: z.number().int().positive().max(1_048_576).optional(),
+      /// rows by their first value, largest first (Pareto, top N)
+      sortByValue: z.boolean().optional(),
+      edits: largeTableGridEditsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('pivot-members'),
+      sessionId: z.string().uuid(),
+      column: z.number().int().nonnegative().max(16_383),
+      group: largeTablePivotGroupSchema.optional(),
+      edits: largeTableGridEditsSchema,
+    })
+    .strict(),
+  /// Reads the base's columns ahead of the first pivot.
+  z.object({ action: z.literal('pivot-warm'), sessionId: z.string().uuid() }).strict(),
+  /// Saves a pivot's table (CSV text the renderer built) where the person picks.
+  z
+    .object({
+      action: z.literal('pivot-save'),
+      sessionId: z.string().uuid(),
+      text: z.string().max(256 * 1024 * 1024),
+      name: z.string().min(1).max(200),
     })
     .strict(),
   z
@@ -996,8 +1121,52 @@ export const largeTableCalcResultSchema = z.union([
       /** columns whose cells changed (the grid repaints them) */
       refreshed: z.array(z.number().int().nonnegative()),
       pending: z.boolean().optional(),
+      copied: z
+        .object({ rows: z.number().int().nonnegative(), columns: z.number().int().nonnegative() })
+        .strict()
+        .optional(),
+      calcs: z
+        .array(
+          z
+            .object({
+              calcId: z.string(),
+              column: z.number().int().nonnegative(),
+              active: z.boolean(),
+              firstRow: z.number().int().nonnegative(),
+              lastRow: z.number().int().nonnegative(),
+              overrides: z.boolean().optional(),
+            })
+            .strict(),
+        )
+        .optional(),
+      aggregate: z
+        .object({
+          cells: z.number(),
+          nonEmpty: z.number(),
+          distinct: z.number().nullable(),
+          numericCount: z.number(),
+          sum: z.number(),
+          min: z.number().nullable(),
+          max: z.number().nullable(),
+          average: z.number().nullable(),
+          topValues: z.array(z.object({ value: z.string(), count: z.number() }).strict()),
+          withheld: z.number(),
+        })
+        .strict()
+        .optional(),
       calcId: z.string().optional(),
       replaced: z.string().nullable().optional(),
+      pivot: largeTablePivotResultSchema.optional(),
+      members: z
+        .object({
+          members: z.array(
+            z.object({ label: z.string(), count: z.number().int().nonnegative() }).strict(),
+          ),
+          total: z.number().int().nonnegative(),
+        })
+        .strict()
+        .optional(),
+      saved: z.string().optional(),
       rows: z.number().int().nonnegative().optional(),
       errors: z.number().int().nonnegative().optional(),
       firstErrorRow: z.number().int().nonnegative().nullable().optional(),
@@ -2441,6 +2610,9 @@ export const workbookSaveRequestSchema = z
      * through without a translation step.
      */
     redactionStates: redactionStatesSchema.nullable().default(null),
+    /// A large base changed in its data engine (a calculated column on or
+    /// off) with nothing else in the journal: the save still writes it.
+    largeTableChanges: z.boolean().optional(),
   })
   .strict()
   .refine(
@@ -2475,7 +2647,8 @@ export const workbookSaveRequestSchema = z
       (request.tableEdits?.length ?? 0) > 0 ||
       request.pivotAdditions.length > 0 ||
       request.sparklineAdditions.length > 0 ||
-      (request.redactionStates?.length ?? 0) > 0,
+      (request.redactionStates?.length ?? 0) > 0 ||
+      request.largeTableChanges === true,
     { message: 'A save needs at least one edit.' },
   )
   .refine((request) => request.sheetOps.length === 0 || request.sheetOrder.length > 0, {

@@ -667,4 +667,5 @@ export const zh = {
   dlgSizeMoveOnly: '大小固定，位置随单元格而变',
   dlgSizeFixed: '大小、位置均固定',
   dlgSizeInvalid: '请输入有效的大小和旋转角度。',
+  dlgPivotAggCountDistinct: '非重复计数',
 }

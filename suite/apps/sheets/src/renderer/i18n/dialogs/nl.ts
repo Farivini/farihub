@@ -687,4 +687,5 @@ export const nl = {
   dlgSizeMoveOnly: 'Verplaatsen maar grootte niet wijzigen met cellen',
   dlgSizeFixed: 'Niet verplaatsen of grootte wijzigen met cellen',
   dlgSizeInvalid: 'Voer een geldige grootte en rotatie in.',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

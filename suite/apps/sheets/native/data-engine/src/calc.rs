@@ -64,6 +64,67 @@ pub struct GridEdits {
 }
 
 impl GridEdits {
+    /// One past the last (row, column) an edit writes.
+    pub(crate) fn extent(&self) -> (u64, u64) {
+        let mut rows = 0;
+        let mut columns = 0;
+        for c in &self.cells {
+            rows = rows.max(c.row + 1);
+            columns = columns.max(c.column + 1);
+        }
+        for f in &self.fills {
+            rows = rows.max(f.end_row + 1);
+            columns = columns.max(f.end_column + 1);
+        }
+        (rows, columns)
+    }
+
+    /// Writes the edits over columns `first_column..` holding rows
+    /// `first_row..=last_row` (fills first, cells win).
+    pub(crate) fn overlay(
+        &self,
+        first_row: u64,
+        last_row: u64,
+        first_column: u64,
+        columns: &mut [Vec<Value>],
+    ) {
+        let width = columns.len() as u64;
+        let inside = |col: u64| col >= first_column && col < first_column + width;
+        for fill in &self.fills {
+            let value = json_value(&fill.value);
+            for col in (fill.start_column..=fill.end_column).filter(|c| inside(*c)) {
+                let values = &mut columns[(col - first_column) as usize];
+                for row in fill.start_row.max(first_row)..=fill.end_row.min(last_row) {
+                    values[(row - first_row) as usize] = value.clone();
+                }
+            }
+        }
+        for cell in &self.cells {
+            if inside(cell.column) && cell.row >= first_row && cell.row <= last_row {
+                columns[(cell.column - first_column) as usize][(cell.row - first_row) as usize] =
+                    json_value(&cell.value);
+            }
+        }
+    }
+
+    /// The edits of one column in journal order (fills, then cells): the
+    /// rows each covers and the value it puts there.
+    pub(crate) fn column_edits(&self, column: u64) -> Vec<(u64, u64, Value)> {
+        let mut out: Vec<(u64, u64, Value)> = self
+            .fills
+            .iter()
+            .filter(|f| (f.start_column..=f.end_column).contains(&column))
+            .map(|f| (f.start_row, f.end_row, json_value(&f.value)))
+            .collect();
+        out.extend(
+            self.cells
+                .iter()
+                .filter(|c| c.column == column)
+                .map(|c| (c.row, c.row, json_value(&c.value))),
+        );
+        out
+    }
+
     /// Whether an edit puts a value in rows `first..=last` of `column`.
     fn touches(&self, column: u64, first: u64, last: u64) -> bool {
         let filled = |v: &Json| !matches!(json_value(v), Value::Empty);
@@ -129,6 +190,16 @@ pub struct Calc {
 impl Calc {
     pub fn column(&self) -> u64 {
         self.formula.column
+    }
+
+    pub fn rows(&self) -> (u64, u64) {
+        (self.formula.first_row, self.formula.last_row)
+    }
+
+    /// Whether cells were typed over it before a Save (they stay in the base
+    /// when the formula is turned off).
+    pub fn has_overrides(&self) -> bool {
+        !self.override_rows.is_empty() || !self.override_spans.is_empty()
     }
 
     fn overridden(&self, row: u64) -> bool {
@@ -304,7 +375,12 @@ impl Engine {
             Some(&id),
             None,
         )?;
-        session.lock().unwrap().calcs = calcs;
+        {
+            let mut locked = session.lock().unwrap();
+            locked.calcs = calcs;
+            // the column's values changed: cached reads are stale
+            locked.version += 1;
+        }
         Ok(json!({
             "calcId": id,
             "replaced": replaced_id,
@@ -367,7 +443,12 @@ impl Engine {
             Some(calc_id),
             None,
         )?;
-        session.lock().unwrap().calcs = calcs;
+        {
+            let mut locked = session.lock().unwrap();
+            locked.calcs = calcs;
+            // the column's values changed: cached reads are stale
+            locked.version += 1;
+        }
         Ok(json!({ "ms": started.elapsed().as_millis() as u64, "refreshed": refreshed }))
     }
 
@@ -394,7 +475,12 @@ impl Engine {
             None,
             quick.then_some(&mut pending),
         )?;
-        session.lock().unwrap().calcs = calcs;
+        {
+            let mut locked = session.lock().unwrap();
+            locked.calcs = calcs;
+            // the column's values changed: cached reads are stale
+            locked.version += 1;
+        }
         Ok(json!({
             "ms": started.elapsed().as_millis() as u64,
             "refreshed": refreshed,
@@ -504,6 +590,27 @@ fn row_spans(written: &[u64], calc: &Calc) -> Vec<Span> {
         }
     }
     spans
+}
+
+pub(crate) fn number_marks_pub(
+    number_columns: &[NumberColumn],
+    calcs: &[(u64, char)],
+) -> HashMap<u64, char> {
+    let mut marks: HashMap<u64, char> = number_columns
+        .iter()
+        .map(|c| (c.column, mark_of(&c.decimal)))
+        .collect();
+    for (column, mark) in calcs {
+        marks.insert(*column, *mark);
+    }
+    marks
+}
+
+pub(crate) fn each_text_pub(
+    array: &ArrayRef,
+    f: impl FnMut(Option<&str>),
+) -> Result<(), EngineError> {
+    each_text(array, f)
 }
 
 /// Decimal marks of the number columns, the calculated ones included.

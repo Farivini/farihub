@@ -1,0 +1,106 @@
+{
+ "steps": {
+  "ctrlShiftRight": {
+   "responsiveMs": 44,
+   "maxGapMs": 17
+  },
+  "ctrlShiftDown": {
+   "responsiveMs": 9,
+   "maxGapMs": 250
+  },
+  "copiar": {
+   "responsiveMs": 36,
+   "maxGapMs": 17
+  },
+  "apagarColuna": {
+   "responsiveMs": 50,
+   "maxGapMs": 100
+  },
+  "desfazerApagar": {
+   "responsiveMs": 34,
+   "maxGapMs": 100
+  },
+  "apagarColunaCalculada": {
+   "responsiveMs": 17,
+   "maxGapMs": 100
+  },
+  "desfazerColunaCalculada": {
+   "responsiveMs": 42,
+   "maxGapMs": 100
+  },
+  "apagarColunaCalculadaDigitada": {
+   "responsiveMs": 19,
+   "maxGapMs": 100
+  },
+  "apagarColunaNova": {
+   "responsiveMs": 39,
+   "maxGapMs": 250
+  },
+  "desfazerColunaNova": {
+   "responsiveMs": 57,
+   "maxGapMs": 183
+  },
+  "refazerColunaNova": {
+   "responsiveMs": 80,
+   "maxGapMs": 200
+  }
+ },
+ "checks": {
+  "barra_de_status_conta_a_base_inteira": {
+   "passed": true,
+   "barra": "Contagem: 9,433,492",
+   "esperado": 9433492
+  },
+  "copiar_traz_todas_as_linhas": {
+   "passed": true,
+   "linhas": 1048568,
+   "caracteres": 66514730
+  },
+  "apagar_e_desfazer_volta_o_arquivo_identico": {
+   "passed": true,
+   "telaDepoisDeApagar": null,
+   "telaDepoisDeDesfazer": "preenchida"
+  },
+  "apagar_e_salvar_esvazia_so_a_coluna": {
+   "passed": true,
+   "rows": 1048568,
+   "bad": 0
+  },
+  "apagar_coluna_calculada_e_desfazer": {
+   "passed": true,
+   "telaDepoisDeApagar": null,
+   "linhasErradas": 0
+  },
+  "apagar_coluna_calculada_leva_o_digitado": {
+   "passed": true,
+   "telaJ5J6": [
+    null,
+    null
+   ],
+   "rows": 1048568,
+   "bad": 0
+  },
+  "apagar_coluna_nova": {
+   "passed": true,
+   "telaK2K3": [
+    null,
+    null
+   ],
+   "desfazer": [
+    "novo",
+    "novo2"
+   ],
+   "refazer": [
+    null,
+    null
+   ],
+   "rows": 1048568,
+   "bad": 0
+  },
+  "nenhuma_pausa_acima_de_1s": {
+   "passed": true,
+   "piorPausaMs": 250
+  }
+ },
+ "failures": []
+}

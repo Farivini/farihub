@@ -692,4 +692,5 @@ export const de = {
   dlgSizeMoveOnly: 'Von Zellposition abhängig',
   dlgSizeFixed: 'Von Zellposition und -größe unabhängig',
   dlgSizeInvalid: 'Geben Sie eine gültige Größe und Drehung ein.',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

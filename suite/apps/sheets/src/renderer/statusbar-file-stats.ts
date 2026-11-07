@@ -174,7 +174,10 @@ export function installStatusBarFileStats(deps: StatusBarFileStatsDeps): { dispo
     }, 0)
     // A single-cell selection can never show statistics (COUNTA > 1 rule),
     // so don't spend a sidecar round trip on the most common click.
-    if (clampedCells < 2 || clampedCells > MAX_STATUSBAR_AGGREGATE_CELLS) return
+    // A large base aggregates in its data engine: no cell budget there.
+    const budget =
+      state.file.largeTable === undefined ? MAX_STATUSBAR_AGGREGATE_CELLS : Number.POSITIVE_INFINITY
+    if (clampedCells < 2 || clampedCells > budget) return
 
     const signature = selectionSignature()
     const parts: RangeAggregate[] = []

@@ -29,6 +29,7 @@ import { availableParallelism, totalmem } from 'node:os'
 import {
   app,
   BrowserWindow,
+  clipboard,
   desktopCapturer,
   dialog,
   ipcMain,
@@ -3499,6 +3500,109 @@ export function registerSheetsIpc(): void {
           ok: true,
           ms: done.ms,
           refreshed: [calc.column, ...done.refreshed],
+        })
+      }
+      if (request.action === 'list') {
+        const calcs = await engine.calcList(table.engineSessionId)
+        return largeTableCalcResultSchema.parse({ ok: true, ms: 0, refreshed: [], calcs })
+      }
+      if (request.action === 'copy') {
+        const started = Date.now()
+        const copied = await engine.rangeText({
+          sessionId: table.engineSessionId,
+          startRow: request.startRow,
+          endRow: request.endRow,
+          startColumn: request.startColumn,
+          endColumn: request.endColumn,
+          numberColumns,
+          edits: request.edits,
+        })
+        clipboard.writeText(copied.text)
+        return largeTableCalcResultSchema.parse({
+          ok: true,
+          ms: Date.now() - started,
+          refreshed: [],
+          copied: { rows: copied.rows, columns: copied.columns },
+        })
+      }
+      if (request.action === 'pivot') {
+        const started = Date.now()
+        const pivot = await engine.pivot({
+          sessionId: table.engineSessionId,
+          rows: request.rows,
+          columns: request.columns,
+          filters: request.filters,
+          values: request.values,
+          maxRows: request.maxRows,
+          sortByValue: request.sortByValue,
+          numberColumns,
+          edits: request.edits,
+        })
+        return largeTableCalcResultSchema.parse({
+          ok: true,
+          ms: Date.now() - started,
+          refreshed: [],
+          pivot,
+        })
+      }
+      if (request.action === 'pivot-members') {
+        const members = await engine.pivotMembers({
+          sessionId: table.engineSessionId,
+          column: request.column,
+          group: request.group,
+          numberColumns,
+          edits: request.edits,
+        })
+        return largeTableCalcResultSchema.parse({ ok: true, ms: 0, refreshed: [], members })
+      }
+      if (request.action === 'pivot-warm') {
+        const started = Date.now()
+        await engine.pivotWarm({
+          sessionId: table.engineSessionId,
+          columns: Array.from({ length: table.width.current }, (_unused, index) => index),
+          numberColumns,
+        })
+        return largeTableCalcResultSchema.parse({
+          ok: true,
+          ms: Date.now() - started,
+          refreshed: [],
+        })
+      }
+      if (request.action === 'pivot-save') {
+        const base = table.target.current.path
+        const selection = await saveFileDialog(event, {
+          defaultPath: join(dirname(base), `${sanitizeAutoRenameBase(request.name) ?? 'dinamica'}.csv`),
+          filters: [{ name: tm('filterCsv'), extensions: ['csv'] }],
+        })
+        if (selection.canceled || !selection.filePath) {
+          return largeTableCalcResultSchema.parse({ ok: true, ms: 0, refreshed: [] })
+        }
+        // UTF-8 with BOM: Excel reads the accents
+        await writeFile(selection.filePath, `\uFEFF${request.text}`, 'utf8')
+        return largeTableCalcResultSchema.parse({
+          ok: true,
+          ms: 0,
+          refreshed: [],
+          saved: selection.filePath,
+        })
+      }
+      if (request.action === 'aggregate') {
+        const started = Date.now()
+        const aggregate = await engine.aggregateRange({
+          sessionId: table.engineSessionId,
+          startRow: request.startRow,
+          endRow: request.endRow,
+          startColumn: request.startColumn,
+          endColumn: request.endColumn,
+          numberColumns,
+          edits: request.edits,
+          topValues: request.topValues,
+        })
+        return largeTableCalcResultSchema.parse({
+          ok: true,
+          ms: Date.now() - started,
+          refreshed: [],
+          aggregate,
         })
       }
       if (![...table.calcs.current.values()].some((calc) => calc.active)) {

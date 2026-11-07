@@ -682,4 +682,5 @@ export const vi = {
   dlgSizeMoveOnly: 'Di chuyển nhưng không đổi kích thước',
   dlgSizeFixed: 'Không di chuyển hay đổi kích thước',
   dlgSizeInvalid: 'Nhập kích thước và góc xoay hợp lệ.',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

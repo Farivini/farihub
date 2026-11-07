@@ -679,4 +679,5 @@ export const th = {
   dlgSizeMoveOnly: 'ย้ายแต่ไม่ปรับขนาดตามเซลล์',
   dlgSizeFixed: 'ไม่ย้ายหรือปรับขนาดตามเซลล์',
   dlgSizeInvalid: 'ป้อนขนาดและการหมุนที่ถูกต้อง',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

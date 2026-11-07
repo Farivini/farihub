@@ -686,4 +686,5 @@ export const id = {
   dlgSizeMoveOnly: 'Pindahkan tetapi jangan ubah ukuran',
   dlgSizeFixed: 'Jangan pindahkan atau ubah ukuran',
   dlgSizeInvalid: 'Masukkan ukuran dan rotasi yang valid.',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

@@ -685,4 +685,5 @@ export const tr = {
   dlgSizeMoveOnly: 'Hücrelerle taşı ancak boyutlandırma',
   dlgSizeFixed: 'Hücrelerle taşıma veya boyutlandırma',
   dlgSizeInvalid: 'Geçerli bir boyut ve döndürme girin.',
+  dlgPivotAggCountDistinct: 'Distinct Count',
 } satisfies Record<keyof typeof zh, string>

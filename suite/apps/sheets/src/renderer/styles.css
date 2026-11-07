@@ -7085,7 +7085,9 @@ body > div:has([data-u-comp='find-replace-dialog']) {
 .pivot-area-grid {
   display: grid;
   flex: 1;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, …): a long caption ("Contagem de CustomerID") ellipsizes
+     instead of widening its column past the pane */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: 1fr 1fr;
   gap: 6px;
   min-height: 0;
@@ -7468,4 +7470,125 @@ body:has(.note-pictures-pane) .threaded-comments-pane {
   font-size: 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* ── Pivot of a large base (data engine) ── */
+.large-pivot {
+  position: fixed;
+  z-index: 850;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+.large-pivot-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+.large-pivot-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.large-pivot-title span {
+  color: var(--text-secondary);
+}
+.large-pivot-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.large-pivot-actions label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.large-pivot-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 312px 24px 16px;
+}
+.large-pivot .pivot-fields-pane {
+  top: 64px;
+  bottom: 12px;
+}
+.large-pivot-empty,
+.large-pivot-note,
+.large-pivot-notice {
+  color: var(--text-secondary);
+}
+.large-pivot-table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.large-pivot-table th,
+.large-pivot-table td {
+  padding: 3px 10px;
+  border: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+.large-pivot-table thead th {
+  background: var(--surface-subtle);
+  font-weight: 600;
+  text-align: left;
+}
+.large-pivot-table tbody th {
+  font-weight: 400;
+  text-align: left;
+}
+.large-pivot-table td {
+  text-align: right;
+}
+.large-pivot-table .is-total,
+.large-pivot-table tfoot th,
+.large-pivot-table tfoot td {
+  font-weight: 600;
+}
+.large-pivot-table tfoot th,
+.large-pivot-table tfoot td {
+  border-top: 2px solid var(--border-strong);
+}
+.large-pivot-chart {
+  margin: 0 0 16px;
+}
+.large-pivot-chart figcaption {
+  margin-bottom: 6px;
+  color: var(--text);
+  font-weight: 600;
+}
+.large-pivot-chart .mark {
+  fill: var(--accent);
+}
+.large-pivot-chart .mark:hover {
+  fill: var(--accent-dark);
+}
+.large-pivot-chart .axis {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+.large-pivot-chart .tick,
+.large-pivot-chart .value {
+  fill: var(--text-secondary);
+  font-size: 11px;
+}
+.large-pivot-tip {
+  position: fixed;
+  z-index: 960;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  box-shadow: var(--shadow-menu);
+  color: var(--text);
+  pointer-events: none;
 }

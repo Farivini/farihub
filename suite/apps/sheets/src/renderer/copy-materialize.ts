@@ -17,6 +17,7 @@ import { ISheetClipboardService } from '@univerjs/sheets-ui'
 import { formatAddress } from '@genoffice/xlsx-gateway/domain/cell-address'
 import { FULL_LOAD_MAX_CELLS } from './app-constants'
 import { clipboardField } from './clipboard-tsv'
+import { largeTableJournalEdits } from './large-table-calc'
 import { t } from './i18n/locale'
 import { ensureLazyRangeLoaded, readCopySourceDirect, type RawCopyCell } from './univer-sync'
 import {
@@ -103,6 +104,28 @@ async function materializeSelection(
       return 'refused'
     }
     setMessage(t('appCopyLoadingRange', { range: rangeText }))
+    // A large base copies in its data engine: the text never passes through
+    // the grid (a whole-base copy is tens of MB read in chunks otherwise).
+    if (state.file.largeTable !== undefined && kind === 'copy') {
+      const copied = await window.desktopApi.largeTableCalc({
+        action: 'copy',
+        sessionId: state.file.sessionId,
+        ...range,
+        edits: largeTableJournalEdits(state, worksheet.getSheetId()),
+      })
+      if (!copied.ok || lazyWorkbookRef.current !== state) {
+        setMessage(t('appRangeTooManyCells', { range: rangeText, max: COPY_MATERIALIZE_MAX_CELLS }))
+        return 'refused'
+      }
+      setMessage(
+        t('appCopyValuesOnly', {
+          range: rangeText,
+          cells: cells.toLocaleString(),
+          max: COPY_MATERIALIZE_MAX_CELLS.toLocaleString(),
+        }),
+      )
+      return 'done'
+    }
     const source = await readCopySourceDirect(
       lazyWorkbookRef,
       worksheet.getSheetId(),
